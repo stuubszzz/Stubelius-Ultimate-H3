@@ -1,0 +1,2194 @@
+{
+ "id": "ad5a3c3a-57ee-4479-8e15-ebde71c27f07",
+ "revision": 0,
+ "last_node_id": 17,
+ "last_link_id": 22,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "StubeliusH3Setup",
+   "pos": [
+    -847.9338842975214,
+    4.958677685950407
+   ],
+   "size": [
+    360,
+    250
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "seeds",
+     "name": "seeds",
+     "type": "INT",
+     "widget": {
+      "name": "seeds"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "steps",
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "sampler",
+     "name": "sampler",
+     "type": "COMBO",
+     "widget": {
+      "name": "sampler"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "type": "COMBO",
+     "widget": {
+      "name": "scheduler"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "megapixels",
+     "name": "megapixels",
+     "type": "FLOAT",
+     "widget": {
+      "name": "megapixels"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "speedup_lora_strength",
+     "name": "speedup_lora_strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "speedup_lora_strength"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "setup",
+     "name": "setup",
+     "type": "H3_SETUP",
+     "links": [
+      1,
+      3
+     ]
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "INT",
+     "links": [
+      16
+     ]
+    }
+   ],
+   "title": "SETUP — how the video is generated",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusH3Setup",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    "Hybrid",
+    1,
+    10,
+    "euler",
+    "beta",
+    0.5,
+    0.75
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 2,
+   "type": "StubeliusH3Models",
+   "pos": [
+    -852.8925619834708,
+    288.34710743801634
+   ],
+   "size": [
+    360,
+    640
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "setup",
+     "name": "setup",
+     "type": "H3_SETUP",
+     "link": 1
+    },
+    {
+     "localized_name": "ref2va_model",
+     "name": "ref2va_model",
+     "type": "COMBO",
+     "widget": {
+      "name": "ref2va_model"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "fl2va_model",
+     "name": "fl2va_model",
+     "type": "COMBO",
+     "widget": {
+      "name": "fl2va_model"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "text_encoder",
+     "name": "text_encoder",
+     "type": "COMBO",
+     "widget": {
+      "name": "text_encoder"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "video_vae",
+     "name": "video_vae",
+     "type": "COMBO",
+     "widget": {
+      "name": "video_vae"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "audio_vae",
+     "name": "audio_vae",
+     "type": "COMBO",
+     "widget": {
+      "name": "audio_vae"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "speedup_lora",
+     "name": "speedup_lora",
+     "type": "COMBO",
+     "widget": {
+      "name": "speedup_lora"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "extra_lora_1",
+     "name": "extra_lora_1",
+     "type": "COMBO",
+     "widget": {
+      "name": "extra_lora_1"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "extra_lora_1_strength",
+     "name": "extra_lora_1_strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "extra_lora_1_strength"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "extra_lora_2",
+     "name": "extra_lora_2",
+     "type": "COMBO",
+     "widget": {
+      "name": "extra_lora_2"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "extra_lora_2_strength",
+     "name": "extra_lora_2_strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "extra_lora_2_strength"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "attention",
+     "name": "attention",
+     "type": "COMBO",
+     "widget": {
+      "name": "attention"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "sage_attention",
+     "name": "sage_attention",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "sage_attention"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "low_vram_attention",
+     "name": "low_vram_attention",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "low_vram_attention"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "chunk_feed_forward",
+     "name": "chunk_feed_forward",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "chunk_feed_forward"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "spectrum",
+     "name": "spectrum",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "spectrum"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "h3_cache",
+     "name": "h3_cache",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "h3_cache"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "live_preview",
+     "name": "live_preview",
+     "type": "COMBO",
+     "widget": {
+      "name": "live_preview"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "models",
+     "name": "models",
+     "type": "H3_MODELS",
+     "links": [
+      2,
+      15
+     ]
+    }
+   ],
+   "title": "MODELS — checkpoints, LoRAs, speedups",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusH3Models",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+    "minimax_h3_video_vae_fp16.safetensors",
+    "minimax_h3_audio_vae_fp32.safetensors",
+    "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "none",
+    1,
+    "none",
+    1,
+    "comfy kitchen attention",
+    false,
+    false,
+    false,
+    false,
+    false,
+    "off"
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 3,
+   "type": "PrimitiveStringMultiline",
+   "pos": [
+    -960.3305785123972,
+    971.6528925619838
+   ],
+   "size": [
+    469.5728515625,
+    198.34710743801634
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "value",
+     "name": "value",
+     "type": "STRING",
+     "widget": {
+      "name": "value"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "STRING",
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      4
+     ]
+    }
+   ],
+   "title": "PROMPT OVERRIDE (any text here replaces the Director timeline)",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "PrimitiveStringMultiline",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    ""
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 4,
+   "type": "StubeliusH3DirectorV2",
+   "pos": [
+    -441.15702479338796,
+    9.58677685950424
+   ],
+   "size": [
+    1749.7520661157018,
+    2135
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "models",
+     "name": "models",
+     "shape": 7,
+     "type": "H3_MODELS",
+     "link": 2
+    },
+    {
+     "localized_name": "setup",
+     "name": "setup",
+     "shape": 7,
+     "type": "H3_SETUP",
+     "link": 3
+    },
+    {
+     "localized_name": "model",
+     "name": "model",
+     "shape": 7,
+     "type": "MODEL",
+     "link": null
+    },
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "shape": 7,
+     "type": "CLIP",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "audio_vae",
+     "name": "audio_vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "model_fl2va",
+     "name": "model_fl2va",
+     "shape": 7,
+     "type": "MODEL",
+     "link": null
+    },
+    {
+     "localized_name": "prompt_override",
+     "name": "prompt_override",
+     "shape": 7,
+     "type": "STRING",
+     "link": 4
+    },
+    {
+     "localized_name": "megapixels",
+     "name": "megapixels",
+     "shape": 7,
+     "type": "FLOAT",
+     "link": null
+    },
+    {
+     "localized_name": "steps",
+     "name": "steps",
+     "shape": 7,
+     "type": "INT",
+     "link": null
+    },
+    {
+     "localized_name": "sampler_name",
+     "name": "sampler_name",
+     "shape": 7,
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "shape": 7,
+     "type": "STRING",
+     "link": null
+    },
+    {
+     "localized_name": "seed_count",
+     "name": "seed_count",
+     "shape": 7,
+     "type": "INT",
+     "link": null
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "aspect_ratio",
+     "name": "aspect_ratio",
+     "type": "COMBO",
+     "widget": {
+      "name": "aspect_ratio"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "duration_seconds",
+     "name": "duration_seconds",
+     "type": "FLOAT",
+     "widget": {
+      "name": "duration_seconds"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "chunk_duration_seconds",
+     "name": "chunk_duration_seconds",
+     "type": "FLOAT",
+     "widget": {
+      "name": "chunk_duration_seconds"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "seed",
+     "name": "seed",
+     "type": "INT",
+     "widget": {
+      "name": "seed"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "timeline_data",
+     "name": "timeline_data",
+     "type": "STRING",
+     "widget": {
+      "name": "timeline_data"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "type": "AUDIO",
+     "links": []
+    },
+    {
+     "localized_name": "compiled_prompt",
+     "name": "compiled_prompt",
+     "type": "STRING",
+     "links": [
+      5
+     ]
+    },
+    {
+     "localized_name": "ref_images_used",
+     "name": "ref_images_used",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "localized_name": "candidate_1_images",
+     "name": "candidate_1_images",
+     "type": "IMAGE",
+     "links": [
+      6
+     ]
+    },
+    {
+     "localized_name": "candidate_1_audio",
+     "name": "candidate_1_audio",
+     "type": "AUDIO",
+     "links": [
+      7
+     ]
+    },
+    {
+     "localized_name": "candidate_2_images",
+     "name": "candidate_2_images",
+     "type": "IMAGE",
+     "links": [
+      8
+     ]
+    },
+    {
+     "localized_name": "candidate_2_audio",
+     "name": "candidate_2_audio",
+     "type": "AUDIO",
+     "links": [
+      9
+     ]
+    },
+    {
+     "localized_name": "candidate_3_images",
+     "name": "candidate_3_images",
+     "type": "IMAGE",
+     "links": [
+      10
+     ]
+    },
+    {
+     "localized_name": "candidate_3_audio",
+     "name": "candidate_3_audio",
+     "type": "AUDIO",
+     "links": [
+      11
+     ]
+    },
+    {
+     "localized_name": "candidate_4_images",
+     "name": "candidate_4_images",
+     "type": "IMAGE",
+     "links": [
+      12
+     ]
+    },
+    {
+     "localized_name": "candidate_4_audio",
+     "name": "candidate_4_audio",
+     "type": "AUDIO",
+     "links": [
+      13
+     ]
+    },
+    {
+     "localized_name": "candidate_1_latent",
+     "name": "candidate_1_latent",
+     "type": "LATENT",
+     "links": []
+    },
+    {
+     "localized_name": "candidate_2_latent",
+     "name": "candidate_2_latent",
+     "type": "LATENT",
+     "links": []
+    },
+    {
+     "localized_name": "candidate_3_latent",
+     "name": "candidate_3_latent",
+     "type": "LATENT",
+     "links": []
+    },
+    {
+     "localized_name": "candidate_4_latent",
+     "name": "candidate_4_latent",
+     "type": "LATENT",
+     "links": []
+    },
+    {
+     "localized_name": "takes",
+     "name": "takes",
+     "type": "H3_TAKES",
+     "links": [
+      14
+     ]
+    }
+   ],
+   "title": "DIRECTOR — what the video is",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusH3DirectorV2",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    "First/Last Frame — zero, one, or two frame images",
+    "16:9 (Widescreen)",
+    12.5,
+    12.5,
+    43,
+    "fixed",
+    "{\"characters\": [null, null, null], \"chunks\": [{\"segments\": [{\"prompt\": \"A medium close-up frames a bearded glassblower in his fifties with rolled-up sleeves and a worn leather apron, standing at his workbench in a dark workshop lit only by the orange glow of a furnace. He slowly rotates a long steel blowpipe, and a glowing orange bulb of molten glass turns at its tip, throwing warm flickering light across his face, beard and forearms. Tiny glowing embers drift upward past him. He leans in and blows gently into the pipe, and the molten bulb slowly swells and brightens. Behind him the open furnace mouth burns yellow-white, and shelves of finished blue, green and amber glass vases sparkle in the firelight. The camera pushes in with small amplitude at slow speed toward the glowing glass.\", \"weight\": 1, \"duration_hint\": \"12.5\", \"speakerCharIdxs\": []}], \"prompt_gen_enabled\": false, \"prompt_gen_brief\": \"\", \"prompt_gen_draft_text\": \"\", \"prompt_gen_committed_text\": \"\", \"style_line\": \"Live-action, cinematic, shallow depth of field, warm low-key lighting\", \"overall_soundscape\": \"The deep, steady roar of the furnace fills the workshop, with the soft rhythmic rolling of the steel pipe on the bench rails, faint crackles from the cooling glass, and the glassblower's slow, controlled breath as he blows into the pipe.\", \"non_diegetic_music\": \"A solo cello plays long sustained notes over a soft low synthesizer drone, at a slow tempo with gradual swells in volume.\", \"loras\": []}], \"background\": {}, \"refVideos\": [null, null, null], \"refAudios\": [null, null, null], \"dialogue_language\": \"English\", \"prompt_gen_provider\": \"ollama\", \"prompt_gen_base_url\": \"\", \"prompt_gen_model\": \"\"}",
+    ""
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 5,
+   "type": "StubeliusLivePreview",
+   "pos": [
+    1340,
+    0
+   ],
+   "size": [
+    620,
+    440
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "title": "LIVE PREVIEW (Director while sampling, Finish while polishing)",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusLivePreview",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    ""
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 6,
+   "type": "PreviewAny",
+   "pos": [
+    1340,
+    470
+   ],
+   "size": [
+    620,
+    200
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "source",
+     "name": "source",
+     "type": "*",
+     "link": 5
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "STRING",
+     "name": "STRING",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "title": "Compiled prompt",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "PreviewAny",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 7,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    1340,
+    700
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 6
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 7
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "Seed 1",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/seeds/seed1",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": false,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 8,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    1660,
+    700
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 8
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 9
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "Seed 2",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/seeds/seed2",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": false,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 9,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    1340,
+    1160
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 10
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 11
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "Seed 3",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/seeds/seed3",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": false,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 10,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    1660,
+    1160
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 12
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 13
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "Seed 4",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/seeds/seed4",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": false,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 11,
+   "type": "StubeliusH3Finish",
+   "pos": [
+    2000,
+    0
+   ],
+   "size": [
+    426.07578125,
+    200
+   ],
+   "flags": {},
+   "order": 12,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "takes",
+     "name": "takes",
+     "type": "H3_TAKES",
+     "link": 14
+    },
+    {
+     "localized_name": "models",
+     "name": "models",
+     "type": "H3_MODELS",
+     "link": 15
+    },
+    {
+     "name": "output",
+     "type": "H3_OUTPUT",
+     "link": 22
+    },
+    {
+     "name": "winner",
+     "type": "INT",
+     "widget": {
+      "name": "winner"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": [
+      17,
+      20
+     ]
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "type": "AUDIO",
+     "links": [
+      18
+     ]
+    },
+    {
+     "localized_name": "fps",
+     "name": "fps",
+     "type": "FLOAT",
+     "links": [
+      19
+     ]
+    }
+   ],
+   "title": "FINISH — pick the WINNER (0 = hold after the seeds)",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusH3Finish",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    0
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 12,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    2436.126331523443,
+    2.2578957202151075
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {},
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 17
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 18
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": 19
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "FINAL VIDEO",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {
+      "frame_rate": true
+     },
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/final",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": true,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 13,
+   "type": "ImageFromBatch",
+   "pos": [
+    2000,
+    460
+   ],
+   "size": [
+    360,
+    100
+   ],
+   "flags": {},
+   "order": 13,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 20
+    },
+    {
+     "localized_name": "batch_index",
+     "name": "batch_index",
+     "type": "INT",
+     "widget": {
+      "name": "batch_index"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "length",
+     "name": "length",
+     "type": "INT",
+     "widget": {
+      "name": "length"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      21
+     ]
+    }
+   ],
+   "title": "Last frame (for Extend / First-Last Frame)",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "ImageFromBatch",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    -1,
+    1
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 14,
+   "type": "PreviewImage",
+   "pos": [
+    2000,
+    600
+   ],
+   "size": [
+    360,
+    300
+   ],
+   "flags": {},
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 21
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Last frame",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "PreviewImage",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 15,
+   "type": "MarkdownNote",
+   "pos": [
+    -1548.925619834708,
+    1.6528925619834671
+   ],
+   "size": [
+    580,
+    1160
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "title": "HOW TO USE",
+   "properties": {
+    "Node name for S&R": "MarkdownNote",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    "# Ultimate H3 — how to use\n\n**Updates:** nodes and workflow live at [github.com/stuubszzz/Stubelius-Ultimate-H3](https://github.com/stuubszzz/Stubelius-Ultimate-H3). ComfyUI Manager → Update All (or `git pull` in custom_nodes/Stubelius-Ultimate-H3) keeps the nodes current. Live preview: put `taeh3.safetensors` in models/vae_approx and pick it on the Models node.\n\nWork top to bottom: **Setup → Models → Output → Director → Finish**. Everything is chosen up front; after a seed hunt only **WINNER** is left.\n\n## 1 · SETUP — how it's generated\n- **mode** — Speed / Hybrid / Quality: *how* the video is made. The size is picked on the Output node: Speed goes up to 2K, Hybrid and Quality up to 4K. Picking a mode fills the settings below with its preset:\n\n| | MP | steps | sampler | speedup LoRA | how it reaches your Output size |\n|---|---|---|---|---|---|\n| Speed | 0.4 | 8 | res_multistep / simple | 1.0 | renders ≈480p, upscales up to 2K |\n| Hybrid | 0.5 | 10 | euler / beta | 0.75 | renders ≈540p, upscales up to 4K |\n| Quality | 0.98 | 20 | euler / beta | 0 (off) | native ≈768p; from 1080p a 2× polish re-renders it bigger, up to 4K |\n\n- **seeds** — how many full videos (with sound) to render, 1–4.\n- **steps / sampler / scheduler / megapixels / speedup strength** — the mode's preset; change any of them after picking the mode.\n- Changing anything here **re-renders**.\n\n## 2 · MODELS — what it runs on\n- **ref2va / fl2va** — Reference and First/Last-Frame checkpoints (safetensors or GGUF). Only the one the Director needs is loaded; Extend also uses fl2va.\n- **text encoder, video/audio VAE** — safetensors or GGUF text encoder.\n- **speedup LoRA** — turbo/lightx2v; its strength comes from Setup.\n- **extra LoRA 1–2** — apply to every chunk. Chunk-specific LoRAs go in each Director chunk.\n- **speed & memory** — attention backend, Sage, Low VRAM attention + chunk feed-forward (less VRAM), Spectrum / H3 cache (faster, may soften).\n- **live preview** — tiny VAE for the **LIVE PREVIEW** panel next to the Director; off = ComfyUI's default preview on the Director.\n\n## 3 · OUTPUT — what comes out (set it now, change it any time)\n- **final resolution** — Speed: native (≈480p), 720p, 1080p, 2K. Hybrid: native (≈540p) up to 4K. Quality: native (≈768p), 1080p, 2K, 4K. Switching mode keeps your size when the new mode has it. The short side lands exactly on the number, portrait too. 4K holds ≈100 MB of RAM per frame: keep 4K clips short, especially at 48/60 fps.\n- **final fps** — 24 = untouched; 48 / 60 via RIFE, length and sync kept.\n- **upscaler** — RTX VSR, or DLSS5 + Color Lock (more detail, original colours).\n- **quality polish** strength / steps / method — Quality mode at 1080p and up.\n- Output feeds only Finish, so changing it **never re-renders** the seeds.\n\n## 4 · DIRECTOR — what the video is\nPrompt/timeline, Reference or First/Last-Frame mode, references, aspect, duration (longer than one chunk = Extend), seed, and a **LoRAs for this chunk** box per chunk. Text in PROMPT OVERRIDE replaces the timeline.\n\n## 5 · FINISH — pick the winner\n**winner** — which seed to finish; **0 = hold** after the seeds. That's the only choice left after a seed hunt.\n\n**Seed hunt:** set seeds = 3 and **winner = 0** (hold) and queue → watch Seed 1–3 → set winner 1–3 on Finish → queue again (seconds, from cache). Winner 1+ on the first run finishes that seed straight away. Don't touch Setup / Models / Director in between.\n\nTurbo modes can mumble dialogue (measured −31…−39 dB vs −14 dB) — for talking shots use Quality."
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 16,
+   "type": "StubeliusTheme",
+   "pos": [
+    -847.9338842975214,
+    -120.0413223140496
+   ],
+   "size": [
+    360,
+    80
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "theme",
+     "name": "theme",
+     "type": "COMBO",
+     "widget": {
+      "name": "theme"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [],
+   "title": "THEME (this workflow only)",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusTheme",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    "Stuubzzz neon"
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 17,
+   "type": "StubeliusH3Output",
+   "title": "OUTPUT — final resolution, FPS, upscaler (changes re-run only Finish)",
+   "pos": [
+    -960.3305785123972,
+    1210.0
+   ],
+   "size": [
+    469.5728515625,
+    230
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "properties": {
+    "Node name for S&R": "StubeliusH3Output"
+   },
+   "inputs": [
+    {
+     "name": "mode",
+     "type": "INT",
+     "link": 16
+    }
+   ],
+   "outputs": [
+    {
+     "name": "output",
+     "type": "H3_OUTPUT",
+     "links": [
+      22
+     ]
+    }
+   ],
+   "widgets_values": [
+    "1080p",
+    24,
+    "RTX VSR",
+    0.3,
+    12,
+    "learned model (2x)"
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  }
+ ],
+ "links": [
+  [
+   1,
+   1,
+   0,
+   2,
+   0,
+   "H3_SETUP"
+  ],
+  [
+   2,
+   2,
+   0,
+   4,
+   0,
+   "H3_MODELS"
+  ],
+  [
+   3,
+   1,
+   0,
+   4,
+   1,
+   "H3_SETUP"
+  ],
+  [
+   4,
+   3,
+   0,
+   4,
+   7,
+   "STRING"
+  ],
+  [
+   5,
+   4,
+   2,
+   6,
+   0,
+   "STRING"
+  ],
+  [
+   6,
+   4,
+   4,
+   7,
+   0,
+   "IMAGE"
+  ],
+  [
+   7,
+   4,
+   5,
+   7,
+   1,
+   "AUDIO"
+  ],
+  [
+   8,
+   4,
+   6,
+   8,
+   0,
+   "IMAGE"
+  ],
+  [
+   9,
+   4,
+   7,
+   8,
+   1,
+   "AUDIO"
+  ],
+  [
+   10,
+   4,
+   8,
+   9,
+   0,
+   "IMAGE"
+  ],
+  [
+   11,
+   4,
+   9,
+   9,
+   1,
+   "AUDIO"
+  ],
+  [
+   12,
+   4,
+   10,
+   10,
+   0,
+   "IMAGE"
+  ],
+  [
+   13,
+   4,
+   11,
+   10,
+   1,
+   "AUDIO"
+  ],
+  [
+   14,
+   4,
+   16,
+   11,
+   0,
+   "H3_TAKES"
+  ],
+  [
+   15,
+   2,
+   0,
+   11,
+   1,
+   "H3_MODELS"
+  ],
+  [
+   16,
+   1,
+   1,
+   17,
+   0,
+   "INT"
+  ],
+  [
+   17,
+   11,
+   0,
+   12,
+   0,
+   "IMAGE"
+  ],
+  [
+   18,
+   11,
+   1,
+   12,
+   1,
+   "AUDIO"
+  ],
+  [
+   19,
+   11,
+   2,
+   12,
+   4,
+   "FLOAT"
+  ],
+  [
+   20,
+   11,
+   0,
+   13,
+   0,
+   "IMAGE"
+  ],
+  [
+   21,
+   13,
+   0,
+   14,
+   0,
+   "IMAGE"
+  ],
+  [
+   22,
+   17,
+   0,
+   11,
+   2,
+   "H3_OUTPUT"
+  ]
+ ],
+ "groups": [
+  {
+   "id": 1,
+   "title": "1  SETUP, MODELS & OUTPUT",
+   "bounding": [
+    -1568.9256198347082,
+    -190.04132231404958,
+    1117.5206611570247,
+    1670.0413223140495
+   ],
+   "color": "#ff3da8",
+   "flags": {}
+  },
+  {
+   "id": 2,
+   "title": "2  DIRECTOR",
+   "bounding": [
+    -461.15702479338796,
+    -58.181818181818194,
+    1789.7520661157018,
+    2088.7685950413224
+   ],
+   "color": "#ffd64a",
+   "flags": {}
+  },
+  {
+   "id": 3,
+   "title": "3  PREVIEW & SEEDS",
+   "bounding": [
+    1320,
+    -60,
+    660,
+    1700
+   ],
+   "color": "#ffd64a",
+   "flags": {}
+  },
+  {
+   "id": 4,
+   "title": "4  FINISH",
+   "bounding": [
+    1980,
+    -60,
+    960,
+    1120
+   ],
+   "color": "#7cf0c8",
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.5500000000000014,
+   "offset": [
+    1245.5723053612019,
+    304.6464466420251
+   ]
+  },
+  "ue_links": []
+ },
+ "version": 0.4
+}

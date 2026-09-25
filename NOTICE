@@ -1,0 +1,61 @@
+Stubelius Ultimate H3
+Copyright (c) 2026 stuubszzz
+
+Built on Muse Minimax Director V1.2 and its companion Muse Minimax Refine V1.2
+(Copyright (c) 2026 Muse Collective, MIT License). Their engine code is carried
+in muse_minimax_director.py, muse_minimax_refine.py and js/muse_minimax_director.js,
+with changes (per-chunk LoRAs, renamed server routes and front-end names).
+
+============================================================
+THIRD-PARTY NOTICE — MINIMAX H3
+============================================================
+
+This product is a control/scripting layer built on top of, and entirely
+dependent on, MiniMax H3 — a third-party open-weights omni-modal video
+generation model developed and published by MiniMax
+(https://www.minimax.io/). Every generated frame and every second of
+generated or reference-following audio produced when using these nodes
+comes from MiniMax H3 itself, invoked through ComfyUI core's own stock
+MiniMax H3 nodes. This repository contains none of MiniMax H3's model
+weights, training code, or inference architecture, and none of them are
+included in, or distributed alongside, this repository. MiniMax H3 must
+be downloaded separately by each end user, directly from its official
+publisher, before these nodes can be used.
+
+Model:    MiniMax H3
+Homepage: https://huggingface.co/MiniMaxAI/MiniMax-H3
+Author:   MiniMax
+Copyright (c) MiniMax. All Rights Reserved.
+
+MiniMax H3 is licensed under the MiniMax H3 Community License Agreement,
+a separate, third-party license governing the model weights and their
+use. The full and authoritative text of that license is available at:
+
+    https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE
+
+Use of the MiniMax H3 model weights through these nodes — including any
+output generated using them — is governed entirely by the MiniMax H3
+Community License Agreement, independently of the MIT license that
+covers only this repository's own code (see LICENSE). This repository
+does not modify, replace, waive, or grant any rights under MiniMax's
+license. Every user is individually responsible for reading and
+complying with the MiniMax H3 Community License Agreement in full —
+including, but not limited to, any territorial restrictions,
+commercial-revenue thresholds, and attribution or AI-generation-identifier
+provisions it contains.
+
+This project gladly and explicitly credits MiniMax H3 as the sole model
+powering its output:
+
+    POWERED BY MINIMAX H3
+
+============================================================
+THIS REPOSITORY'S OWN CODE
+============================================================
+
+The Muse Minimax Director / Refine engine code is Copyright (c) 2026 Muse
+Collective. The Ultimate H3 nodes (Setup, Models, Output, Director V2,
+Refine V2, Finish, Live Preview, Theme, RIFE to FPS, Color Lock), the example
+workflow and the changes to the engine are Copyright (c) 2026 stuubszzz.
+All of it is licensed under the MIT License — see LICENSE. The MIT License
+applies only to this code and confers no rights over MiniMax H3 itself.
