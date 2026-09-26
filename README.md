@@ -70,7 +70,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/text_encoders` | `qwen3vl_32b_minimax_h3_int8_convrot.safetensors` (RTX 50-series: `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`) |
 | `models/vae` | `minimax_h3_video_vae_fp16.safetensors`, `minimax_h3_audio_vae_fp32.safetensors` |
 | `models/loras` | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
-| `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://github.com/madebyollin/taehv/raw/main/safetensors/taeh3.safetensors) |
+| `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 
 RIFE downloads its checkpoint the first time you pick 48 or 60 fps. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).

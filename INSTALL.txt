@@ -71,7 +71,7 @@ models/loras/              minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safeten
 
 Optional live preview (watch the video form while it samples):
 models/vae_approx/         taeh3.safetensors
-  https://github.com/madebyollin/taehv/raw/main/safetensors/taeh3.safetensors
+  https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)
   then pick it as "live preview" on the Models node.
 
 RIFE (rife47.pth) downloads by itself the first time you pick 48 or 60 fps.
