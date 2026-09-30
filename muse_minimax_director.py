@@ -1128,6 +1128,11 @@ class MuseMinimaxDirector:
         Identity here; StubeliusH3DirectorV2 overrides it to patch per-chunk LoRAs."""
         return model
 
+    def _chunk_loras(self, chunk_idx):
+        """What _chunk_model patched into this chunk's model, as [(name, path, strength)], so
+        the Quality polish can patch the same into its own. None here."""
+        return []
+
     def execute(self, mode, model, clip, vae, audio_vae, aspect_ratio, megapixels, multiple, resize_method,
                 duration_seconds, chunk_duration_seconds, ref_image_size, hybrid_continuation, seam_interpolation_frames,
                 vae_reencode_carry_test, vae_reencode_carry_length,
@@ -1166,10 +1171,12 @@ class MuseMinimaxDirector:
         # (ImageToVideo takes first_frame/last_frame directly), so there's no tag-order
         # concern here — Ref 1 must always mean Ref 1.
         characters_raw = tdata.get("characters", [])
-        first_frame = _load_character_image(characters_raw[0]) if len(characters_raw) > 0 and characters_raw[0] else None
-        first_frame = _fit_image_to_target(first_frame, width, height, resize_method)
-        last_frame = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
-        last_frame = _fit_image_to_target(last_frame, width, height, resize_method)
+        # Stubelius: the images as uploaded are kept too, so the Quality polish can fit them
+        # again at its own, larger size instead of enlarging the copies fitted here.
+        first_frame_source = _load_character_image(characters_raw[0]) if len(characters_raw) > 0 and characters_raw[0] else None
+        first_frame = _fit_image_to_target(first_frame_source, width, height, resize_method)
+        last_frame_source = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
+        last_frame = _fit_image_to_target(last_frame_source, width, height, resize_method)
         # Background/continuity-anchor slot: the next free dense position after however
         # many character images actually made it into char_ref_images — NOT a fixed index
         # — same reasoning as _build_character_subjects: H3 tags by iteration order, so
@@ -1352,6 +1359,7 @@ class MuseMinimaxDirector:
         # calling it once — same code, no duplicated logic between the two.
         def _run_pass(pass_seed, candidate_idx=0):
             all_images = []
+            chunk_records = []      # Stubelius: every chunk of this take, for the Quality polish
             all_waveform = None
             audio_sample_rate = None
             compiled_prompts = []
@@ -2248,6 +2256,30 @@ class MuseMinimaxDirector:
                 else:
                     new_frames = chunk_images
 
+                # Stubelius: keep what the Quality polish needs to render this chunk again at
+                # twice the size: its finished latent, its own prompt, which checkpoint made it
+                # and from what, and how many opening frames were cut. Only the last chunk's
+                # latent used to leave this node, so a video past one chunk came back from the
+                # polish as its last chunk alone (see stubelius_polish.py).
+                if chunk_stage1_latent is not None and not two_stage_sampling:
+                    keyframed = use_hybrid_chunk or mode != MODE_REFERENCE
+                    continues = prev_chunk_images is not None
+                    chunk_records.append({
+                        "latent": chunk_stage1_latent, "prompt": chunk_prompt,
+                        "length": chunk_length, "trim": trim_n,
+                        "model": "fl2va" if keyframed and shifted_model_fl2va is not None else "ref",
+                        "loras": self._chunk_loras(chunk_idx),
+                        # made from keyframes: "previous" = the last frame of the chunk before it
+                        "keyframes": {
+                            "first": "previous" if continues else first_frame_source,
+                            "last": last_frame_source if chunk_last is not None else None,
+                        } if keyframed else None,
+                        # a Reference (Omni) chunk: its reference images; `anchor` names the one
+                        # that is the last frame of the chunk before it
+                        "ref_images": None if keyframed else dict(chunk_ref_images),
+                        "anchor": f"ref_image_{bg_index}" if continues and not keyframed else None,
+                    })
+
                 # Two chunks are still independent generation calls even with that
                 # duplicate dropped — nothing guarantees pixel-level consistency between
                 # them, so the camera position can drift a few pixels right at the seam
@@ -2418,6 +2450,15 @@ class MuseMinimaxDirector:
                     "ref_image_size": ref_image_size,
                     "compiled_prompt": "\n\n".join(compiled_prompts),
                 }
+                if chunk_records:
+                    # Stubelius: the whole take rides on its candidate latent, chunk by chunk,
+                    # with what joined the chunks (carry-over length, seam smoothing).
+                    last_chunk_stage1_latent["_stubelius_chunks"] = {
+                        "chunks": chunk_records,
+                        "carry_length": int(vae_reencode_carry_length) if vae_reencode_carry_test else 0,
+                        "seam_frames": int(seam_interpolation_frames or 0),
+                        "resize_method": resize_method,
+                    }
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
         images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)
