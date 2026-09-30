@@ -165,6 +165,28 @@ def _smooth_seam(last_frame, frames, count):
         frames[:between.shape[0]] = between.to(frames)
 
 
+FRAME_DTYPE = torch.uint8      # how the polished video waits in RAM while the next chunks render
+
+
+def _store(dst, images, batch=16):
+    """Polished frames into the video buffer, a few at a time (no full-size float copy)."""
+    for i in range(0, int(images.shape[0]), batch):
+        part = images[i:i + batch]
+        if dst.dtype == torch.uint8:
+            part = part.mul(255.0).round_().clamp_(0, 255).to(torch.uint8)
+        dst[i:i + batch] = part
+
+
+def _as_image(frames, batch=16):
+    """The video buffer as a ComfyUI IMAGE (float32, 0-1)."""
+    if frames.dtype != torch.uint8:
+        return frames
+    out = torch.empty(tuple(frames.shape), dtype=torch.float32)
+    for i in range(0, int(frames.shape[0]), batch):
+        out[i:i + batch] = frames[i:i + batch].to(torch.float32).div_(255.0)
+    return out
+
+
 def _ram_note(frames, candidate):
     """Say so up front when the polished frames alone won't fit in RAM (12 bytes a pixel)."""
     try:
@@ -193,6 +215,9 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     if frames:
         _ram_note(int(frames), candidate)
 
+    # The frames the next chunk reads from this one (its carry-over, anchor and seam), kept as
+    # they came out; the rest of the video waits in 8 bits.
+    keep = carry_length + 34 if carry_length else 1   # the carry is rounded up to the frame grid (+16 at most)
     out, done, previous, previous_audio = None, 0, None, None
     for index, chunk in enumerate(chunks):
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
@@ -208,16 +233,17 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
         if previous is not None:
             _smooth_seam(previous[-1:], images, bundle.get("seam_frames"))
 
-        # One tensor for the whole video, filled chunk by chunk: a chunk's own frames are let go
-        # as soon as they are in it (at this size a 10 s chunk is about 13 GB).
+        # One 8-bit tensor for the whole video, filled chunk by chunk: 3 bytes a pixel instead of
+        # 12 while the next chunks render (20 s polished for 2K: 6 GB instead of 25 GB, which
+        # pushed a 94 GB machine into the pagefile), and a chunk's own frames are let go as soon
+        # as they are in it. The finished video is 8-bit, so nothing it shows is lost.
         count = int(images.shape[0])
         if out is None:
-            out = torch.empty((max(int(frames or 0), count),) + tuple(images.shape[1:]), dtype=images.dtype)
+            out = torch.empty((max(int(frames or 0), count),) + tuple(images.shape[1:]), dtype=FRAME_DTYPE)
         if done + count > out.shape[0]:
-            out = torch.cat([out[:done], images.to(out)], dim=0)
-        else:
-            out[done:done + count] = images
-        previous, previous_audio = out[done:done + count], audio
+            out = torch.cat([out[:done], torch.empty((count,) + tuple(out.shape[1:]), dtype=out.dtype)], dim=0)
+        _store(out[done:done + count], images)
+        previous, previous_audio = images[-keep:].to("cpu", copy=True), audio
         done += count
         del images
 
@@ -226,4 +252,5 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
                     "sound and picture may not end together.", done, int(frames))
     log.info("[StubeliusPolish] %d chunks polished and joined: %d frames at %dx%d.",
              len(chunks), done, out.shape[2], out.shape[1])
-    return out[:done]
+    del previous
+    return _as_image(out[:done])
