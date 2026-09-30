@@ -23,6 +23,7 @@ Needs a ComfyUI whose MiniMax H3 model applies a noise mask per stream (video, a
 import inspect
 import logging
 import math
+import re
 
 import torch
 
@@ -34,17 +35,30 @@ RELEASE_TICKS = 8       # silence_after off: a recording that ends inside a chun
 MIN_SECONDS = 0.5       # less recording than this left at a chunk's start: the recording is over there
 END_FADE_SECONDS = 0.05
 LIP_SYNC = "fully_copy"  # H3's own retention word, what the panel calls "Lip Sync"
-SILENT = "Nobody speaks in this shot: the person on screen stays silent, lips closed."
+# "lips remain completely closed" is MiniMax's own phrase for a character on screen who is not the
+# one speaking (the voiceover form in their prompt guide), so it is wording the model was trained on.
+SILENT = "Nobody speaks in this shot: anyone on screen stays silent and their lips remain completely closed."
+VOICE_WORDS = re.compile(
+    r"\b(say|said|speak|spoke|talk|tell|told|sing|sang|song|shout|yell|scream|whisper|laugh|giggl|chuckl|narrat|"
+    r"voice|chant|hum|cry|cries|sob|cheer|announc|repl|answer|ask|murmur|mutter|recit|rap|pray|moan|groan|gasp)\w*",
+    re.IGNORECASE)
 
 
 def ends_note(seconds):
     """What a chunk's prompt says when the recording ends `seconds` into it."""
-    return f"After {seconds:.1f} seconds nobody speaks: the person on screen stays silent, lips closed."
+    return (f"After {seconds:.1f} seconds nobody speaks: anyone on screen stays silent and their lips "
+            "remain completely closed.")
 
 
 def has_spoken_line(segments):
     """Does any CUT of this chunk carry a spoken line? (quoted text, the panel's own convention)"""
     return any('"' in (seg.get("prompt") or "") for seg in segments or [])
+
+
+def mentions_voice(segments):
+    """Do the CUTs describe someone using their voice without quoting a line (she sings, the crowd
+    cheers)? Then the chunk is not told to stay silent."""
+    return any(VOICE_WORDS.search(seg.get("prompt") or "") for seg in segments or [])
 
 
 def supported():

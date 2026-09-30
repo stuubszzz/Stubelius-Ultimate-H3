@@ -1406,17 +1406,27 @@ class MuseMinimaxDirector:
 
                 # Stubelius Lip Sync: this chunk on its own clock. A continuation chunk's clock starts
                 # on the frames it repeats from the chunk before it, ahead of its first new frame.
-                lip_sync_note = ""          # what the prompt says about the recording being over
+                silence_note = ""           # what the prompt says about nobody speaking (any more)
                 recording_ends = None       # seconds into this chunk, when it ends inside it
                 if lip_sync_here:
                     lead_estimate = min(carry_estimate, chunk_length - 1) if continuation_extension else 0
                     clock_zero = max(0, frames_done - lead_estimate) / 24.0
                     if silence_here:
-                        lip_sync_note = _lipsync.SILENT
+                        silence_note = _lipsync.SILENT
                     elif soundtrack.seconds - clock_zero < chunk_length / 24.0 - 0.5:
                         recording_ends = soundtrack.seconds - clock_zero
                         if lip_sync_silence:
-                            lip_sync_note = _lipsync.ends_note(recording_ends)
+                            silence_note = _lipsync.ends_note(recording_ends)
+                # Stubelius: a chunk that continues a shot and has no line of its own to say. After a
+                # talking chunk the model kept the character talking, in invented words (36 of them in
+                # a 10 s chunk; the soundscape note written for that case further down did not stop
+                # it). Saying in the shot itself that nobody speaks does: no words, mouth shut.
+                # timeline_data "quiet_chunk_note": false leaves the prompt as it was.
+                quiet_here = (prev_chunk_images is not None and not lip_sync_here
+                              and not _lipsync.has_spoken_line(chunk_segments)
+                              and not _lipsync.mentions_voice(chunk_segments))
+                if quiet_here and tdata.get("quiet_chunk_note", True):
+                    silence_note = _lipsync.SILENT
                 # With the recording locked in, a spoken line's "[Shot N] At ..." time has to be when
                 # the line is really said. A CUT that carries a transcript line (Insert as Timed CUTs)
                 # takes that line's own start, on this chunk's clock; the weight-based place it had
@@ -1475,16 +1485,16 @@ class MuseMinimaxDirector:
                         # latent below), so the note that rules speech out would fight it. CUTs
                         # without a spoken line of their own get one sentence saying that someone
                         # is talking, with the recording's words when the panel transcribed them.
-                        # (A chunk past the recording's end gets lip_sync_note instead, below.)
+                        # (A chunk past the recording's end gets silence_note instead, below.)
                         if recording_here and not has_dialogue:
                             starts = frames_done / 24.0
                             spoken = _lipsync.transcript_text(
                                 tdata.get("refAudios"), starts, starts + chunk_len_seconds).replace('"', "'")
                             if recording_ends is None:
                                 span, after = "through the whole shot", ""
-                            else:       # the recording ends inside this chunk: lip_sync_note says what follows
+                            else:       # the recording ends inside this chunk: silence_note says what follows
                                 span = f"for the first {recording_ends:.1f} seconds"
-                                after = "" if lip_sync_note else " After that they stop talking."
+                                after = "" if silence_note else " After that they stop talking."
                             base_lip_sync_cue = (
                                 f'The person on screen (S1) keeps talking {span}, lips matching every word: "{spoken}"{after}'
                                 if spoken else
@@ -1821,11 +1831,11 @@ class MuseMinimaxDirector:
                             start_in_chunk = max(0.0, seg.get("_abs_start", 0.0) - chunk_start_sec)
                             shot_lines.append(f"[Shot {shot_idx}] At {_format_timestamp(start_in_chunk)}, {text}")
 
-                    if lip_sync_note:       # Stubelius: the recording is over (here, or from some point in this chunk)
+                    if silence_note:       # Stubelius: the recording is over (here, or from some point in this chunk)
                         if shot_lines:
-                            shot_lines[-1] = f"{shot_lines[-1].rstrip()} {lip_sync_note}"
+                            shot_lines[-1] = f"{shot_lines[-1].rstrip()} {silence_note}"
                         else:
-                            shot_lines.append(f"[Shot 1] {lip_sync_note}")
+                            shot_lines.append(f"[Shot 1] {silence_note}")
 
                     soundscape_text = (this_chunk_data.get("overall_soundscape") or "").strip()
                     music_text = (this_chunk_data.get("non_diegetic_music") or "").strip()
@@ -1855,11 +1865,11 @@ class MuseMinimaxDirector:
                             base_shot_lines[0] = f"{base_shot_lines[0].rstrip()} {cue}"
                         else:
                             base_shot_lines, base_last_shot = [f"[Shot 1] {cue}"], 1
-                    if lip_sync_note:       # the recording is over (here, or from some point in this chunk)
+                    if silence_note:       # the recording is over (here, or from some point in this chunk)
                         if base_shot_lines:
-                            base_shot_lines[-1] = f"{base_shot_lines[-1].rstrip()} {lip_sync_note}"
+                            base_shot_lines[-1] = f"{base_shot_lines[-1].rstrip()} {silence_note}"
                         else:
-                            base_shot_lines, base_last_shot = [f"[Shot 1] {lip_sync_note}"], 1
+                            base_shot_lines, base_last_shot = [f"[Shot 1] {silence_note}"], 1
                     keyframe_line = _build_keyframe_alignment_line(
                         chunk_first is not None, chunk_last is not None, base_last_shot, chunk_len_seconds)
                     if keyframe_line:
