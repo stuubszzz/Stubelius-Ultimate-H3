@@ -21,6 +21,44 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
 | **Stubelius Theme** | Colour theme for this workflow only |
 
+## Videos past one chunk
+
+A video longer than one chunk is rendered chunk by chunk (Extend). Three things hold across the chunks.
+
+**Lip Sync from a recording.** Set a reference audio to **Lip Sync** and the recording is the
+video's sound. Every chunk is rendered against its own part of the recording, so the lips follow
+it for the whole video, and the finished video plays the recording itself.
+
+- The final sound is the recording and nothing else: no ambience or music is generated under it.
+- Where the recording is over, the video is silent and the character stops talking. A later chunk
+  that has a quoted line of its own in its CUTs is spoken by the model instead.
+- **Transcribe** → **Insert as Timed CUTs** gives each chunk its words with their real timings.
+  A chunk without typed lines still follows the recording.
+- A video comes out a little longer than the duration asked for, because every chunk snaps to the
+  model's frame grid (a 30 s video in 10 s chunks is 31.4 s). A recording as long as the video
+  therefore ends just before it does.
+- Needs a current ComfyUI (developed on 0.37). On a ComfyUI whose MiniMax H3 model cannot hold the
+  audio still, the log says so and the recording is used as a reference, as before.
+
+**A chunk with nothing to say stays quiet.** Without a recording, a chunk that continues a talking
+shot and has no quoted line in its CUTs is told that nobody speaks. Quote a line, or describe a
+voice in the CUT (she sings, the crowd cheers), and it is left alone.
+
+**Quality polish.** Quality at 1080p and up polishes every chunk, each with the checkpoint that
+made it, and joins them as the Director joined the originals. The polished video has the same
+length and the same sound as the take it came from. The polished frames are held in memory at
+twice the render size, about 11 GB for every 10 s at the Quality preset, so long takes need a
+lot of RAM.
+
+A large polish turns on KJNodes' low-VRAM patches by itself (ComfyUI-KJNodes 1.5.1 or newer).
+They give the same picture. Without them a 10 s chunk polished for 2K does not fit a 32 GB card.
+
+On a 32 GB card at the Quality preset, a chunk fits the polish up to 8 s, or 10 s for a video's
+first chunk: one that continues a video also re-renders the frames it carries over. A longer
+chunk spills out of the card and takes hours. For Quality at 1080p and up, keep chunks at 8 s or
+less. At that size a polish step takes 2 to 4 minutes, and the Output node runs 12 of them by
+default.
+
 ## Install
 
 **ComfyUI Manager:** Install via Git URL → `https://github.com/stuubszzz/Stubelius-Ultimate-H3`, then restart.
@@ -51,7 +89,7 @@ Load the workflow and use Manager → **Install Missing Custom Nodes**, or insta
 |---|---|
 | [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | video outputs |
 | [Nvidia RTX nodes](https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI) | RTX VSR upscaling (NVIDIA RTX GPU) |
-| [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) | live preview, low-VRAM options |
+| [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) | live preview, low-VRAM options, a large Quality polish |
 | [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) | 48 / 60 fps |
 | [ComfyUI-H3-Motion-Context-MultiRef](https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef) | recommended: smoother continuity past one chunk |
 | [ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler) + [ComfyUI-H3-Latent-Upscaler-Mamad8](https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8) | Quality polish "learned model (2x)" |
