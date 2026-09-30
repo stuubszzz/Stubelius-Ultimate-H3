@@ -305,8 +305,16 @@ def _refine_one_chunk(
     refine_denoise=0.4,
     polish_steps=16,
     two_stage_strategy="complete then polish (stubelius)",
+    positive=None,
+    trim_frames=None,
 ):
-    """Runs exactly the single-chunk Stage 2 pipeline this node has always run
+    """Stubelius, for a take polished chunk by chunk (stubelius_polish.py), both off by default:
+    `positive` is the chunk's own conditioning, or a function (width, height) -> conditioning
+    that is called once the size it is sampled at is known (a chunk made from keyframes needs
+    them at that size); `trim_frames` is how many opening frames to cut from the result, which
+    then replaces the carry-over's own count (the Director's cut, carry-over pack or not).
+
+    Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
     only addition is an optional continuity re-anchor right before the final
     pass, when carry_images/carry_audio (the PREVIOUS chunk's own already-
@@ -356,7 +364,11 @@ def _refine_one_chunk(
 
     sampler = _unpack_node_result(_execute_comfy_node(KSamplerSelect, sampler_name=sampler_name))[0]
 
-    if ref_images_dict:
+    given_positive = positive
+    positive_at = positive if callable(positive) else None      # made below, for the size it is used at
+    if positive_at is not None or positive is not None:
+        pass
+    elif ref_images_dict:
         positive = _unpack_node_result(_execute_comfy_node(
             MiniMaxH3ReferenceToVideo, clip=clip, vae=vae, audio_vae=audio_vae, prompt=chunk_prompt,
             width=width, height=height, length=video_samples.shape[2], ref_image_size=ref_image_size,
@@ -365,7 +377,13 @@ def _refine_one_chunk(
     else:
         positive = _unpack_node_result(_execute_comfy_node(CLIPTextEncode, clip=clip, text=chunk_prompt))[0]
 
-    guider = _unpack_node_result(_execute_comfy_node(BasicGuider, model=model, conditioning=positive))[0]
+    def _guider_at(width_px, height_px):
+        return _unpack_node_result(_execute_comfy_node(
+            BasicGuider, model=model, conditioning=positive_at(width_px, height_px)))[0]
+
+    guider = None
+    if positive_at is None:
+        guider = _unpack_node_result(_execute_comfy_node(BasicGuider, model=model, conditioning=positive))[0]
     full_sigmas = _unpack_node_result(_execute_comfy_node(
         BasicScheduler, model=model, scheduler=scheduler, steps=steps, denoise=1.0,
     ))[0]
@@ -408,6 +426,8 @@ def _refine_one_chunk(
         _c_audio = audio_carry
         if isinstance(chunk_latent, dict) and "_muse_two_stage_raw_audio" in chunk_latent:
             _c_audio = chunk_latent["_muse_two_stage_raw_audio"]  # true trajectory audio
+        if guider is None:
+            guider = _guider_at(width, height)
         from nodes import NODE_CLASS_MAPPINGS as _stub_ncm
         _c_noise = _unpack_node_result(_execute_comfy_node(_stub_ncm["RandomNoise"], noise_seed=seed))[0]
         _c_tiny = _unpack_node_result(_execute_comfy_node(SplitSigmas, sigmas=low_sigmas, step=0))[0]
@@ -438,6 +458,8 @@ def _refine_one_chunk(
             refine_denoise=refine_denoise,
             polish_steps=polish_steps,
             two_stage_strategy=two_stage_strategy,
+            positive=given_positive,
+            trim_frames=trim_frames,
         )
 
     if two_stage_upscale_method == MUSE_GOLD_LEARNED:
@@ -460,6 +482,8 @@ def _refine_one_chunk(
         log_label, cur_w_latent, cur_h_latent, tgt_w, tgt_h, float(two_stage_upscale_factor), eff_x, eff_y,
     )
     _free_vram("post-upscale")
+    if guider is None:
+        guider = _guider_at(tgt_w * 16, tgt_h * 16)
 
     noise1 = _unpack_node_result(_execute_comfy_node(
         NODE_CLASS_MAPPINGS["RandomNoise"], noise_seed=seed,
@@ -566,6 +590,8 @@ def _refine_one_chunk(
     refined_images = _unpack_node_result(_execute_comfy_node(VAEDecode, samples=sampled, vae=vae))[0]
     refined_audio = _unpack_node_result(_execute_comfy_node(VAEDecodeAudio, samples=sampled, vae=audio_vae))[0]
 
+    if trim_frames is not None:
+        carry_trim_frames = int(trim_frames)
     if carry_trim_frames > 0 and refined_images.shape[0] > carry_trim_frames:
         refined_images = refined_images[carry_trim_frames:]
         waveform = refined_audio["waveform"]

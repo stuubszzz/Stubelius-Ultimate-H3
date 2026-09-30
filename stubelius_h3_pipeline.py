@@ -480,9 +480,13 @@ class StubeliusH3Finish:
         images, audio = takes["images"][w - 1], takes["audio"][w - 1]
         if o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images):
             # Quality re-renders the take 2x bigger (the polish) when the size picked is above what
-            # it rendered; at or below that, the render itself is the final picture.
-            images, audio = self._polish(takes, models, w, o["polish_strength"], o["polish_steps"],
-                                         o["polish_method"], unique_id)
+            # it rendered; at or below that, the render itself is the final picture. A take past
+            # one chunk is polished chunk by chunk. Either way only the picture is rendered again,
+            # so the take keeps its own sound.
+            from .stubelius_polish import chunks_of
+            polish = self._polish_chunks if len(chunks_of(takes["latents"][w - 1])) > 1 else self._polish
+            images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
+                            o["polish_method"], unique_id)[0]
         _ram_check(images, target, o["fps"])
         if target and _short(images) > target:
             # e.g. Quality 2K: the polish comes out above 1440p. Downscale before RIFE (less work).
@@ -521,6 +525,30 @@ class StubeliusH3Finish:
         _POLISH_MEMO.append((key, (images, audio)))
         del _POLISH_MEMO[:-2]
         return images, audio
+
+    @staticmethod
+    def _polish_chunks(takes, models, w, strength, steps, method, node_id=None):
+        """The polish of a take that runs past one chunk: every chunk of it (stubelius_polish.py),
+        where _polish would hand the Refine the last chunk alone."""
+        import psutil
+        from .stubelius_polish import polish
+        candidate, take = takes["latents"][w - 1], takes["images"][w - 1]
+        made = candidate.get("_muse_stage1_settings") or {}
+        # by what the take is, not only by id(takes): a new take can get a freed one's id
+        key = (id(takes), w, strength, steps, method, models.key, tuple(take.shape),
+               made.get("seed"), made.get("steps"), hash(made.get("compiled_prompt")))
+        for k, v in _POLISH_MEMO:
+            if k == key:
+                log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
+                return v
+        images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id)
+        _POLISH_MEMO.append((key, (images, takes["audio"][w - 1])))
+        del _POLISH_MEMO[:-2]
+        # two polished long takes are tens of GB: keep the older one only while both fit easily
+        held = sum(v[0].numel() * v[0].element_size() for _, v in _POLISH_MEMO if torch.is_tensor(v[0]))
+        if len(_POLISH_MEMO) > 1 and held > 0.35 * psutil.virtual_memory().total:
+            del _POLISH_MEMO[0]
+        return images, takes["audio"][w - 1]
 
     @staticmethod
     def _upscale(images, short_side, upscaler):

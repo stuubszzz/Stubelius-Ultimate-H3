@@ -1,7 +1,7 @@
 [project]
 name = "stubelius-ultimate-h3"
 description = "Ultimate H3: one MiniMax H3 workflow for ComfyUI. Speed / Hybrid / Quality modes, 1-4 full seeds with sound to pick from, per-chunk LoRAs, Extend past one chunk, RIFE to any frame rate and RTX VSR / DLSS5 upscaling up to 4K."
-version = "0.8.0"
+version = "0.8.1"
 license = { file = "LICENSE" }
 
 [project.urls]

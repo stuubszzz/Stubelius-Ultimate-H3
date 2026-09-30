@@ -84,6 +84,8 @@ from comfy_extras.nodes_minimax_h3 import (
 from comfy_extras.nodes_resolution import AspectRatio, ASPECT_RATIOS
 from comfy_execution.graph import ExecutionBlocker
 
+from . import stubelius_lipsync as _lipsync
+
 log = logging.getLogger(__name__)
 
 
@@ -1126,6 +1128,11 @@ class MuseMinimaxDirector:
         Identity here; StubeliusH3DirectorV2 overrides it to patch per-chunk LoRAs."""
         return model
 
+    def _chunk_loras(self, chunk_idx):
+        """What _chunk_model patched into this chunk's model, as [(name, path, strength)], so
+        the Quality polish can patch the same into its own. None here."""
+        return []
+
     def execute(self, mode, model, clip, vae, audio_vae, aspect_ratio, megapixels, multiple, resize_method,
                 duration_seconds, chunk_duration_seconds, ref_image_size, hybrid_continuation, seam_interpolation_frames,
                 vae_reencode_carry_test, vae_reencode_carry_length,
@@ -1164,10 +1171,12 @@ class MuseMinimaxDirector:
         # (ImageToVideo takes first_frame/last_frame directly), so there's no tag-order
         # concern here — Ref 1 must always mean Ref 1.
         characters_raw = tdata.get("characters", [])
-        first_frame = _load_character_image(characters_raw[0]) if len(characters_raw) > 0 and characters_raw[0] else None
-        first_frame = _fit_image_to_target(first_frame, width, height, resize_method)
-        last_frame = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
-        last_frame = _fit_image_to_target(last_frame, width, height, resize_method)
+        # Stubelius: the images as uploaded are kept too, so the Quality polish can fit them
+        # again at its own, larger size instead of enlarging the copies fitted here.
+        first_frame_source = _load_character_image(characters_raw[0]) if len(characters_raw) > 0 and characters_raw[0] else None
+        first_frame = _fit_image_to_target(first_frame_source, width, height, resize_method)
+        last_frame_source = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
+        last_frame = _fit_image_to_target(last_frame_source, width, height, resize_method)
         # Background/continuity-anchor slot: the next free dense position after however
         # many character images actually made it into char_ref_images — NOT a fixed index
         # — same reasoning as _build_character_subjects: H3 tags by iteration order, so
@@ -1301,6 +1310,32 @@ class MuseMinimaxDirector:
             if clip_audio is not None:
                 user_ref_audios.append((clip_audio, entry, ui_idx))
 
+        # Stubelius: a recording set to Lip Sync is the video's soundtrack, so it has to reach
+        # every chunk. As a reference it only reaches the Reference (Omni) chunks: a hybrid
+        # continuation chunk runs MiniMaxH3ImageToVideo, which takes no audio, and invented its
+        # own speech there. Each chunk's slice of the recording is locked into that chunk's
+        # audio latent instead (see stubelius_lipsync.py and the chunk loop below).
+        # timeline_data "lip_sync_lock": false switches the lock off (for A/B renders).
+        # Where the recording is over the soundtrack is silence, locked the same way, because a
+        # talking head left to itself after the last word invents more speech ("lip_sync_silence_after":
+        # false hands the rest to the model instead, as the first build did).
+        soundtrack = None
+        lip_sync_silence = bool(tdata.get("lip_sync_silence_after", True))
+        if mode == MODE_REFERENCE and tdata.get("lip_sync_lock", True):
+            soundtrack = _lipsync.Soundtrack.from_refs(user_ref_audios)
+        if soundtrack is not None and two_stage_sampling:
+            log.warning("[StubeliusLipSync] two-stage sampling resets the noise mask after its upscale: the "
+                        "recording is used as a plain reference, as before.")
+            soundtrack = None
+        if soundtrack is not None and not _lipsync.supported():
+            log.warning("[StubeliusLipSync] this ComfyUI's MiniMax H3 model has no audio noise mask, so the Lip Sync "
+                        "recording can only drive chunk 1 (chunks after it invent their own speech). Update "
+                        "ComfyUI to keep it on every chunk.")
+            soundtrack = None
+        if soundtrack is not None:
+            log.info("[StubeliusLipSync] %.2f s of Lip Sync recording: locked into every chunk it covers.",
+                     soundtrack.seconds)
+
         # Latent-Only Scouting used to only ever keep the LAST chunk's Stage-1 latent
         # (candidate_N_latent silently dropped every earlier chunk) — fine for a
         # single-chunk timeline, but on a multi-chunk one it meant Refine could only
@@ -1324,16 +1359,27 @@ class MuseMinimaxDirector:
         # calling it once — same code, no duplicated logic between the two.
         def _run_pass(pass_seed, candidate_idx=0):
             all_images = []
+            chunk_records = []      # Stubelius: every chunk of this take, for the Quality polish
             all_waveform = None
             audio_sample_rate = None
             compiled_prompts = []
             prev_chunk_images = None
             prev_chunk_audio = None
             last_chunk_stage1_latent = None
+            lip_sync_locked = False
 
             for chunk_idx, chunk_segments in enumerate(buckets):
                 chunk_len_seconds = chunk_lengths[chunk_idx]
                 visible_chunk_length = align_frame_count(max(5, round(chunk_len_seconds * 24)))
+                # Lip Sync runs on the finished video's own clock: this chunk's first new frame
+                # is frame frames_done of it (chunks come out a few frames longer than asked for,
+                # so chunk_bounds would drift off the recording).
+                frames_done = sum(int(f.shape[0]) for f in all_images)
+                recording_here = soundtrack is not None and soundtrack.covers(frames_done / 24.0)
+                # past the recording's end: silence, unless this chunk's CUTs have a line to speak
+                silence_here = (soundtrack is not None and not recording_here and lip_sync_silence
+                                and not _lipsync.has_spoken_line(chunk_segments))
+                lip_sync_here = recording_here or silence_here
                 # A continuation chunk's own first _KEYFRAME_INJECTION_FRAMES frames
                 # are real, newly-generated output — not copied from the previous
                 # chunk — that get discarded below because H3's own keyframe-
@@ -1366,6 +1412,41 @@ class MuseMinimaxDirector:
                 is_last_chunk = chunk_idx == num_chunks - 1
                 chunk_start_sec = chunk_bounds[chunk_idx][0]
 
+                # Stubelius Lip Sync: this chunk on its own clock. A continuation chunk's clock starts
+                # on the frames it repeats from the chunk before it, ahead of its first new frame.
+                silence_note = ""           # what the prompt says about nobody speaking (any more)
+                recording_ends = None       # seconds into this chunk, when it ends inside it
+                if lip_sync_here:
+                    lead_estimate = min(carry_estimate, chunk_length - 1) if continuation_extension else 0
+                    clock_zero = max(0, frames_done - lead_estimate) / 24.0
+                    if silence_here:
+                        silence_note = _lipsync.SILENT
+                    elif soundtrack.seconds - clock_zero < chunk_length / 24.0 - 0.5:
+                        recording_ends = soundtrack.seconds - clock_zero
+                        if lip_sync_silence:
+                            silence_note = _lipsync.ends_note(recording_ends)
+                # Stubelius: a chunk that continues a shot and has no line of its own to say. After a
+                # talking chunk the model kept the character talking, in invented words (36 of them in
+                # a 10 s chunk; the soundscape note written for that case further down did not stop
+                # it). Saying in the shot itself that nobody speaks does: no words, mouth shut.
+                # timeline_data "quiet_chunk_note": false leaves the prompt as it was.
+                quiet_here = (prev_chunk_images is not None and not lip_sync_here
+                              and not _lipsync.has_spoken_line(chunk_segments)
+                              and not _lipsync.mentions_voice(chunk_segments))
+                if quiet_here and tdata.get("quiet_chunk_note", True):
+                    silence_note = _lipsync.SILENT
+                # With the recording locked in, a spoken line's "[Shot N] At ..." time has to be when
+                # the line is really said. A CUT that carries a transcript line (Insert as Timed CUTs)
+                # takes that line's own start, on this chunk's clock; the weight-based place it had
+                # was off by seconds.
+                if recording_here:
+                    line_starts = _lipsync.line_starts(tdata.get("refAudios"))
+                    for seg in chunk_segments:
+                        said = _DIALOGUE_RE.search(seg.get("prompt") or "")
+                        at = line_starts.get(_lipsync.line_key(said.group(1))) if said else None
+                        if at is not None:
+                            seg["_abs_start"] = chunk_start_sec + max(0.0, at - clock_zero)
+
                 # Per-chunk now — style_line/overall_soundscape/non_diegetic_music used
                 # to be single fields shared across the whole timeline, which couldn't
                 # follow the story past chunk 1 (confirmed directly: a real 60s test kept
@@ -1393,6 +1474,7 @@ class MuseMinimaxDirector:
                 # what the node actually tokenizes.
                 base_continuity_extra = ""
                 base_soundscape_note = ""
+                base_lip_sync_cue = ""
                 if use_hybrid_chunk:
                     chunk_first, chunk_last = prev_chunk_images[-1:], None
                     base_continuity_extra = (
@@ -1406,7 +1488,27 @@ class MuseMinimaxDirector:
                     # existing convention for spoken lines, so a quote mark means the user wants speech
                     # here and this note must not fight that.
                     has_dialogue = any('"' in (seg.get("prompt") or "") for seg in chunk_segments)
-                    if not has_dialogue:
+                    if lip_sync_here:
+                        # Stubelius: the Lip Sync recording is this chunk's sound (locked into the
+                        # latent below), so the note that rules speech out would fight it. CUTs
+                        # without a spoken line of their own get one sentence saying that someone
+                        # is talking, with the recording's words when the panel transcribed them.
+                        # (A chunk past the recording's end gets silence_note instead, below.)
+                        if recording_here and not has_dialogue:
+                            starts = frames_done / 24.0
+                            spoken = _lipsync.transcript_text(
+                                tdata.get("refAudios"), starts, starts + chunk_len_seconds).replace('"', "'")
+                            if recording_ends is None:
+                                span, after = "through the whole shot", ""
+                            else:       # the recording ends inside this chunk: silence_note says what follows
+                                span = f"for the first {recording_ends:.1f} seconds"
+                                after = "" if silence_note else " After that they stop talking."
+                            base_lip_sync_cue = (
+                                f'The person on screen (S1) keeps talking {span}, lips matching every word: "{spoken}"{after}'
+                                if spoken else
+                                f"The person on screen keeps talking {span}, lips matching the spoken words exactly.{after}"
+                            )
+                    elif not has_dialogue:
                         # No hardcoded example sounds here (an earlier version listed "footsteps" as an
                         # example and H3 took that literally even in a standing-still shot with no
                         # walking at all) — defer entirely to whatever the shot description below
@@ -1564,6 +1666,15 @@ class MuseMinimaxDirector:
                         task_flags.add("audio reuse")
                         audio_slot += 1
                     for clip_audio, meta, ui_idx in user_ref_audios:
+                        if soundtrack is not None and meta.get("retention") == _lipsync.LIP_SYNC:
+                            # Stubelius: fully_copy means "this audio is the clip's whole track",
+                            # so a Lip Sync recording goes in as this chunk's own part of it, not
+                            # as the whole file every time (and not at all once it has ended).
+                            # (Rendered without it too, the locked audio latent alone: the lips
+                            # followed about as well, 0.37 against 0.40, so it stays.)
+                            clip_audio = _lipsync.window(clip_audio, frames_done / 24.0, chunk_length / 24.0)
+                            if clip_audio is None:
+                                continue
                         if audio_slot > 2:
                             log.warning("[MuseMinimaxDirector] ref_audio slots full (3 max, one reserved for chunk "
                                         "carry-over once a chunk has a predecessor) — dropping an extra reference audio clip.")
@@ -1577,7 +1688,24 @@ class MuseMinimaxDirector:
                         # ("<Audio N> is the voice-timbre reference for <Subject M> (Sx)")
                         # instead of a generic, unlinked description.
                         paired_subj_n = subject_number_by_char_index.get(ui_idx)
-                        if paired_subj_n is not None:
+                        if a_retention == _lipsync.LIP_SYNC:
+                            # Stubelius: Lip Sync used to be written up as a voice-timbre
+                            # reference that "guides dialogue delivery without copying the
+                            # original signal", which is the guide's wording for `reference`,
+                            # the opposite of fully_copy ("reused 1:1 as the target video's
+                            # complete final audio track").
+                            if paired_subj_n is not None:
+                                sx = speaker_assign.get(paired_subj_n)
+                                owner = f" of `<Subject {paired_subj_n}>`" + (f" (S{sx})" if sx else "")
+                            else:
+                                owner = ""
+                            chunk_audio_subject_lines.append(
+                                f"<Audio {audio_tag_counter}> is the recorded spoken dialogue{owner}, reused verbatim"
+                                + (f": {a_desc}." if a_desc else "."))
+                            chunk_audio_retention_lines.append(
+                                f"<Audio {audio_tag_counter}>: fully_copy - <Audio {audio_tag_counter}> is reused 1:1 as the "
+                                "target video's complete final audio track; the speaker's lip movements match it exactly.")
+                        elif paired_subj_n is not None:
                             sx = speaker_assign.get(paired_subj_n)
                             sx_suffix = f" (S{sx})" if sx else ""
                             chunk_audio_subject_lines.append(
@@ -1586,10 +1714,11 @@ class MuseMinimaxDirector:
                             chunk_audio_subject_lines.append(f"<Audio {audio_tag_counter}> is the voice-timbre reference described as: {a_desc}.")
                         else:
                             chunk_audio_subject_lines.append(f"<Audio {audio_tag_counter}> is a voice-timbre reference.")
-                        chunk_audio_retention_lines.append(
-                            f"<Audio {audio_tag_counter}>: {a_retention} - "
-                            + (a_desc if a_desc else "guides dialogue delivery without copying the original signal.")
-                        )
+                        if a_retention != _lipsync.LIP_SYNC:
+                            chunk_audio_retention_lines.append(
+                                f"<Audio {audio_tag_counter}>: {a_retention} - "
+                                + (a_desc if a_desc else "guides dialogue delivery without copying the original signal.")
+                            )
                         task_flags.add("audio reuse" if a_retention in ("fully_copy", "partially_copy") else "audio reference")
                         audio_slot += 1
 
@@ -1710,6 +1839,12 @@ class MuseMinimaxDirector:
                             start_in_chunk = max(0.0, seg.get("_abs_start", 0.0) - chunk_start_sec)
                             shot_lines.append(f"[Shot {shot_idx}] At {_format_timestamp(start_in_chunk)}, {text}")
 
+                    if silence_note:       # Stubelius: the recording is over (here, or from some point in this chunk)
+                        if shot_lines:
+                            shot_lines[-1] = f"{shot_lines[-1].rstrip()} {silence_note}"
+                        else:
+                            shot_lines.append(f"[Shot 1] {silence_note}")
+
                     soundscape_text = (this_chunk_data.get("overall_soundscape") or "").strip()
                     music_text = (this_chunk_data.get("non_diegetic_music") or "").strip()
                     if carry_audio_tag:
@@ -1732,6 +1867,17 @@ class MuseMinimaxDirector:
                     # Reference-mode one above.
                     base_shot_lines, base_last_shot = _build_base_mode_shot_lines(
                         chunk_segments, chunk_start_sec, dialogue_language)
+                    if base_lip_sync_cue:
+                        cue = _wrap_dialogue(base_lip_sync_cue, dialogue_language)
+                        if base_shot_lines:
+                            base_shot_lines[0] = f"{base_shot_lines[0].rstrip()} {cue}"
+                        else:
+                            base_shot_lines, base_last_shot = [f"[Shot 1] {cue}"], 1
+                    if silence_note:       # the recording is over (here, or from some point in this chunk)
+                        if base_shot_lines:
+                            base_shot_lines[-1] = f"{base_shot_lines[-1].rstrip()} {silence_note}"
+                        else:
+                            base_shot_lines, base_last_shot = [f"[Shot 1] {silence_note}"], 1
                     keyframe_line = _build_keyframe_alignment_line(
                         chunk_first is not None, chunk_last is not None, base_last_shot, chunk_len_seconds)
                     if keyframe_line:
@@ -1871,6 +2017,26 @@ class MuseMinimaxDirector:
                     chunk_carry_trim_frames = int(carry_trim_frames)
                     log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry: %d px re-encoded tail, "
                              "trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
+
+                # Stubelius: lock this chunk's part of the Lip Sync recording into its audio
+                # latent (after the carry-over, whose own audio prefix it replaces with the
+                # recording's). A continuation chunk opens on frames that are cut off again
+                # after decoding (the same count as the trim further down), so its first
+                # latent frame sits that much before frames_done on the video's clock.
+                if lip_sync_here:
+                    lead_frames = 0
+                    if chunk_idx > 0 and prev_chunk_images is not None:
+                        lead_frames = chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES
+                        lead_frames = min(lead_frames, chunk_length - 1)
+                    lock_start = max(0, frames_done - lead_frames) / 24.0
+                    latent, lock_ticks, recording_ticks = soundtrack.lock(
+                        latent, audio_vae, lock_start, silence_after=lip_sync_silence)
+                    lip_sync_locked = lip_sync_locked or lock_ticks > 0
+                    log.info("[StubeliusLipSync] chunk %d/%d: recording from %.3f s locked into the audio latent "
+                             "(%.2f s of this chunk's %.2f s)%s", chunk_idx + 1, num_chunks, lock_start,
+                             recording_ticks / _lipsync.LATENT_HZ, chunk_length / 24.0,
+                             f", then {(lock_ticks - recording_ticks) / _lipsync.LATENT_HZ:.2f} s of silence"
+                             if lock_ticks > recording_ticks else ("" if lock_ticks else " - nothing left to lock"))
 
                 # Same seed for every chunk in a pass (not pass_seed + chunk_idx) — chunks
                 # already differ by prompt text, anchor image, and length, so a per-chunk
@@ -2090,6 +2256,30 @@ class MuseMinimaxDirector:
                 else:
                     new_frames = chunk_images
 
+                # Stubelius: keep what the Quality polish needs to render this chunk again at
+                # twice the size: its finished latent, its own prompt, which checkpoint made it
+                # and from what, and how many opening frames were cut. Only the last chunk's
+                # latent used to leave this node, so a video past one chunk came back from the
+                # polish as its last chunk alone (see stubelius_polish.py).
+                if chunk_stage1_latent is not None and not two_stage_sampling:
+                    keyframed = use_hybrid_chunk or mode != MODE_REFERENCE
+                    continues = prev_chunk_images is not None
+                    chunk_records.append({
+                        "latent": chunk_stage1_latent, "prompt": chunk_prompt,
+                        "length": chunk_length, "trim": trim_n,
+                        "model": "fl2va" if keyframed and shifted_model_fl2va is not None else "ref",
+                        "loras": self._chunk_loras(chunk_idx),
+                        # made from keyframes: "previous" = the last frame of the chunk before it
+                        "keyframes": {
+                            "first": "previous" if continues else first_frame_source,
+                            "last": last_frame_source if chunk_last is not None else None,
+                        } if keyframed else None,
+                        # a Reference (Omni) chunk: its reference images; `anchor` names the one
+                        # that is the last frame of the chunk before it
+                        "ref_images": None if keyframed else dict(chunk_ref_images),
+                        "anchor": f"ref_image_{bg_index}" if continues and not keyframed else None,
+                    })
+
                 # Two chunks are still independent generation calls even with that
                 # duplicate dropped — nothing guarantees pixel-level consistency between
                 # them, so the camera position can drift a few pixels right at the seam
@@ -2154,7 +2344,18 @@ class MuseMinimaxDirector:
                     # injection transient), and audio silently runs ahead of video by that
                     # amount at every chunk boundary, compounding across chunks.
                     audio_trim_samples = round(trim_n / 24.0 * chunk_audio["sample_rate"])
-                    audio_trim_samples = min(audio_trim_samples, waveform.shape[-1] - 1)
+                    if all_waveform is not None:
+                        # Stubelius: a chunk's audio latent is a whole number of 40 Hz frames, so
+                        # its sound comes out up to 8 ms longer or shorter than its picture.
+                        # Cutting by the picture's trim alone let that add up (on some chunk
+                        # lengths the sound slid 8 ms later with every chunk). Cut where the
+                        # sound stitched so far ends on the video's clock instead: this chunk's
+                        # first sample plays at (frames_done - trim_n) / 24 s.
+                        on_clock = all_waveform.shape[-1] - round(
+                            (frames_done - trim_n) / 24.0 * chunk_audio["sample_rate"])
+                        if abs(on_clock - audio_trim_samples) <= chunk_audio["sample_rate"] // 20:
+                            audio_trim_samples = on_clock
+                    audio_trim_samples = max(0, min(audio_trim_samples, waveform.shape[-1] - 1))
                     if audio_trim_samples > 0:
                         waveform = waveform[..., audio_trim_samples:]
                 if all_waveform is None:
@@ -2210,6 +2411,11 @@ class MuseMinimaxDirector:
 
             final_images = torch.cat(all_images, dim=0) if len(all_images) > 1 else all_images[0]
             final_audio = {"waveform": all_waveform, "sample_rate": audio_sample_rate}
+            if lip_sync_locked:
+                # Stubelius: every chunk was generated against the recording, so the finished
+                # video gets the recording itself, not the audio VAE's copy of it with a duck
+                # at each seam.
+                final_audio = soundtrack.lay_over(final_audio)
 
             # Latent-Only Scouting, multi-chunk timeline: last_chunk_stage1_latent is
             # only ever this pass's LAST chunk on its own — real, but incomplete, since
@@ -2244,6 +2450,15 @@ class MuseMinimaxDirector:
                     "ref_image_size": ref_image_size,
                     "compiled_prompt": "\n\n".join(compiled_prompts),
                 }
+                if chunk_records:
+                    # Stubelius: the whole take rides on its candidate latent, chunk by chunk,
+                    # with what joined the chunks (carry-over length, seam smoothing).
+                    last_chunk_stage1_latent["_stubelius_chunks"] = {
+                        "chunks": chunk_records,
+                        "carry_length": int(vae_reencode_carry_length) if vae_reencode_carry_test else 0,
+                        "seam_frames": int(seam_interpolation_frames or 0),
+                        "resize_method": resize_method,
+                    }
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
         images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)

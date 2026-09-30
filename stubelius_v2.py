@@ -190,6 +190,9 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                      sum(abs(s) for _, _, s in rows))
         return self._lora_models[key]
 
+    def _chunk_loras(self, chunk_idx):
+        return list(getattr(self, "_lora_plan", {}).get(chunk_idx) or [])
+
 
 class StubeliusH3RefineV2(MuseMinimaxRefine):
     @classmethod
@@ -221,6 +224,18 @@ class StubeliusH3RefineV2(MuseMinimaxRefine):
     def execute_v2(self, model, clip, vae, audio_vae, prompt, candidate, upscale_method,
                    polish_strength, polish_steps, candidate_1_latent=None, candidate_2_latent=None,
                    candidate_3_latent=None, candidate_4_latent=None, ref_images=None):
+        from .stubelius_polish import chunks_of, polish_tokens, save_vram
+        picked = (candidate_1_latent, candidate_2_latent, candidate_3_latent,
+                  candidate_4_latent)[max(1, min(4, int(candidate))) - 1]
+        if len(chunks_of(picked)) > 1:
+            # this node would polish the take's last chunk and return that as the whole video
+            raise RuntimeError(
+                f"[StubeliusH3RefineV2] this take has {len(chunks_of(picked))} chunks. Each chunk is polished with "
+                "the checkpoint that made it and this node has one model input: send the take to "
+                "Stubelius H3 Finish in Quality mode, which polishes all of them.")
+        if isinstance(picked, dict) and "samples" in picked:
+            # a 10 s take polished for 2K doesn't fit a 32 GB card without them
+            model = save_vram(model, polish_tokens(picked))
         return self.execute(
             model=model, clip=clip, vae=vae, audio_vae=audio_vae, prompt=prompt,
             candidate=max(1, min(4, int(candidate))), ref_image_size="match",
