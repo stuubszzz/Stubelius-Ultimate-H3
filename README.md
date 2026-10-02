@@ -14,7 +14,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 |---|---|
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, two global LoRAs, attention and low-VRAM options, live preview |
-| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, Hybrid and Quality up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish |
+| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, Hybrid and Quality up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
 | **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
@@ -44,20 +44,29 @@ it for the whole video, and the finished video plays the recording itself.
 shot and has no quoted line in its CUTs is told that nobody speaks. Quote a line, or describe a
 voice in the CUT (she sings, the crowd cheers), and it is left alone.
 
-**Quality polish.** Quality at 1080p and up polishes every chunk, each with the checkpoint that
-made it, and joins them as the Director joined the originals. The polished video has the same
-length and the same sound as the take it came from. The polished frames are held in memory at
-twice the render size, about 11 GB for every 10 s at the Quality preset, so long takes need a
-lot of RAM.
+**Quality polish.** Quality at 1080p and up renders the take again, bigger, and the upscaler
+takes it the rest of the way to 2K or 4K. **quality polish scale** on the Output node sets how
+much bigger: 1.5x (the default) or 2x. Every chunk is polished with the checkpoint that made it
+and joined as the Director joined the originals. The polished video has the same length and the
+same sound as the take it came from.
 
-A large polish turns on KJNodes' low-VRAM patches by itself (ComfyUI-KJNodes 1.5.1 or newer).
-They give the same picture. Without them a 10 s chunk polished for 2K does not fit a 32 GB card.
+- **1.5x** renders about 1152p from the Quality preset, enough for 1080p. It uses zhangccccc's
+  H3 latent upscaler, which builds the 1.5x latent directly
+  ([nodes](https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler),
+  [model](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler)). Without it the polish
+  runs at 2x and the log says so. On an RTX 5090 at the Quality preset a 1.5x step takes 38 s for
+  a 6.6 s chunk (106 s at 2x), 77 s for a 10 s chunk and 110 s for a 10 s chunk that continues a
+  video.
+- **2x** renders about 1536p. Use it for a take rendered smaller than the Quality preset, or to
+  polish 2K itself. It is heavy: on a 32 GB card at the Quality preset it fits chunks up to 8 s,
+  or 10 s for a video's first chunk (one that continues a video also re-renders the frames it
+  carries over). A longer chunk spills out of the card and takes hours. A 2x step takes 2 to 4
+  minutes.
 
-On a 32 GB card at the Quality preset, a chunk fits the polish up to 8 s, or 10 s for a video's
-first chunk: one that continues a video also re-renders the frames it carries over. A longer
-chunk spills out of the card and takes hours. For Quality at 1080p and up, keep chunks at 8 s or
-less. At that size a polish step takes 2 to 4 minutes, and the Output node runs 12 of them by
-default.
+The Output node runs 12 polish steps by default. A large polish turns on KJNodes' low-VRAM patches
+by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
+in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset, about 6 GB at
+1.5x. Long takes need a lot of RAM.
 
 ## Install
 
@@ -92,7 +101,8 @@ Load the workflow and use Manager → **Install Missing Custom Nodes**, or insta
 | [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) | live preview, low-VRAM options, a large Quality polish |
 | [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) | 48 / 60 fps |
 | [ComfyUI-H3-Motion-Context-MultiRef](https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef) | recommended: smoother continuity past one chunk |
-| [ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler) + [ComfyUI-H3-Latent-Upscaler-Mamad8](https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8) | Quality polish "learned model (2x)" |
+| [ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler) + [ComfyUI-H3-Latent-Upscaler-Mamad8](https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8) | Quality polish at 2x ("learned model (2x)") |
+| [Comfyui_Minimax_h3_latent_Upscaler](https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler) | Quality polish at 1.5x (zhangccccc's H3 latent upscaler, model below) |
 | [ComfyUI-DLSS5-Enhancer](https://github.com/Blueforcer/ComfyUI-DLSS5-Enhancer) | DLSS5 upscaler |
 | [ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | GGUF models |
 | [ComfyUI-Spectrum-MiniMax-H3](https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3) | Spectrum option |
@@ -109,12 +119,17 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/vae` | `minimax_h3_video_vae_fp16.safetensors`, `minimax_h3_audio_vae_fp32.safetensors` |
 | `models/loras` | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
+| `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
 
 RIFE downloads its checkpoint the first time you pick 48 or 60 fps. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).
 
 Developed on an RTX 5090 (32 GB). With less VRAM, turn on the Models node's low-VRAM options or
 use GGUF models.
+
+On ComfyUI 0.37 and newer the Stubelius nodes turn ComfyUI's model compiler off while they render,
+and back on after. With it, H3 at the Quality size ran out of VRAM on a 32 GB card from its second
+sampler step on and crawled. Other nodes keep the compiler.
 
 ## Credits and license
 
