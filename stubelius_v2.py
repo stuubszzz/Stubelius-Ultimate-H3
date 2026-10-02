@@ -213,9 +213,15 @@ class StubeliusH3RefineV2(MuseMinimaxRefine):
                                "0.3 stays faithful; 0.45-0.55 is cleaner but freer."}),
                 "polish_steps": ("INT", {"default": 12, "min": 1, "max": 100}),
             },
-            "optional": {k: base["optional"][k] for k in
-                         ("candidate_1_latent", "candidate_2_latent", "candidate_3_latent",
-                          "candidate_4_latent", "ref_images")},
+            "optional": {
+                **{k: base["optional"][k] for k in
+                   ("candidate_1_latent", "candidate_2_latent", "candidate_3_latent",
+                    "candidate_4_latent", "ref_images")},
+                "polish_scale": ("FLOAT", {"default": 2.0, "min": 1.25, "max": 2.0, "step": 0.25, "tooltip":
+                    "How much bigger than the take the polish renders. 1.5 is about 3x faster per step "
+                    "than 2 and leaves the rest of the way to an upscaler; with the learned method it "
+                    "needs zhangccccc's H3 latent upscaler, without which 2 is used."}),
+            },
         }
 
     FUNCTION = "execute_v2"
@@ -223,7 +229,7 @@ class StubeliusH3RefineV2(MuseMinimaxRefine):
 
     def execute_v2(self, model, clip, vae, audio_vae, prompt, candidate, upscale_method,
                    polish_strength, polish_steps, candidate_1_latent=None, candidate_2_latent=None,
-                   candidate_3_latent=None, candidate_4_latent=None, ref_images=None):
+                   candidate_3_latent=None, candidate_4_latent=None, ref_images=None, polish_scale=2.0):
         from .stubelius_polish import chunks_of, polish_tokens, save_vram
         picked = (candidate_1_latent, candidate_2_latent, candidate_3_latent,
                   candidate_4_latent)[max(1, min(4, int(candidate))) - 1]
@@ -233,14 +239,17 @@ class StubeliusH3RefineV2(MuseMinimaxRefine):
                 f"[StubeliusH3RefineV2] this take has {len(chunks_of(picked))} chunks. Each chunk is polished with "
                 "the checkpoint that made it and this node has one model input: send the take to "
                 "Stubelius H3 Finish in Quality mode, which polishes all of them.")
+        from .muse_minimax_refine import effective_polish_scale
+        scale = effective_polish_scale(upscale_method, polish_scale if polish_scale is not None else 2.0,
+                                       "[StubeliusH3RefineV2]")
         if isinstance(picked, dict) and "samples" in picked:
             # a 10 s take polished for 2K doesn't fit a 32 GB card without them
-            model = save_vram(model, polish_tokens(picked))
+            model = save_vram(model, polish_tokens(picked, scale))
         return self.execute(
             model=model, clip=clip, vae=vae, audio_vae=audio_vae, prompt=prompt,
             candidate=max(1, min(4, int(candidate))), ref_image_size="match",
             seed=0, steps=8, two_stage_first_pass_steps=2, sampler_name="euler", scheduler="beta",
-            two_stage_upscale_factor=2.0, two_stage_upscale_method=upscale_method,
+            two_stage_upscale_factor=scale, two_stage_upscale_method=upscale_method,
             sync_from_director=True, audio_mode="keep candidate audio (locked)",
             refine_denoise=polish_strength, polish_steps=polish_steps,
             two_stage_strategy="complete then polish (stubelius)",

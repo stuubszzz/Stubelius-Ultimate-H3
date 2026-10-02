@@ -79,6 +79,63 @@ def _muse_gold_learned_upscale(video_samples):
     return out["samples"]
 
 
+# ── Stubelius: learned upscale to any scale ──────────────────────────────────
+H3_ANY_SCALE = "learned model, any scale (H3 latent upscaler 3D)"
+
+def h3_any_scale_ready():
+    """The any-scale upscaler's nodes and model are installed."""
+    import folder_paths
+    from nodes import NODE_CLASS_MAPPINGS
+    if NODE_CLASS_MAPPINGS.get("MinimaxH3LatentUpscaler3D") is None:
+        return False
+    try:
+        return any("minimax_h3_latent_upscaler" in n.lower() and n.endswith(".safetensors")
+                   for n in folder_paths.get_filename_list("latent_upscale_models"))
+    except Exception:
+        return False
+
+
+def effective_polish_scale(method, scale, log_label="[Stubelius]"):
+    """The scale the polish can run at: a polish below 2x with the learned method needs the
+    any-scale upscaler, and without it runs at 2x (said in the log) rather than failing."""
+    scale = max(1.25, min(2.0, float(scale)))
+    if scale < 1.99 and method == MUSE_GOLD_LEARNED and not h3_any_scale_ready():
+        log.warning("%s a %.2gx polish needs the H3 latent upscaler (the Comfyui_Minimax_h3_latent_Upscaler "
+                    "nodes and minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors in "
+                    "models/latent_upscale_models); polishing at 2x instead.", log_label, scale)
+        return 2.0
+    return scale
+
+
+def _h3_any_scale_upscale(video_samples, tgt_w, tgt_h):
+    """[B,24,T,H,W] H3 video latent -> the same frames at (tgt_h, tgt_w), through zhangccccc's
+    H3 latent upscaler (weights: huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler, Apache-2.0;
+    nodes: LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler). It resizes inside its own feature space,
+    conditioned on the scale, and builds a new latent at the size asked for, so a 1.5x polish
+    needs no 2x latent taken down (averaging latent cells smeared the background)."""
+    import folder_paths
+    from nodes import NODE_CLASS_MAPPINGS
+    node = NODE_CLASS_MAPPINGS.get("MinimaxH3LatentUpscaler3D")
+    if node is None:
+        raise RuntimeError(
+            "[Stubelius] upscale method '%s' needs the Comfyui_Minimax_h3_latent_Upscaler nodes "
+            "(LBH-123-AI) installed. Install them via ComfyUI Manager and restart, or pick another "
+            "method." % H3_ANY_SCALE)
+    names = sorted(n for n in folder_paths.get_filename_list("latent_upscale_models")
+                   if "minimax_h3_latent_upscaler" in n.lower() and n.endswith(".safetensors"))
+    if not names:
+        raise RuntimeError(
+            "[Stubelius] upscale method '%s' needs its model in models/latent_upscale_models: "
+            "minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors from "
+            "huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler." % H3_ANY_SCALE)
+    out = _unpack_node_result(_execute_comfy_node(
+        node, latent={"samples": video_samples}, model_name=names[0],
+        mode={"mode": "target dimensions", "width": int(tgt_w) * 16, "height": int(tgt_h) * 16},
+        align=32, enable_temporal_chunking=True, force_unload=True,
+        device="cuda" if torch.cuda.is_available() else "cpu", precision="fp16"))[0]
+    return out["samples"]
+
+
 
 
 def _two_stage_snap_upscale_target(cur_h_latent: int, cur_w_latent: int, scale_by: float):
@@ -462,7 +519,15 @@ def _refine_one_chunk(
             trim_frames=trim_frames,
         )
 
-    if two_stage_upscale_method == MUSE_GOLD_LEARNED:
+    if two_stage_upscale_method == H3_ANY_SCALE or (
+            two_stage_upscale_method == MUSE_GOLD_LEARNED and float(two_stage_upscale_factor) < 1.99):
+        # Stubelius: the learned 2x model can't make a 1.5x latent (averaging its 2x result down
+        # smeared the picture); the any-scale upscaler builds the 1.5x latent itself
+        tgt_h, tgt_w, eff_x, eff_y = _two_stage_snap_upscale_target(
+            cur_h_latent, cur_w_latent, float(two_stage_upscale_factor)
+        )
+        upscaled_samples = _h3_any_scale_upscale(video_samples, tgt_w, tgt_h)
+    elif two_stage_upscale_method == MUSE_GOLD_LEARNED:
         upscaled_samples = _muse_gold_learned_upscale(video_samples)
         tgt_h, tgt_w = upscaled_samples.shape[-2], upscaled_samples.shape[-1]
         eff_x = tgt_w / cur_w_latent if cur_w_latent else 2.0
@@ -647,7 +712,7 @@ class MuseMinimaxRefine:
                 "two_stage_upscale_factor": ("FLOAT", {"default": 1.5, "min": 1.0, "max": 2.0, "step": 0.05, "tooltip":
                     "How much larger the output renders vs. the candidate's own resolution. The reference "
                     "workflow's own working note calls 1.3-1.5x the stable range."}),
-                "two_stage_upscale_method": ([MUSE_GOLD_LEARNED, "nearest-exact", "bilinear", "area", "bicubic", "bislerp"], {"default": MUSE_GOLD_LEARNED, "tooltip":
+                "two_stage_upscale_method": ([MUSE_GOLD_LEARNED, "nearest-exact", "bilinear", "area", "bicubic", "bislerp", H3_ANY_SCALE], {"default": MUSE_GOLD_LEARNED, "tooltip":
                     "'%s' = trained 2x latent upscaler (Tr1dae/Mamad8 packs required; upscale factor above is ignored - always exactly 2x). "
                     "The interpolation options are the stock behavior." % MUSE_GOLD_LEARNED}),
                 "sync_from_director": ("BOOLEAN", {"default": True, "tooltip":

@@ -1,6 +1,6 @@
 """Quality polish of a take that runs past one chunk.
 
-The polish renders a finished take again at twice its size. It was handed one latent per take,
+The polish renders a finished take again, 1.5x or 2x its size. It was handed one latent per take,
 and for a video longer than one chunk that was the last chunk's: a 30 s video came back from a
 Quality polish as its last 10 s.
 
@@ -47,17 +47,17 @@ HEAVY_TOKENS = 100_000          # a polish with more video tokens than this gets
 FF_TOKENS_PER_PIECE = 60_000    # the feed-forward runs in pieces of about this many tokens
 
 
-def polish_tokens(latent):
-    """How many video tokens the polish of this latent runs on: the polish doubles both sides and
-    the model packs 2x2 latent cells into one token, so it is one token per cell of the take's
-    own latent (a 6.6 s chunk at the Quality preset: 190,000; one that continues a video, which
-    also holds the frames it repeats: 250,000; a 10 s take in one chunk: 290,000). 0 when the
-    latent isn't a video latent."""
+def polish_tokens(latent, scale=2.0):
+    """How many video tokens the polish of this latent runs on. The model packs 2x2 latent cells
+    into one token, so a 2x polish has one token per cell of the take's own latent (a 6.6 s chunk
+    at the Quality preset: 190,000; one that continues a video, which also holds the frames it
+    repeats: 250,000; a 10 s take in one chunk: 290,000) and a 1.5x polish 0.56 as many. 0 when
+    the latent isn't a video latent."""
     samples = latent["samples"]
     video = samples.unbind()[0] if getattr(samples, "is_nested", False) else samples
     if not torch.is_tensor(video) or video.ndim != 5:
         return 0
-    return int(video.shape[2]) * int(video.shape[3]) * int(video.shape[4])
+    return int(int(video.shape[2]) * int(video.shape[3]) * int(video.shape[4]) * float(scale) ** 2 / 4)
 
 
 def save_vram(model, tokens):
@@ -85,13 +85,13 @@ def save_vram(model, tokens):
     return model
 
 
-def _model(models, chunk, node_id):
+def _model(models, chunk, node_id, scale):
     """The checkpoint that made this chunk, with the chunk's own LoRAs, as the Director had it."""
     from .stubelius_v2 import _lora_state_dict
     model = models.model(chunk["model"])
     for _, path, strength in chunk.get("loras") or []:
         model, _ = comfy.sd.load_lora_for_models(model, None, _lora_state_dict(path), strength, 0)
-    return models.preview(save_vram(model, polish_tokens(chunk["latent"])), node_id)
+    return models.preview(save_vram(model, polish_tokens(chunk["latent"], scale)), node_id)
 
 
 def _conditioning(chunk, bundle, clip, vae, previous):
@@ -187,12 +187,12 @@ def _as_image(frames, batch=16):
     return out
 
 
-def _ram_note(frames, candidate):
+def _ram_note(frames, candidate, scale):
     """Say so up front when the polished frames alone won't fit in RAM (12 bytes a pixel)."""
     try:
         import psutil
         video = chunks_of(candidate)[0]["latent"]["samples"].unbind()[0]
-        width, height = int(video.shape[-1]) * 32, int(video.shape[-2]) * 32
+        width, height = int(video.shape[-1] * 16 * scale), int(video.shape[-2] * 16 * scale)
         need, total = frames * width * height * 12, psutil.virtual_memory().total
         if need > 0.6 * total:
             log.warning("[StubeliusPolish] %d polished frames at about %dx%d need %.0f GB of RAM on this %.0f GB "
@@ -202,18 +202,19 @@ def _ram_note(frames, candidate):
         pass
 
 
-def polish(candidate, models, strength, steps, method, frames=None, node_id=None):
+def polish(candidate, models, strength, steps, method, frames=None, node_id=None, scale=2.0):
     """The whole take, polished chunk by chunk: IMAGE [frames, height, width, 3].
 
     candidate = the take's latent as the Director returned it (takes["latents"][n]); frames =
-    how many frames the take has, which is what the chunks add up to."""
+    how many frames the take has, which is what the chunks add up to; scale = how much bigger
+    than the take the polish renders (1.5 or 2)."""
     bundle = candidate[KEY]
     chunks = bundle["chunks"]
     made = candidate.get("_muse_stage1_settings") or {}
     carry_length = int(bundle.get("carry_length") or 0)
     clip, vae, audio_vae = models.clip(), models.vae(), models.audio_vae()
     if frames:
-        _ram_note(int(frames), candidate)
+        _ram_note(int(frames), candidate, scale)
 
     # The frames the next chunk reads from this one (its carry-over, anchor and seam), kept as
     # they came out; the rest of the video waits in 8 bits.
@@ -222,10 +223,10 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     for index, chunk in enumerate(chunks):
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
-            _model(models, chunk, node_id), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
+            _model(models, chunk, node_id, scale), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
             made.get("ref_image_size", "match"), int(made.get("seed", 0)), int(made.get("steps", 8)),
             int(made.get("first_pass_steps", 2)), made.get("sampler_name", "euler"), made.get("scheduler", "beta"),
-            2.0, method, refs,
+            float(scale), method, refs,
             previous if carry_length else None, previous_audio if carry_length else None, carry_length,
             log_label=f"chunk {index + 1}/{len(chunks)}", audio_lock=True,
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",

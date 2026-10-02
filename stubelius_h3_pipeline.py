@@ -39,6 +39,7 @@ DLSS5_FACTORS = {1.5: "1.5x (Quality)", 1.724: "1.724x (Balanced)", 2.0: "2x (Pe
                  3.0: "3x (Ultra Performance)"}
 VSR_MAX_SCALE = 4.0     # RTX VSR per pass; more (Speed to 4K = 4.5x) runs in two passes
 POLISH_ABOVE = 1.1      # Quality polishes when the chosen size is >10% above what it rendered
+POLISH_SCALES = {"1.5x": 1.5, "2x": 2.0}    # how much bigger than the take the polish renders
 SOURCE_FPS = 24.0
 # Final resolution: the value is the exact short side in pixels (None = keep the render size).
 # js/stubelius_h3_setup.js narrows the list to the sizes the Setup mode offers.
@@ -160,7 +161,8 @@ class StubeliusH3Output:
                 "final_resolution": (list(RESOLUTIONS), {
                     "default": "1080p", "per_mode": SIZES_BY_MODE, "fallback": SIZE_FALLBACK, "tooltip":
                     "The sizes follow the Setup mode. Speed: native (≈480p) up to 2K, upscaled. Hybrid: native "
-                    "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its 2x polish. "
+                    "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its polish "
+                    "(and the upscaler for what the polish doesn't reach). "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
                     "per frame, so keep 4K clips short, especially at 48/60 fps."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
@@ -173,8 +175,21 @@ class StubeliusH3Output:
                 "quality_polish_steps": ("INT", {"default": 12, "min": 1, "max": 100,
                     "tooltip": "Quality mode at 1080p and up."}),
                 "quality_polish_method": (methods, {"default": methods[0], "tooltip":
-                    "Quality mode only: how the polish doubles the latent before re-sampling it. "
-                    "learned model (2x) = the trained upscaler; the others are plain interpolation."}),
+                    "Quality mode only: how the polish enlarges the latent before re-sampling it. "
+                    "learned model (2x) = the trained 2x upscaler; for a 1.5x polish zhangccccc's H3 "
+                    "latent upscaler takes over and builds the 1.5x latent itself. learned model, any "
+                    "scale = that upscaler at either scale. The others are plain interpolation."}),
+            },
+            # optional: a prompt or workflow saved without it still runs, with 1.5x
+            "optional": {
+                "quality_polish_scale": (list(POLISH_SCALES), {"default": "1.5x", "tooltip":
+                    "Quality mode at 1080p and up: how much bigger than the take the polish renders. "
+                    "1.5x (≈1152p from the Quality preset) covers 1080p and leaves 2K/4K to the "
+                    "upscaler; about 3x faster per step than 2x, with room for longer chunks. It needs "
+                    "zhangccccc's H3 latent upscaler (the Comfyui_Minimax_h3_latent_Upscaler nodes and "
+                    "their model); without it the polish runs at 2x. 2x (≈1536p) for a take rendered "
+                    "smaller, or to polish 2K itself; on a 32 GB card it fits chunks up to 8 s at the "
+                    "Quality preset."}),
             }
         }
 
@@ -184,7 +199,7 @@ class StubeliusH3Output:
     CATEGORY = "Stubelius"
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
-            quality_polish_steps, quality_polish_method):
+            quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x"):
         mode = max(1, min(3, int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -193,7 +208,8 @@ class StubeliusH3Output:
             final_resolution = size
         o = dict(mode=mode, resolution=final_resolution, fps=float(final_fps), upscaler=upscaler,
                  polish_strength=quality_polish_strength, polish_steps=quality_polish_steps,
-                 polish_method=_polish_methods().get(quality_polish_method, quality_polish_method))
+                 polish_method=_polish_methods().get(quality_polish_method, quality_polish_method),
+                 polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5))
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -479,14 +495,16 @@ class StubeliusH3Finish:
         target = RESOLUTIONS.get(o["resolution"])
         images, audio = takes["images"][w - 1], takes["audio"][w - 1]
         if o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images):
-            # Quality re-renders the take 2x bigger (the polish) when the size picked is above what
-            # it rendered; at or below that, the render itself is the final picture. A take past
-            # one chunk is polished chunk by chunk. Either way only the picture is rendered again,
-            # so the take keeps its own sound.
+            # Quality re-renders the take 1.5x or 2x bigger (the polish) when the size picked is
+            # above what it rendered; at or below that, the render itself is the final picture.
+            # The upscaler takes it the rest of the way. A take past one chunk is polished chunk
+            # by chunk. Either way only the picture is rendered again, so the take keeps its own sound.
+            from .muse_minimax_refine import effective_polish_scale
             from .stubelius_polish import chunks_of
             polish = self._polish_chunks if len(chunks_of(takes["latents"][w - 1])) > 1 else self._polish
+            scale = effective_polish_scale(o["polish_method"], o.get("polish_scale", 2.0), "[StubeliusH3Finish]")
             images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
-                            o["polish_method"], unique_id)[0]
+                            o["polish_method"], unique_id, scale=scale)[0]
         _ram_check(images, target, o["fps"])
         if target and _short(images) > target:
             # e.g. Quality 2K: the polish comes out above 1440p. Downscale before RIFE (less work).
@@ -508,8 +526,8 @@ class StubeliusH3Finish:
         return (images, audio, float(fps))
 
     @staticmethod
-    def _polish(takes, models, w, strength, steps, method, node_id=None):
-        key = (id(takes), w, strength, steps, method, models.key)
+    def _polish(takes, models, w, strength, steps, method, node_id=None, scale=2.0):
+        key = (id(takes), w, strength, steps, method, models.key, scale)
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
@@ -521,13 +539,13 @@ class StubeliusH3Finish:
             audio_vae=models.audio_vae(), prompt=takes["prompt"], candidate=w,
             upscale_method=method, polish_strength=strength, polish_steps=steps,
             candidate_1_latent=lat[0], candidate_2_latent=lat[1], candidate_3_latent=lat[2],
-            candidate_4_latent=lat[3], ref_images=takes["ref_images"]))[:2]
+            candidate_4_latent=lat[3], ref_images=takes["ref_images"], polish_scale=scale))[:2]
         _POLISH_MEMO.append((key, (images, audio)))
         del _POLISH_MEMO[:-2]
         return images, audio
 
     @staticmethod
-    def _polish_chunks(takes, models, w, strength, steps, method, node_id=None):
+    def _polish_chunks(takes, models, w, strength, steps, method, node_id=None, scale=2.0):
         """The polish of a take that runs past one chunk: every chunk of it (stubelius_polish.py),
         where _polish would hand the Refine the last chunk alone."""
         import psutil
@@ -535,13 +553,14 @@ class StubeliusH3Finish:
         candidate, take = takes["latents"][w - 1], takes["images"][w - 1]
         made = candidate.get("_muse_stage1_settings") or {}
         # by what the take is, not only by id(takes): a new take can get a freed one's id
-        key = (id(takes), w, strength, steps, method, models.key, tuple(take.shape),
+        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape),
                made.get("seed"), made.get("steps"), hash(made.get("compiled_prompt")))
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id)
+        images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
+                        scale=scale)
         _POLISH_MEMO.append((key, (images, takes["audio"][w - 1])))
         del _POLISH_MEMO[:-2]
         # two polished long takes are tens of GB: keep the older one only while both fit easily
