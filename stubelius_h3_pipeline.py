@@ -25,6 +25,7 @@ import folder_paths
 import torch
 
 from .muse_minimax_director import _execute_comfy_node, _unpack_node_result
+from .stubelius_compiler import compiler_paused
 
 log = logging.getLogger(__name__)
 
@@ -481,6 +482,7 @@ class StubeliusH3Finish:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
+    @compiler_paused
     def run(self, takes, models, output, winner, unique_id=None):
         if int(winner) == 0:
             from comfy_execution.graph import ExecutionBlocker

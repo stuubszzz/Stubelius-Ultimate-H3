@@ -19,6 +19,7 @@ import folder_paths
 
 from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE
 from .muse_minimax_refine import MuseMinimaxRefine
+from .stubelius_compiler import compiler_paused
 
 log = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
     FUNCTION = "execute_v2"
     CATEGORY = "Stubelius"
 
+    @compiler_paused
     def execute_v2(self, mode, aspect_ratio, duration_seconds, chunk_duration_seconds, seed, timeline_data,
                    models=None, setup=None, model=None, clip=None, vae=None, audio_vae=None,
                    model_fl2va=None, prompt_override=None,
@@ -227,6 +229,7 @@ class StubeliusH3RefineV2(MuseMinimaxRefine):
     FUNCTION = "execute_v2"
     CATEGORY = "Stubelius"
 
+    @compiler_paused
     def execute_v2(self, model, clip, vae, audio_vae, prompt, candidate, upscale_method,
                    polish_strength, polish_steps, candidate_1_latent=None, candidate_2_latent=None,
                    candidate_3_latent=None, candidate_4_latent=None, ref_images=None, polish_scale=2.0):
