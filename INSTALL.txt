@@ -35,7 +35,7 @@ Easiest: install this pack first, load the workflow, then Manager > Install Miss
 Needed:
   ComfyUI-VideoHelperSuite     https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite   (video outputs)
   Nvidia RTX nodes             https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI      (RTX VSR upscaling, NVIDIA RTX GPU)
-  ComfyUI-KJNodes              https://github.com/kijai/ComfyUI-KJNodes                   (live preview, low-VRAM options)
+  ComfyUI-KJNodes              https://github.com/kijai/ComfyUI-KJNodes                   (live preview, low-VRAM options, a large Quality polish)
   ComfyUI-Frame-Interpolation  https://github.com/Fannovel16/ComfyUI-Frame-Interpolation  (48 / 60 fps)
 
 Recommended:
@@ -43,9 +43,13 @@ Recommended:
                                       (smoother continuity when a video runs past one chunk)
 
 Only for these features:
-  Quality polish "learned model (2x)" - both packs (or pick bislerp / bicubic as the polish method):
+  Quality polish at 2x, "learned model (2x)" - both packs (or pick bislerp / bicubic as the polish method):
       https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler
       https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8
+  Quality polish at 1.5x (the default) - zhangccccc's H3 latent upscaler; without it the polish runs at 2x:
+      https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler
+      model, into models/latent_upscale_models/ (0.7 GB):
+      https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors
   DLSS5 upscaler   https://github.com/Blueforcer/ComfyUI-DLSS5-Enhancer
   GGUF models      https://github.com/city96/ComfyUI-GGUF
   Spectrum         https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3
