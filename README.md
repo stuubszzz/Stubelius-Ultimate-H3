@@ -15,7 +15,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
 | **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
-| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
+| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
@@ -67,6 +67,22 @@ The Output node runs 12 polish steps by default. A large polish turns on KJNodes
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
 in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset, about 6 GB at
 1.5x. Long takes need a lot of RAM.
+
+## Middle frames
+
+In **First/Last Frame** mode the video can pass through up to two **middle frames** on its way from
+the first frame to the last.
+
+- Drop a picture on the **Middle 1** or **Middle 2** box, or straight onto the strip above a chunk's
+  timeline, where it lands at that second. Drag its thumbnail along the strip to change when the
+  video reaches it, or type the second in its box.
+- Middle frames stay half a second apart, and half a second from the first and the last frame. A
+  CUT edge dragged close to one snaps onto it, so a CUT can run from one frame to the next.
+- The text encoder sees the pictures in time order (`<Picture 1>` is the first frame, then the middle
+  frames, then the last frame), and the prompt says at which second each one is reached. Each
+  picture is anchored on its own frame, the same way as the first and the last frame.
+- In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
+  The Quality polish keeps the middle frames, at the polish size.
 
 ## PDMD mode
 

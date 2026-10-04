@@ -24,8 +24,9 @@ import torch
 
 import comfy.sd
 import node_helpers
-from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo
+from comfy_extras.nodes_minimax_h3 import align_frame_count
 
+from . import stubelius_keyframes as _keyframes
 from .muse_minimax_refine import (_execute_comfy_node, _fit_image_to_target, _refine_one_chunk,
                                   _unpack_node_result)
 
@@ -113,30 +114,40 @@ def _conditioning(chunk, bundle, clip, vae, previous):
         made_w, made_h = int(video.shape[-1]) * 16, int(video.shape[-2]) * 16
         how = bundle.get("resize_method") or "crop"
         first, last = keyframes.get("first"), keyframes.get("last")
+        middles = keyframes.get("middles") or []        # (frame index in the chunk, picture as uploaded)
         continues = isinstance(first, str)      # "previous": it starts on the last frame before it
         if continues:
             first = previous[-1:] if previous is not None else None
         # The text and the pictures the text encoder reads: exactly as when the chunk was made,
         # at the size it was made at.
-        positive = _unpack_node_result(_execute_comfy_node(
-            MiniMaxH3ImageToVideo, clip=clip, vae=vae, prompt=chunk["prompt"], width=made_w, height=made_h,
-            length=int(chunk["length"]),
-            first_frame=first if continues else _fit_image_to_target(first, made_w, made_h, how),
-            last_frame=_fit_image_to_target(last, made_w, made_h, how)))[0]
+        positive = _keyframes.conditioning(
+            _execute_comfy_node, _unpack_node_result, clip=clip, vae=vae, prompt=chunk["prompt"],
+            width=made_w, height=made_h, length=int(chunk["length"]),
+            first=first if continues else _fit_image_to_target(first, made_w, made_h, how),
+            last=_fit_image_to_target(last, made_w, made_h, how),
+            middles=[(index, _fit_image_to_target(picture, made_w, made_h, how)) for index, picture in middles],
+            in_text=keyframes.get("in_text", True))[0]
         # The keyframes themselves are frames of the video, so they have to be on the grid the
         # polish samples at: the same pictures again, at that size (a polished frame is already
         # there; an uploaded image is fitted from the original, not enlarged from the small copy).
-        pictures = [p for p in (first if continues else _fit_image_to_target(first, width, height, how),
-                                _fit_image_to_target(last, width, height, how)) if p is not None]
+        # Matched to the conditioning's keyframes by the frame each one sits on.
+        pictures = {}
+        if first is not None:
+            pictures[0] = first if continues else _fit_image_to_target(first, width, height, how)
+        for index, picture in middles:
+            pictures[int(index)] = _fit_image_to_target(picture, width, height, how)
+        if last is not None:
+            pictures[align_frame_count(max(5, int(chunk["length"]))) - 1] = _fit_image_to_target(last, width, height, how)
         if not pictures or (width, height) == (made_w, made_h):
             return positive
         made = list(positive[0][1].get("minimax_keyframes") or [])
-        if len(made) != len(pictures):
-            raise RuntimeError(f"[StubeliusPolish] {len(pictures)} keyframe picture(s) but the conditioning "
-                               f"holds {len(made)}: this ComfyUI's MiniMax H3 nodes changed, update the pack.")
+        if sorted(int(k["resolved_frame_index"]) for k in made) != sorted(pictures):
+            raise RuntimeError(f"[StubeliusPolish] keyframe pictures at frames {sorted(pictures)} but the conditioning "
+                               f"holds {sorted(int(k['resolved_frame_index']) for k in made)}: this ComfyUI's "
+                               f"MiniMax H3 nodes changed, update the pack.")
         resized = []
-        for keyframe, picture in zip(made, pictures):
-            picture = picture[:1, :, :, :3]
+        for keyframe in made:
+            picture = pictures[int(keyframe["resolved_frame_index"])][:1, :, :, :3]
             if tuple(picture.shape[1:3]) != (height, width):
                 picture = _fit_image_to_target(picture, width, height, "stretch")
             resized.append({**keyframe, "latent": vae.encode(picture)})

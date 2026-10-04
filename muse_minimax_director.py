@@ -85,6 +85,7 @@ from comfy_extras.nodes_resolution import AspectRatio, ASPECT_RATIOS
 from comfy_execution.graph import ExecutionBlocker
 
 from . import stubelius_lipsync as _lipsync
+from . import stubelius_keyframes as _keyframes
 
 log = logging.getLogger(__name__)
 
@@ -631,7 +632,8 @@ def _build_character_subjects(tdata: dict, target_w: int, target_h: int, resize_
     return ref_images, subject_lines, retention_meta, subject_number_by_char_index
 
 
-def _build_keyframe_alignment_line(has_first: bool, has_last: bool, last_shot_num: int, chunk_duration: float) -> str:
+def _build_keyframe_alignment_line(has_first: bool, has_last: bool, last_shot_num: int, chunk_duration: float,
+                                   middles=()) -> str:
     """Per MiniMax's own base-mode (T2VA/I2VA/FL2VA/L2VA) prompt guide: an opening
     sentence describing how the <Picture N> keyframe(s) actually align with the
     target video, exact phrasing per mode. T2VA (neither keyframe present) has no
@@ -640,8 +642,21 @@ def _build_keyframe_alignment_line(has_first: bool, has_last: bool, last_shot_nu
     MiniMaxH3ImageToVideo node appends images in (first_frame, then last_frame),
     so this must be called with has_first/has_last reflecting that exact pairing,
     not a fixed slot assumption — matches the same "dense fill order, not fixed
-    index" rule already used for every other tag-numbering path in this file."""
+    index" rule already used for every other tag-numbering path in this file.
+    Stubelius: `middles` = [(seconds into the chunk, shot number)] of the middle frames the text
+    encoder sees; they are numbered between the first and the last frame, in time order, the
+    order stubelius_keyframes.KeyframesToVideo hands the pictures over in."""
     end_ts = _format_timestamp(chunk_duration)
+    if middles:
+        parts = []
+        if has_first:
+            parts.append("`<Picture 1>` (from [Shot 1]) aligns with the 0.00-second mark")
+        for seconds, shot in middles:
+            parts.append(f"`<Picture {len(parts) + 1}>` (from [Shot {shot}]) aligns with the "
+                         f"{_format_timestamp(seconds)} mark")
+        if has_last:
+            parts.append(f"`<Picture {len(parts) + 1}>` (from [Shot {last_shot_num}]) aligns with the {end_ts} mark")
+        return "How the reference pictures align with the target video — " + "; ".join(parts) + "."
     if has_first and has_last:
         return (
             f"How the reference pictures align with the target video — `<Picture 1>` "
@@ -1177,6 +1192,12 @@ class MuseMinimaxDirector:
         first_frame = _fit_image_to_target(first_frame_source, width, height, resize_method)
         last_frame_source = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
         last_frame = _fit_image_to_target(last_frame_source, width, height, resize_method)
+        # Stubelius: up to two middle frames between them, each at its own time (stubelius_keyframes.py).
+        middle_frames = (_keyframes.load(tdata, _load_character_image, duration_seconds)
+                         if mode != MODE_REFERENCE else [])
+        for middle in middle_frames:
+            middle["picture"] = _fit_image_to_target(middle["source"], width, height, resize_method)
+        middles_in_text = bool(tdata.get("middle_frames_in_text", True))
         # Background/continuity-anchor slot: the next free dense position after however
         # many character images actually made it into char_ref_images — NOT a fixed index
         # — same reasoning as _build_character_subjects: H3 tags by iteration order, so
@@ -1367,6 +1388,7 @@ class MuseMinimaxDirector:
             prev_chunk_audio = None
             last_chunk_stage1_latent = None
             lip_sync_locked = False
+            claimed_middles = set()  # Stubelius: middle frames already placed in a chunk of this take
 
             for chunk_idx, chunk_segments in enumerate(buckets):
                 chunk_len_seconds = chunk_lengths[chunk_idx]
@@ -1475,6 +1497,7 @@ class MuseMinimaxDirector:
                 base_continuity_extra = ""
                 base_soundscape_note = ""
                 base_lip_sync_cue = ""
+                chunk_middles = []      # Stubelius: [(frame index in this chunk, middle frame)]
                 if use_hybrid_chunk:
                     chunk_first, chunk_last = prev_chunk_images[-1:], None
                     base_continuity_extra = (
@@ -1523,6 +1546,13 @@ class MuseMinimaxDirector:
                 elif mode != MODE_REFERENCE:
                     chunk_first = prev_chunk_images[-1:] if prev_chunk_images is not None else first_frame
                     chunk_last = last_frame if is_last_chunk else None
+                    if middle_frames:
+                        # A continuation chunk opens on the frames that are cut off again after
+                        # decoding (the same estimate the Lip Sync clock uses), then its new frames.
+                        lead = (min(int(carry_estimate), chunk_length - 1)
+                                if chunk_idx > 0 and prev_chunk_images is not None else 0)
+                        chunk_middles = _keyframes.in_chunk(middle_frames, claimed_middles, frames_done,
+                                                            visible_chunk_length, chunk_length, lead, is_last_chunk)
                     if prev_chunk_images is not None:
                         base_continuity_extra = (
                             " Continue the ongoing action naturally from this pose and framing — "
@@ -1879,7 +1909,9 @@ class MuseMinimaxDirector:
                         else:
                             base_shot_lines, base_last_shot = [f"[Shot 1] {silence_note}"], 1
                     keyframe_line = _build_keyframe_alignment_line(
-                        chunk_first is not None, chunk_last is not None, base_last_shot, chunk_len_seconds)
+                        chunk_first is not None, chunk_last is not None, base_last_shot, chunk_len_seconds,
+                        middles=[(index / 24.0, _keyframes.shot_at(chunk_segments, middle["time"]))
+                                 for index, middle in chunk_middles] if middles_in_text else ())
                     if keyframe_line:
                         keyframe_line += base_continuity_extra
                     # Pull the user's own Overall Soundscape / Non-Diegetic Music fields
@@ -1939,6 +1971,17 @@ class MuseMinimaxDirector:
                         ref_audios=chunk_ref_audios if chunk_ref_audios else None,
                     )
                     chunk_shifted_model = shifted_model
+                elif chunk_middles:
+                    # Stubelius: first frame, middle frames, last frame (stubelius_keyframes.py)
+                    out = _keyframes.conditioning(
+                        _execute_comfy_node, _unpack_node_result,
+                        clip=clip, vae=vae, prompt=chunk_prompt,
+                        width=width, height=height, length=chunk_length,
+                        first=chunk_first, last=chunk_last,
+                        middles=[(index, middle["picture"]) for index, middle in chunk_middles],
+                        in_text=middles_in_text,
+                    )
+                    chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
                 else:
                     out = _execute_comfy_node(
                         MiniMaxH3ImageToVideo,
@@ -2273,6 +2316,9 @@ class MuseMinimaxDirector:
                         "keyframes": {
                             "first": "previous" if continues else first_frame_source,
                             "last": last_frame_source if chunk_last is not None else None,
+                            # middle frames: (frame index in the chunk, the picture as uploaded)
+                            "middles": [(index, middle["source"]) for index, middle in chunk_middles],
+                            "in_text": middles_in_text,
                         } if keyframed else None,
                         # a Reference (Omni) chunk: its reference images; `anchor` names the one
                         # that is the last frame of the chunk before it
