@@ -33,7 +33,7 @@ const HIDDEN_WIDGET_NAMES = ["timeline_data"];
 // Per-chunk LoRA picker (V2): one shared list per page, amber above this total strength.
 const MMD_LORAS = { list: null, pending: false };
 const MMD_LORA_SUM_WARN = 2.0;
-const MMD_TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step/i;
+const MMD_TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe/i;
 const _loraShortName = (n) => (n || "").split(/[\\/]/).pop().replace(/\.safetensors$/i, "");
 const _loraFolder = (n) => { const i = Math.max((n || "").lastIndexOf("\\"), (n || "").lastIndexOf("/")); return i > 0 ? n.slice(0, i).replace(/\\/g, " / ") : "(loras root)"; };
 const BOXED_WIDGET_NAMES = [
