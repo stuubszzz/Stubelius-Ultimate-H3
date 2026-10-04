@@ -555,14 +555,20 @@ class StubeliusH3Finish:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        from .stubelius_v2 import StubeliusH3RefineV2
+        from .stubelius_v2 import StubeliusH3RefineV2, _hold_run_models, _release_held_models
+        _release_held_models()
         lat = takes["latents"]
-        images, audio = _unpack_node_result(StubeliusH3RefineV2().execute_v2(
-            model=models.preview(models.model(takes["kind"]), node_id), clip=models.clip(), vae=models.vae(),
-            audio_vae=models.audio_vae(), prompt=takes["prompt"], candidate=w,
-            upscale_method=method, polish_strength=strength, polish_steps=steps,
-            candidate_1_latent=lat[0], candidate_2_latent=lat[1], candidate_3_latent=lat[2],
-            candidate_4_latent=lat[3], ref_images=takes["ref_images"], polish_scale=scale))[:2]
+        model = models.preview(models.model(takes["kind"]), node_id)
+        try:
+            images, audio = _unpack_node_result(StubeliusH3RefineV2().execute_v2(
+                model=model, clip=models.clip(), vae=models.vae(),
+                audio_vae=models.audio_vae(), prompt=takes["prompt"], candidate=w,
+                upscale_method=method, polish_strength=strength, polish_steps=steps,
+                candidate_1_latent=lat[0], candidate_2_latent=lat[1], candidate_3_latent=lat[2],
+                candidate_4_latent=lat[3], ref_images=takes["ref_images"], polish_scale=scale))[:2]
+        except BaseException:
+            _hold_run_models(model)      # a cancelled polish: see _hold_run_models
+            raise
         _POLISH_MEMO.append((key, (images, audio)))
         del _POLISH_MEMO[:-2]
         return images, audio
@@ -582,8 +588,15 @@ class StubeliusH3Finish:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
-                        scale=scale)
+        from .stubelius_v2 import _hold_run_models, _release_held_models
+        _release_held_models()
+        try:
+            images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
+                            scale=scale)
+        except BaseException:
+            # a cancelled polish: every clone it made hangs off the bundle's cached models
+            _hold_run_models(*_PATCHED.values(), *_BASE.values())
+            raise
         _POLISH_MEMO.append((key, (images, takes["audio"][w - 1])))
         del _POLISH_MEMO[:-2]
         # two polished long takes are tens of GB: keep the older one only while both fit easily
