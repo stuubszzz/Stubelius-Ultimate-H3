@@ -73,6 +73,11 @@ models/vae/                minimax_h3_audio_vae_fp32.safetensors   (0.6 GB)
 models/loras/              minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors   (2 GB, speedup LoRA)
   https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors
 
+Optional, for PDMD mode (the Quality size in 4 steps):
+models/loras/              lora_model_0.safetensors from pdmd2026/pdmd_4NFE_lora   (1.4 GB, any name, e.g. pdmd_4nfe_lora.safetensors)
+  https://huggingface.co/pdmd2026/pdmd_4NFE_lora/resolve/main/lora_model_0.safetensors
+  then pick it as "pdmd lora" on the Models node. Use the file as published; the pack converts it on load.
+
 Optional live preview (watch the video form while it samples):
 models/vae_approx/         taeh3.safetensors
   https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)

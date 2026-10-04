@@ -1,7 +1,7 @@
 # Stubelius Ultimate H3
 
 One MiniMax H3 workflow for ComfyUI. You decide up front **how** the video is made
-(Speed, Hybrid or Quality) and **what comes out** (resolution, frame rate, upscaler). The
+(Speed, Hybrid, Quality or PDMD) and **what comes out** (resolution, frame rate, upscaler). The
 Director holds **what the video is**. Render 1–4 full seeds with sound, pick the winner, and
 only the winner gets finished.
 
@@ -12,9 +12,9 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 
 | Node | Job |
 |---|---|
-| **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA); 1–4 seeds |
-| **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, two global LoRAs, attention and low-VRAM options, live preview |
-| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, Hybrid and Quality up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
+| **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
+| **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
+| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
 | **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
@@ -68,6 +68,23 @@ by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The poli
 in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset, about 6 GB at
 1.5x. Long takes need a lot of RAM.
 
+## PDMD mode
+
+**PDMD** renders at the Quality size (≈768p) in 4 steps, with the 4-step LoRA from
+[PDMD](https://pdmd2026.github.io/) (Projected Distribution Matching Distillation, Apache-2.0), and the
+Output upscaler takes it to 1080p, 2K or 4K. There is no polish in this mode.
+
+Put PDMD's LoRA in `models/loras` as it is published: `lora_model_0.safetensors` from
+[pdmd2026/pdmd_4NFE_lora](https://huggingface.co/pdmd2026/pdmd_4NFE_lora) (1.4 GB), under any name,
+for example `pdmd_4nfe_lora.safetensors`. Pick it as **pdmd lora** on the Models node; in PDMD mode it
+takes the place of the speedup LoRA. The file uses Diffusers' names for H3's layers, which ComfyUI's
+LoRA loader doesn't know, so the pack converts it when it loads it (any H3 LoRA saved that way works in
+the LoRA slots now).
+
+Measured on an RTX 5090, 6.6 s clips at 1344x768 finished to 2K with DLSS5 + Color Lock: PDMD 100 s
+(67 s of it the 4-step render), Hybrid 85-99 s (at half the pixels), Quality with its 1.5x polish
+715-800 s.
+
 ## Install
 
 **ComfyUI Manager:** Install via Git URL → `https://github.com/stuubszzz/Stubelius-Ultimate-H3`, then restart.
@@ -118,6 +135,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/text_encoders` | `qwen3vl_32b_minimax_h3_int8_convrot.safetensors` (RTX 50-series: `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors`) |
 | `models/vae` | `minimax_h3_video_vae_fp16.safetensors`, `minimax_h3_audio_vae_fp32.safetensors` |
 | `models/loras` | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
+| `models/loras` | for PDMD mode: [`lora_model_0.safetensors`](https://huggingface.co/pdmd2026/pdmd_4NFE_lora/resolve/main/lora_model_0.safetensors) from pdmd2026/pdmd_4NFE_lora, any name |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
 
@@ -135,5 +153,7 @@ sampler step on and crawled. Other nodes keep the compiler.
 
 Built on [Muse Minimax Director V1.2](https://github.com/muse-collective-26/MiniMaxH3-Director-V1.2)
 by Muse Collective. MIT licensed, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+PDMD mode uses the 4-step LoRA by Zimo Wang et al. ([paper](https://arxiv.org/abs/2609.35768),
+[code](https://github.com/ZeamoxWang/pdmd), Apache-2.0), which is not included here.
 **Powered by MiniMax H3**: the model is MiniMax's and is used under the
 [MiniMax H3 Community License](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).

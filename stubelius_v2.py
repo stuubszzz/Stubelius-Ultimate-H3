@@ -20,12 +20,13 @@ import folder_paths
 from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
+from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
 
 log = logging.getLogger(__name__)
 
 # Turbo/distill LoRAs are paired with MODE's global steps/sampler, so they belong in the
 # main chain, never on a single chunk.
-TURBO_LORA_PATTERN = re.compile(r"turbo|lightx2v|taomate|fasth3|distill|lightning|step", re.I)
+TURBO_LORA_PATTERN = re.compile(r"turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe", re.I)
 _LORA_SD_CACHE = {}   # (path, mtime) -> state dict, so each file loads once per session
 
 
@@ -40,7 +41,10 @@ def _resolve_lora(name):
 def _lora_state_dict(path):
     key = (path, os.path.getmtime(path))
     if key not in _LORA_SD_CACHE:
-        _LORA_SD_CACHE[key] = comfy.utils.load_torch_file(path, safe_load=True)
+        sd, metadata = comfy.utils.load_torch_file(path, safe_load=True, return_metadata=True)
+        if is_diffusers_h3(sd):            # e.g. PDMD's LoRA as published: rewrite it for ComfyUI's H3
+            sd = convert_diffusers_h3(sd, metadata)
+        _LORA_SD_CACHE[key] = sd
     return _LORA_SD_CACHE[key]
 
 

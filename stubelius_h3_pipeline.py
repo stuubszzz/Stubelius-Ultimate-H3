@@ -1,7 +1,7 @@
 """Stubelius H3 pipeline nodes: Setup, Models and Finish.
 
 Setup   decides HOW the video is generated (mode presets, seed count, optional overrides).
-Output  decides what comes OUT: final resolution (Speed up to 2K, Hybrid and Quality up to 4K; the
+Output  decides what comes OUT: final resolution (Speed up to 2K, the other modes up to 4K; the
         mode decides how it gets there), final FPS, upscaler and the Quality polish. It feeds only Finish, never the Director, so changing it after a seed
         hunt re-runs only the finish.
 Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup LoRA, extra
@@ -29,12 +29,18 @@ from .stubelius_compiler import compiler_paused
 
 log = logging.getLogger(__name__)
 
-MODES = ["Speed", "Hybrid", "Quality"]
+MODES = ["Speed", "Hybrid", "Quality", "PDMD"]
 PRESETS = {
     "Speed":   dict(steps=8,  sampler="res_multistep", scheduler="simple", megapixels=0.4,  speedup_strength=1.0),
     "Hybrid":  dict(steps=10, sampler="euler",         scheduler="beta",   megapixels=0.5,  speedup_strength=0.75),
     "Quality": dict(steps=20, sampler="euler",         scheduler="beta",   megapixels=0.98, speedup_strength=0.0),
+    # PDMD's 4-step student (Projected Distribution Matching Distillation, Apache-2.0): Euler on H3's own
+    # 12/3 shift with the simple scheduler is its 4-step grid; H3 has no CFG anyway
+    "PDMD":    dict(steps=4,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=1.0),
 }
+PDMD_LORA_HELP = ("PDMD mode needs the PDMD 4-step LoRA: download lora_model_0.safetensors from "
+                  "huggingface.co/pdmd2026/pdmd_4NFE_lora into models/loras (e.g. as pdmd_4nfe_lora.safetensors) "
+                  "and pick it as pdmd_lora on the Models node.")
 UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock"]
 DLSS5_FACTORS = {1.5: "1.5x (Quality)", 1.724: "1.724x (Balanced)", 2.0: "2x (Performance)",
                  3.0: "3x (Ultra Performance)"}
@@ -55,9 +61,11 @@ SIZES_BY_MODE = {
     "Speed":   ["native (no upscale)", "720p", "1080p", "2K (1440p)"],             # ~480p render: 2K at most
     "Hybrid":  list(RESOLUTIONS),
     "Quality": ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # native is ~768p already
+    "PDMD":    ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the Quality size, no polish
 }
 # a size the mode doesn't offer -> the one it gets instead (switching mode, or an older workflow)
-SIZE_FALLBACK = {"Speed": {"4K (2160p)": "2K (1440p)"}, "Quality": {"720p": "native (no upscale)"}}
+SIZE_FALLBACK = {"Speed": {"4K (2160p)": "2K (1440p)"}, "Quality": {"720p": "native (no upscale)"},
+                 "PDMD": {"720p": "native (no upscale)"}}
 
 
 def _cls(name):
@@ -108,10 +116,12 @@ class StubeliusH3Setup:
         return {
             "required": {
                 "mode": (MODES, {"default": "Hybrid", "presets": PRESETS, "tooltip":
-                    "HOW the video is made; the Output node decides the size (Speed up to 2K, Hybrid and "
-                    "Quality up to 4K). Picking a mode fills the settings below with its preset. Speed: 0.4 MP, "
+                    "HOW the video is made; the Output node decides the size (Speed up to 2K, the other "
+                    "modes up to 4K). Picking a mode fills the settings below with its preset. Speed: 0.4 MP, "
                     "8 steps, turbo 1.0. Hybrid: 0.5 MP, 10 steps, turbo 0.75. Quality: 0.98 MP, 20 steps, "
-                    "no turbo, plus a 2x polish when the Output size is above what it rendered."}),
+                    "no turbo, plus a polish when the Output size is above what it rendered. PDMD: the Quality "
+                    "size in 4 steps with the PDMD LoRA (pdmd_lora on the Models node), no polish; the "
+                    "upscaler takes it to the Output size."}),
                 "seeds": ("INT", {"default": 1, "min": 1, "max": 4, "tooltip":
                     "How many full videos (with sound) to render. Pick one with WINNER on the Finish node "
                     "(WINNER 0 = hold after the seeds)."}),
@@ -163,7 +173,8 @@ class StubeliusH3Output:
                     "default": "1080p", "per_mode": SIZES_BY_MODE, "fallback": SIZE_FALLBACK, "tooltip":
                     "The sizes follow the Setup mode. Speed: native (≈480p) up to 2K, upscaled. Hybrid: native "
                     "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its polish "
-                    "(and the upscaler for what the polish doesn't reach). "
+                    "(and the upscaler for what the polish doesn't reach). PDMD: native (≈768p) up to 4K, "
+                    "upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
                     "per frame, so keep 4K clips short, especially at 48/60 fps."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
@@ -201,7 +212,7 @@ class StubeliusH3Output:
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
             quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x"):
-        mode = max(1, min(3, int(mode)))
+        mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
             size = SIZE_FALLBACK.get(name, {}).get(final_resolution, "1080p")
@@ -357,7 +368,13 @@ class StubeliusH3Models:
                 "live_preview": (tiny, {"default": _first_match(tiny, "taeh3_h3", "taeh3"),
                     "tooltip": "Tiny VAE (models/vae_approx) for the live preview on the Director while it "
                                "samples. off = ComfyUI's default preview."}),
-            }
+            },
+            "optional": {
+                "pdmd_lora": (loras, {"default": _first_match(loras, "pdmd_4nfe", "pdmd"), "tooltip":
+                    "Used instead of speedup_lora when the Setup mode is PDMD: the 4-step LoRA from "
+                    "huggingface.co/pdmd2026/pdmd_4NFE_lora (lora_model_0.safetensors, any file name). "
+                    "The file as published works; the pack converts its Diffusers names on load."}),
+            },
         }
 
     RETURN_TYPES = ("H3_MODELS",)
@@ -365,8 +382,12 @@ class StubeliusH3Models:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, setup, **cfg):
+    def run(self, setup, pdmd_lora="none", **cfg):
         cfg["speedup_strength"] = float(setup["speedup_strength"])
+        if setup.get("mode") == "PDMD":
+            if not pdmd_lora or pdmd_lora == "none":
+                raise ValueError("[StubeliusH3Models] " + PDMD_LORA_HELP)
+            cfg["speedup_lora"] = pdmd_lora        # the PDMD student replaces the turbo LoRA
         _prune(cfg)
         return (H3Models(cfg),)
 
