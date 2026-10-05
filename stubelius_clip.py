@@ -54,9 +54,12 @@ class Clip:
                    info["width"], info["height"], info.get("rotation", 0), info.get("source_fps", FPS),
                    info.get("has_audio", False))
 
-    def times(self, count=None):
-        """File times of the clip's frames on the 24 fps clock, the last `count` of them (all when None)."""
+    def times(self, count=None, from_start=False):
+        """File times of the clip's frames on the 24 fps clock: the last `count` of them, the first
+        `count` with from_start, all when None."""
         count = self.frames if count is None else max(1, min(int(count), self.frames))
+        if from_start:
+            return [self.first + k / FPS for k in range(count)]
         return [self.last - (count - 1 - k) / FPS for k in range(count)]
 
 
@@ -151,10 +154,11 @@ def _fit(batch, width, height):
     return comfy.utils.common_upscale(samples.movedim(-1, 1), width, height, "lanczos", "center").movedim(1, -1)
 
 
-def read(clip, width, height, count=None, out=None, batch=16):
-    """The clip's frames on the 24 fps clock (the last `count`, or all), fitted to width x height:
-    IMAGE [n, height, width, 3]. With `out` (a float tensor of that shape) they are written into it."""
-    targets = clip.times(count)
+def read(clip, width, height, count=None, out=None, batch=16, from_start=False):
+    """The clip's frames on the 24 fps clock (the last `count`, the first with from_start, or all),
+    fitted to width x height: IMAGE [n, height, width, 3]. With `out` (a float tensor of that shape)
+    they are written into it."""
+    targets = clip.times(count, from_start)
     n = len(targets)
     given = out is not None
     if not given:
@@ -162,7 +166,7 @@ def read(clip, width, height, count=None, out=None, batch=16):
     start = targets[0] - 1.0 / max(1.0, clip.source_fps) - 0.5
     picks, k, pending, done = {}, 0, [], 0
     previous = None
-    for t, frame in _decode(clip.path, start if count is not None else 0.0):
+    for t, frame in _decode(clip.path, start if count is not None and not from_start else 0.0):
         # each 24 fps time takes the frame nearest to it (a 24 fps clip: every frame once)
         while k < n and previous is not None and abs(previous[0] - targets[k]) <= abs(t - targets[k]):
             pending.append(previous[1])
@@ -210,14 +214,13 @@ def tail(clip, width, height, count, rate=None):
     return frames, under
 
 
-def sound(clip, seconds=None, rate=None):
-    """The clip's sound under its 24 fps frames (the last `seconds` of it, or all): AUDIO
-    {"waveform": [1, 2, samples], "sample_rate"}, padded with silence where the file's sound is
-    shorter. None for a clip without sound."""
-    if not clip.has_audio:
-        return None
+def decode_sound(path, rate=None, name=None):
+    """A file's sound, stereo: (waveform [2, samples], sample rate, file time of its first sample), or
+    None when it has none."""
     try:
-        with av.open(clip.path) as container:
+        with av.open(path) as container:
+            if not container.streams.audio:
+                return None
             stream = container.streams.audio[0]
             rate = int(rate or stream.sample_rate or 48000)
             begin = float(stream.start_time * stream.time_base) if stream.start_time is not None else 0.0
@@ -229,11 +232,23 @@ def sound(clip, seconds=None, rate=None):
             for out in resampler.resample(None):
                 parts.append(torch.from_numpy(out.to_ndarray()))
     except Exception as exc:
-        log.warning("[StubeliusClip] could not read the sound of %s: %s", clip.name, exc)
+        log.warning("[StubeliusClip] could not read the sound of %s: %s", name or os.path.basename(path), exc)
         return None
     if not parts:
         return None
-    wave = torch.cat(parts, dim=1).float()
+    return torch.cat(parts, dim=1).float(), rate, begin
+
+
+def sound(clip, seconds=None, rate=None, from_start=False):
+    """The clip's sound under its 24 fps frames (the last `seconds` of it, the first with from_start,
+    or all): AUDIO {"waveform": [1, 2, samples], "sample_rate"}, padded with silence where the file's
+    sound is shorter. None for a clip without sound."""
+    if not clip.has_audio:
+        return None
+    decoded = decode_sound(clip.path, rate, clip.name)
+    if decoded is None:
+        return None
+    wave, rate, begin = decoded
     total = int(round(clip.seconds * rate))
     span = torch.zeros((2, total), dtype=torch.float32)
     offset = int(round((clip.first - begin) * rate))       # where the clip's first frame is in the sound
@@ -241,5 +256,6 @@ def sound(clip, seconds=None, rate=None):
     length = max(0, min(wave.shape[1] - src0, total - dst0))
     span[:, dst0:dst0 + length] = wave[:, src0:src0 + length]
     if seconds is not None:
-        span = span[:, -max(1, min(total, int(round(float(seconds) * rate)))):]
+        keep = max(1, min(total, int(round(float(seconds) * rate))))
+        span = span[:, :keep] if from_start else span[:, -keep:]
     return {"waveform": span.unsqueeze(0), "sample_rate": rate}

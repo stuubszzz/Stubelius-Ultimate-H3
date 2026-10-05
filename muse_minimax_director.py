@@ -87,6 +87,7 @@ from comfy_execution.graph import ExecutionBlocker
 from . import stubelius_lipsync as _lipsync
 from . import stubelius_keyframes as _keyframes
 from . import stubelius_clip as _clip
+from . import stubelius_cues as _cues
 
 log = logging.getLogger(__name__)
 
@@ -1208,6 +1209,11 @@ class MuseMinimaxDirector:
         for middle in middle_frames:
             middle["picture"] = _fit_image_to_target(middle["source"], width, height, resize_method)
         middles_in_text = bool(tdata.get("middle_frames_in_text", False))
+        # Stubelius: sounds and clips pinned on the timeline, First/Last Frame mode (stubelius_cues.py)
+        cues = (_cues.load(tdata, _resolve_path, duration_seconds, width, height,
+                           getattr(audio_vae, "audio_sample_rate", 32000)) if mode != MODE_REFERENCE else [])
+        if mode == MODE_REFERENCE and tdata.get("cues"):
+            log.info("[StubeliusCues] sounds and clips on the timeline are First/Last Frame mode only; left out")
         # Stubelius: the clip's last frames and their sound, which the first chunk continues the way
         # a chunk continues the one before it.
         source_tail = source_sound = None
@@ -1450,6 +1456,11 @@ class MuseMinimaxDirector:
                 chunk_length = visible_chunk_length + continuation_extension
                 is_last_chunk = chunk_idx == num_chunks - 1
                 chunk_start_sec = chunk_bounds[chunk_idx][0]
+                # Stubelius: the sounds and clips this chunk pins, on the same clock as its middle frames
+                chunk_clips, chunk_sounds = (_cues.in_chunk(
+                    cues, frames_done, chunk_length,
+                    min(int(carry_estimate), chunk_length - 1) if prev_chunk_images is not None else 0,
+                    is_last_chunk) if cues else ([], []))
 
                 # Stubelius Lip Sync: this chunk on its own clock. A continuation chunk's clock starts
                 # on the frames it repeats from the chunk before it, ahead of its first new frame.
@@ -1471,7 +1482,8 @@ class MuseMinimaxDirector:
                 # timeline_data "quiet_chunk_note": false leaves the prompt as it was.
                 quiet_here = (prev_chunk_images is not None and not lip_sync_here
                               and not _lipsync.has_spoken_line(chunk_segments)
-                              and not _lipsync.mentions_voice(chunk_segments))
+                              and not _lipsync.mentions_voice(chunk_segments)
+                              and not chunk_sounds)        # a sound on the timeline may be a voice
                 if quiet_here and tdata.get("quiet_chunk_note", True):
                     silence_note = _lipsync.SILENT
                 # With the recording locked in, a spoken line's "[Shot N] At ..." time has to be when
@@ -2011,6 +2023,10 @@ class MuseMinimaxDirector:
                     # (already warned about above) only when model_fl2va isn't wired at all.
                     chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
                 positive, latent = _unpack_node_result(out)[:2]
+                if chunk_clips or chunk_sounds:
+                    # Stubelius: the sounds and clips on the timeline, pinned at their frames (stubelius_cues.py)
+                    positive = _cues.pin(_execute_comfy_node, _unpack_node_result, positive, latent, vae, audio_vae,
+                                         chunk_clips, chunk_sounds)
                 chunk_shifted_model = self._chunk_model(chunk_idx, chunk_shifted_model)
 
                 # vae_reencode_carry_test: replace the just-built empty/noise latent's

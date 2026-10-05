@@ -15,7 +15,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
 | **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not |
-| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames** (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
+| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, **sounds and clips** pinned on the timeline (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
@@ -100,6 +100,20 @@ without a cut.
 - A clip at another frame rate is read on H3's 24 fps clock, a clip without sound is continued in
   silence, and a phone clip is turned upright.
 - The Quality polish starts from the clip's frames too, so the join stays clean at the polished size.
+
+## Sounds and clips on the timeline
+
+In **First/Last Frame** mode a strip for sounds and clips runs under the frames above each chunk's
+timeline. Drop a sound or a short video clip on it and it is pinned at that second, with ComfyUI's
+**Add Guide for MiniMax H3**: the video is made around it.
+
+- **A sound** (a spoken line, a sound effect, music) plays from that second as it is. For a line,
+  write it in the CUT as usual; the lips follow the recording.
+- **A clip** plays its own frames from that second, and its own sound unless the speaker on it is
+  off. It is pinned for as many frames as H3's clip lengths allow (5, 22, 39, 56 ... frames) and
+  stays inside its chunk.
+- Drag a block to move it, × removes it; up to 8. A sound may run on into the next chunk.
+- The Quality polish doesn't pin them again: the take already plays them.
 
 ## PDMD mode
 
