@@ -496,17 +496,32 @@ def _clip_frames(info):
     return _clip.Clip.from_info(info).frames if info else 0
 
 
-def _with_clip(info, images, audio):
+def _with_clip(info, images, audio, enlarge=None):
     """The clip a take continues, then the take: the clip's frames on the 24 fps clock at the take's
-    finished size (only resized), and its sound in front of the take's."""
+    finished size, and its sound in front of the take's. A clip smaller than that goes through
+    `enlarge` (the Output node's upscaler) rather than a plain resize, so it comes as close to the
+    take's finish as it can without being rendered again."""
     from . import stubelius_clip as _clip
     clip = _clip.Clip.from_info(info)
     if not os.path.exists(clip.path):
         log.warning("[StubeliusH3Finish] the clip %s is gone; the video comes out without it", clip.name)
         return images, audio
     n = clip.frames
+    height, width = int(images.shape[1]), int(images.shape[2])
     joined = torch.empty((n + int(images.shape[0]),) + tuple(images.shape[1:]), dtype=images.dtype)
-    _clip.read(clip, int(images.shape[2]), int(images.shape[1]), out=joined[:n])
+    short = min(clip.width, clip.height)
+    if enlarge is not None and short < min(width, height):
+        # at its own size, in the take's shape, then the upscaler
+        scale = short / min(width, height)
+        own = _clip.read(clip, max(16, round(width * scale / 2) * 2), max(16, round(height * scale / 2) * 2))
+        own = enlarge(own)
+        if tuple(own.shape[1:3]) != (height, width):
+            from .muse_minimax_director import _fit_image_to_target
+            own = _fit_image_to_target(own, width, height, "stretch")
+        joined[:n] = own[:n]
+        del own
+    else:
+        _clip.read(clip, width, height, out=joined[:n])
     joined[n:] = images
     wave, rate = audio["waveform"], audio["sample_rate"]
     under = _clip.sound(clip, rate=rate)
@@ -590,9 +605,12 @@ class StubeliusH3Finish:
         if target:
             images = _fit(images, target)   # exact size (DLSS5 only scales 1.5x / 2x)
         if clip is not None:
-            # the clip in front, at the finished size, then the whole video to the final frame rate,
-            # so RIFE also draws the frames between the clip's last frame and the take's first
-            images, audio = _with_clip(clip, images, audio)
+            # the clip in front, at the finished size (through the same upscaler when it is smaller),
+            # then the whole video to the final frame rate, so RIFE also draws the frames between the
+            # clip's last frame and the take's first
+            enlarge = ((lambda frames: _fit(self._upscale(frames, target, o["upscaler"]), target))
+                       if target else None)
+            images, audio = _with_clip(clip, images, audio, enlarge)
             images, fps = _to_fps(images, o["fps"])
         log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s",
                  o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps,

@@ -239,10 +239,17 @@ def decode_sound(path, rate=None, name=None):
     return torch.cat(parts, dim=1).float(), rate, begin
 
 
+MIRROR_SECONDS = 0.25      # a gap this short between the sound and the frames is filled with the sound mirrored
+
+
 def sound(clip, seconds=None, rate=None, from_start=False):
     """The clip's sound under its 24 fps frames (the last `seconds` of it, the first with from_start,
-    or all): AUDIO {"waveform": [1, 2, samples], "sample_rate"}, padded with silence where the file's
-    sound is shorter. None for a clip without sound."""
+    or all): AUDIO {"waveform": [1, 2, samples], "sample_rate"}. None for a clip without sound.
+
+    A file's sound often stops a few frames before its picture (23 ms in an H3 render, 65 ms in the
+    same render at 30 fps). Silence there is a dropout right at the join, and it would be the last thing
+    the carry-over hears, so a short gap is filled with the sound around it, mirrored; a longer one
+    (sound that really stops) stays silent."""
     if not clip.has_audio:
         return None
     decoded = decode_sound(clip.path, rate, clip.name)
@@ -255,6 +262,12 @@ def sound(clip, seconds=None, rate=None, from_start=False):
     src0, dst0 = max(0, offset), max(0, -offset)
     length = max(0, min(wave.shape[1] - src0, total - dst0))
     span[:, dst0:dst0 + length] = wave[:, src0:src0 + length]
+    limit = int(MIRROR_SECONDS * rate)
+    tail = total - (dst0 + length)
+    if 0 < tail <= min(limit, length):
+        span[:, dst0 + length:] = span[:, dst0 + length - tail:dst0 + length].flip(-1)
+    if 0 < dst0 <= min(limit, length):
+        span[:, :dst0] = span[:, dst0:2 * dst0].flip(-1)
     if seconds is not None:
         keep = max(1, min(total, int(round(float(seconds) * rate))))
         span = span[:, :keep] if from_start else span[:, -keep:]
