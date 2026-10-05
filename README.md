@@ -99,7 +99,10 @@ without a cut.
   Changing it re-runs only the finish.
 - A clip at another frame rate is read on H3's 24 fps clock, a clip without sound is continued in
   silence, and a phone clip is turned upright.
-- The Quality polish starts from the clip's frames too, so the join stays clean at the polished size.
+- The Quality polish starts from the clip's frames too, so the motion runs on smoothly at the
+  polished size. The clip itself is only resized (with the Output's upscaler), so from the join on
+  the polished part shows more fine detail. For an even look, continue a clip at its own size, in
+  the mode it was made in.
 
 ## Sounds and clips on the timeline
 
