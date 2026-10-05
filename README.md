@@ -14,8 +14,8 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 |---|---|
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
-| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
-| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
+| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not |
+| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames** (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
@@ -83,6 +83,23 @@ the first frame to the last.
   so describe what happens on the way in the prompt.
 - In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
   The Quality polish follows the take through the middle frames.
+
+## Continue a clip
+
+In **First/Last Frame** mode the First Frame box also takes a video. Drop a clip there and the new
+video starts where the clip ends: the clip's last 1.6 s of picture and sound are carried in, the
+same way each chunk of a long video continues the one before it, so the motion and the sound go on
+without a cut.
+
+- The video is rendered at the clip's shape; the aspect ratio setting doesn't apply.
+- The timeline and the total duration are the new part. Middle frames and a Last Frame work as
+  usual, so a clip can be continued to a picture of your choice.
+- **clip in output** on the Output node puts the clip in front of the new part, as one video (its
+  own frames, only resized), or leaves it out, to place the new part after the clip in an editor.
+  Changing it re-runs only the finish.
+- A clip at another frame rate is read on H3's 24 fps clock, a clip without sound is continued in
+  silence, and a phone clip is turned upright.
+- The Quality polish starts from the clip's frames too, so the join stays clean at the polished size.
 
 ## PDMD mode
 

@@ -25,7 +25,8 @@ const { api } = window.comfyAPI.api;
 // sockets — First/Last Frame mode reuses Ref 1 / Ref 2 (the same character-slot UI) as its
 // first/last frame source instead, plus up to two middle frames between them (Stubelius:
 // timeline_data.middle_frames, dragged along a lane above each chunk's ruler; the placement rules
-// are in stubelius_middle_frames.js); the other reference slots don't apply in that mode.
+// are in stubelius_middle_frames.js); the other reference slots don't apply in that mode. A video
+// dropped on the First Frame box is a clip the video continues (timeline_data.source_clip).
 
 const MAX_CHARACTER_SLOTS = 9;
 const REF_AV_SLOTS = 3;
@@ -462,6 +463,14 @@ function injectStyles() {
     border-radius: 3px; padding: 0 4px; line-height: 14px;
   }
 
+  /* Stubelius: a clip in the First Frame box — the video continues it */
+  .mmd-char-preview video, .mmd-frame-thumb video {
+    width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
+  }
+  .mmd-clip-slot .mmd-char-preview { box-shadow: 0 0 0 1px #3fbf7f; }
+  .mmd-clip-note { font-size: 10.5px; color: #8fd6b0; text-align: center; margin-top: 5px; line-height: 1.35; }
+  .mmd-frame-clip .mmd-frame-thumb { border-color: #3fbf7f; }
+
   /* Reference video / audio slots */
   .mmd-av-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   .mmd-av-slot {
@@ -593,6 +602,26 @@ async function uploadRefFile(file) {
   const data = await resp.json();
   const subfolder = data.subfolder || "";
   return { file: subfolder ? subfolder + "/" + data.name : data.name, fileName: file.name };
+}
+
+// Stubelius: a video dropped on the First Frame box is a clip the video continues
+function isVideoFile(file) {
+  return (file?.type || "").startsWith("video/") || /\.(mp4|webm|mov|mkv|m4v|avi)$/i.test(file?.name || "");
+}
+
+// The clip's last frame (where the video continues from), as a still <video>
+function clipStill(clip, onDuration) {
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.addEventListener("loadedmetadata", () => {
+    if (!isFinite(video.duration)) return;
+    video.currentTime = Math.max(0, video.duration - 0.02);     // inside the last frame, not before it
+    onDuration?.(video.duration);
+  });
+  video.src = comfyViewUrl(clip.file);
+  return video;
 }
 
 function comfyViewUrl(entryFile) {
@@ -774,6 +803,10 @@ class MinimaxTimelineEditor {
     // Stubelius: up to two middle frames in First/Last Frame mode, each at its own time
     // (stubelius_middle_frames.js). Kept when the mode is Reference, used only in First/Last.
     if (!Array.isArray(parsed.middle_frames)) parsed.middle_frames = [];
+    // Stubelius: a clip in the First Frame box (First/Last Frame mode): {file, fileName}
+    if (parsed.source_clip && (typeof parsed.source_clip !== "object" || !parsed.source_clip.file)) {
+      delete parsed.source_clip;
+    }
     return parsed;
   }
 
@@ -1701,8 +1734,14 @@ class MinimaxTimelineEditor {
       return { m, time };
     };
 
+    const clip = this.timeline.source_clip;
     const first = this.timeline.characters[0];
-    if (chunkIdx === 0 && first && (first.file || first.image_b64)) {
+    if (chunkIdx === 0 && clip) {
+      // the clip the video continues: chunk 1 picks up from its last frame
+      const { m } = marker("mmd-frame-fixed mmd-frame-start mmd-frame-clip", {}, "Clip", start);
+      m.querySelector(".mmd-frame-thumb").appendChild(clipStill(clip));
+      m.title = "Continues your clip from its last frame";
+    } else if (chunkIdx === 0 && first && (first.file || first.image_b64)) {
       marker("mmd-frame-fixed mmd-frame-start", first, "First", start).m.title = "First Frame";
     }
     const last = this.timeline.characters[1];
@@ -2379,11 +2418,11 @@ class MinimaxTimelineEditor {
     if (isFL) {
       const note = document.createElement("div");
       note.className = "mmd-fl-note";
-      note.textContent = "First/Last Frame mode — the First Frame opens the video and the Last Frame ends it; up to two Middle frames are pictures it passes through on the way. Drag a middle frame along the timeline below to set when it's reached (or type its time, or drop a picture straight onto the timeline). Leave any of them empty to skip it. Reference video/audio don't apply in this mode.";
+      note.textContent = "First/Last Frame mode — the First Frame opens the video and the Last Frame ends it; up to two Middle frames are pictures it passes through on the way. Drag a middle frame along the timeline below to set when it's reached (or type its time, or drop a picture straight onto the timeline). Drop a video clip on the First Frame instead and the video continues that clip, picture and sound, from its last frame. Leave any of them empty to skip it. Reference video/audio don't apply in this mode.";
       this.refsArea.appendChild(note);
       const frameRow = document.createElement("div");
       frameRow.className = "mmd-char-row";
-      frameRow.appendChild(this._buildCharSlot(0, false, "First Frame"));
+      frameRow.appendChild(this.timeline.source_clip ? this._buildClipSlot() : this._buildCharSlot(0, false, "First Frame", true));
       for (let k = 0; k < MAX_MIDDLE_FRAMES; k++) frameRow.appendChild(this._buildMiddleSlot(k));
       frameRow.appendChild(this._buildCharSlot(1, false, "Last Frame"));
       this.refsArea.appendChild(frameRow);
@@ -3241,7 +3280,8 @@ class MinimaxTimelineEditor {
     }
   }
 
-  _buildCharSlot(idx, disabled = false, labelOverride = null) {
+  // takesClip (Stubelius): the First Frame box in First/Last Frame mode also takes a video clip
+  _buildCharSlot(idx, disabled = false, labelOverride = null, takesClip = false) {
     const isBg = idx === "bg";
     const data = isBg ? this.timeline.background : this.timeline.characters[idx];
     const filled = data && (data.file || data.image_b64);
@@ -3316,9 +3356,9 @@ class MinimaxTimelineEditor {
     } else {
       const placeholder = document.createElement("div");
       placeholder.className = "mmd-char-placeholder";
-      placeholder.innerHTML = `${ICON_UPLOAD}<br>Drop image`;
+      placeholder.innerHTML = `${ICON_UPLOAD}<br>${takesClip ? "Drop image or video" : "Drop image"}`;
       slot.appendChild(placeholder);
-      slot.addEventListener("click", () => this._promptFilePick(idx, isBg));
+      slot.addEventListener("click", () => this._promptFilePick(idx, isBg, takesClip));
     }
 
     slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#4F8EF7"; });
@@ -3327,20 +3367,92 @@ class MinimaxTimelineEditor {
       e.preventDefault();
       slot.style.borderColor = "";
       const file = e.dataTransfer.files?.[0];
-      if (file) await this._setSlotImage(idx, isBg, file);
+      if (file) await (takesClip ? this._setFirst(file) : this._setSlotImage(idx, isBg, file));
     });
 
     return slot;
   }
 
-  _promptFilePick(idx, isBg) {
+  _promptFilePick(idx, isBg, takesClip = false) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = takesClip ? "image/*,video/*" : "image/*";
     input.onchange = async () => {
-      if (input.files?.[0]) await this._setSlotImage(idx, isBg, input.files[0]);
+      const file = input.files?.[0];
+      if (file) await (takesClip ? this._setFirst(file) : this._setSlotImage(idx, isBg, file));
     };
     input.click();
+  }
+
+  // Stubelius: the First Frame box (First/Last Frame mode) — a picture opens the video, a video clip
+  // is continued from its last frame (timeline_data.source_clip; see stubelius_clip.py). One or the other.
+  async _setFirst(file) {
+    if (isVideoFile(file)) return this._setSourceClip(file);
+    delete this.timeline.source_clip;
+    return this._setSlotImage(0, false, file);
+  }
+
+  async _setSourceClip(file) {
+    try {
+      const uploaded = await uploadRefFile(file);
+      this.timeline.source_clip = { file: uploaded.file, fileName: uploaded.fileName };
+      this.timeline.characters[0] = null;
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    } catch (err) {
+      console.error("[MuseMinimaxDirector] clip upload failed", err);
+      alert("Clip upload failed — see console for details.");
+    }
+  }
+
+  // The First Frame box holding a clip: its last frame (where the video picks up) and its length.
+  // × removes it; another clip or a picture dropped on it takes its place.
+  _buildClipSlot() {
+    const clip = this.timeline.source_clip;
+    const slot = document.createElement("div");
+    slot.className = "mmd-char-slot mmd-clip-slot mmd-filled";
+    slot.title = clip.fileName || clip.file;
+
+    const label = document.createElement("div");
+    label.className = "mmd-char-label";
+    label.textContent = "First Frame — clip";
+    slot.appendChild(label);
+
+    const del = document.createElement("button");
+    del.className = "mmd-char-del";
+    del.innerHTML = "&times;";
+    del.title = "Remove the clip";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      delete this.timeline.source_clip;
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    });
+    slot.appendChild(del);
+
+    const note = document.createElement("div");
+    note.className = "mmd-clip-note";
+    note.textContent = "The video continues this clip";
+    const preview = document.createElement("div");
+    preview.className = "mmd-char-preview";
+    preview.appendChild(clipStill(clip, (seconds) => {
+      note.textContent = `Continues this ${seconds.toFixed(1)} s clip, at its shape. The timeline is the new part.`;
+    }));
+    slot.appendChild(preview);
+    slot.appendChild(note);
+
+    slot.addEventListener("click", () => this._promptFilePick(0, false, true));
+    slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#3fbf7f"; });
+    slot.addEventListener("dragleave", () => { slot.style.borderColor = ""; });
+    slot.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      slot.style.borderColor = "";
+      const file = e.dataTransfer.files?.[0];
+      if (file) await this._setFirst(file);
+    });
+    return slot;
   }
 
   async _setSlotImage(idx, isBg, file) {

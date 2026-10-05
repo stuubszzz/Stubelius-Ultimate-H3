@@ -592,6 +592,8 @@ def _refine_one_chunk(
     if carry_images is not None and carry_images.shape[0] > 0 and MiniMaxH3GeneratedAVMaskedContext is not None:
         carry_n = align_frame_count(min(int(carry_length), int(carry_images.shape[0])))
         tail_pixels = carry_images[-carry_n:]
+        # Stubelius: frames from a clip the video continues come at about this size, not exactly
+        tail_pixels = _fit_image_to_target(tail_pixels, int(tgt_w) * 16, int(tgt_h) * 16, "stretch")
         tail_video_latent = _unpack_node_result(_execute_comfy_node(
             VAEEncode, pixels=tail_pixels, vae=vae,
         ))[0]

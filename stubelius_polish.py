@@ -13,7 +13,7 @@ joined the originals:
   and its own LoRAs;
 - a chunk that continues the one before it starts from that chunk's polished last frame and
   holds its polished last frames (the Director's own carry-over), so a seam is polished as one
-  picture;
+  picture; the first chunk of a take that continues a clip starts from the clip's frames;
 - the same opening frames cut off each chunk and the same seam smoothing. The polished video
   has exactly the take's frames, so the take's own sound still fits it: the polish re-renders
   the picture and never the sound.
@@ -26,6 +26,7 @@ import comfy.sd
 import node_helpers
 from comfy_extras.nodes_minimax_h3 import align_frame_count
 
+from . import stubelius_clip as _clip
 from . import stubelius_keyframes as _keyframes
 from .muse_minimax_refine import (_execute_comfy_node, _fit_image_to_target, _refine_one_chunk,
                                   _unpack_node_result)
@@ -42,6 +43,12 @@ def chunks_of(candidate):
     """The chunks the Director kept for this take; [] for a take without them."""
     bundle = candidate.get(KEY) if isinstance(candidate, dict) else None
     return (bundle or {}).get("chunks") or []
+
+
+def source_of(candidate):
+    """The clip this take continues (stubelius_clip.Clip.info()), or None."""
+    bundle = candidate.get(KEY) if isinstance(candidate, dict) else None
+    return (bundle or {}).get("source")
 
 
 HEAVY_TOKENS = 100_000          # a polish with more video tokens than this gets the memory savers below
@@ -235,6 +242,14 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     # they came out; the rest of the video waits in 8 bits.
     keep = carry_length + 34 if carry_length else 1   # the carry is rounded up to the frame grid (+16 at most)
     out, done, previous, previous_audio = None, 0, None, None
+    if bundle.get("source"):
+        # A take that continues a clip: its first chunk starts from the clip's own frames, at about
+        # the polish size (the carry-over fits them exactly), as later chunks start from the ones before.
+        video = chunks[0]["latent"]["samples"].unbind()[0]
+        previous, previous_audio = _clip.tail(_clip.Clip.from_info(bundle["source"]),
+                                              round(int(video.shape[-1]) * 16 * scale),
+                                              round(int(video.shape[-2]) * 16 * scale), keep,
+                                              rate=getattr(audio_vae, "audio_sample_rate", None))
     for index, chunk in enumerate(chunks):
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
@@ -247,7 +262,8 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",
             positive=positive, trim_frames=int(chunk.get("trim") or 0))
         if previous is not None:
-            _smooth_seam(previous[-1:], images, bundle.get("seam_frames"))
+            seam_from = _fit_image_to_target(previous[-1:], int(images.shape[2]), int(images.shape[1]), "stretch")
+            _smooth_seam(seam_from, images, bundle.get("seam_frames"))
 
         # One 8-bit tensor for the whole video, filled chunk by chunk: 3 bytes a pixel instead of
         # 12 while the next chunks render (20 s polished for 2K: 6 GB instead of 25 GB, which

@@ -86,6 +86,7 @@ from comfy_execution.graph import ExecutionBlocker
 
 from . import stubelius_lipsync as _lipsync
 from . import stubelius_keyframes as _keyframes
+from . import stubelius_clip as _clip
 
 log = logging.getLogger(__name__)
 
@@ -1172,6 +1173,13 @@ class MuseMinimaxDirector:
         # First-Last-Frame image gets fit to this exact resolution via resize_method,
         # rather than leaving an aspect-ratio mismatch to whatever H3 does internally.
         width, height = _resolve_resolution(aspect_ratio, megapixels, multiple)
+        # Stubelius: a video in the First Frame box (First/Last Frame mode) is a clip this video
+        # continues, rendered at the clip's own shape (stubelius_clip.py).
+        source_clip = (_clip.open_clip(tdata.get("source_clip"), _resolve_path)
+                       if mode != MODE_REFERENCE else None)
+        if source_clip is not None:
+            width, height = _clip.render_size(source_clip, _coerce_locale_float(megapixels, 0.98), multiple)
+            log.info("[StubeliusClip] rendering at the clip's shape: %dx%d", width, height)
         char_ref_images, subject_lines, subject_retention_meta, subject_number_by_char_index = _build_character_subjects(
             tdata, width, height, resize_method)
         subject_count = len(subject_lines)
@@ -1189,6 +1197,8 @@ class MuseMinimaxDirector:
         # Stubelius: the images as uploaded are kept too, so the Quality polish can fit them
         # again at its own, larger size instead of enlarging the copies fitted here.
         first_frame_source = _load_character_image(characters_raw[0]) if len(characters_raw) > 0 and characters_raw[0] else None
+        if source_clip is not None:
+            first_frame_source = None       # Stubelius: the clip's last frame opens the video
         first_frame = _fit_image_to_target(first_frame_source, width, height, resize_method)
         last_frame_source = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
         last_frame = _fit_image_to_target(last_frame_source, width, height, resize_method)
@@ -1198,6 +1208,13 @@ class MuseMinimaxDirector:
         for middle in middle_frames:
             middle["picture"] = _fit_image_to_target(middle["source"], width, height, resize_method)
         middles_in_text = bool(tdata.get("middle_frames_in_text", False))
+        # Stubelius: the clip's last frames and their sound, which the first chunk continues the way
+        # a chunk continues the one before it.
+        source_tail = source_sound = None
+        if source_clip is not None:
+            source_tail, source_sound = _clip.tail(source_clip, width, height, align_frame_count(
+                max(int(vae_reencode_carry_length), _KEYFRAME_INJECTION_FRAMES)),
+                rate=getattr(audio_vae, "audio_sample_rate", None))
         # Background/continuity-anchor slot: the next free dense position after however
         # many character images actually made it into char_ref_images — NOT a fixed index
         # — same reasoning as _build_character_subjects: H3 tags by iteration order, so
@@ -1384,8 +1401,8 @@ class MuseMinimaxDirector:
             all_waveform = None
             audio_sample_rate = None
             compiled_prompts = []
-            prev_chunk_images = None
-            prev_chunk_audio = None
+            prev_chunk_images = source_tail     # Stubelius: the clip the video continues, if any
+            prev_chunk_audio = source_sound
             last_chunk_stage1_latent = None
             lip_sync_locked = False
             claimed_middles = set()  # Stubelius: middle frames already placed in a chunk of this take
@@ -1419,7 +1436,7 @@ class MuseMinimaxDirector:
                 # two individually-valid H3 frame counts don't necessarily sum to
                 # another valid one on its 17k+5 grid.
                 continuation_extension = 0
-                if chunk_idx > 0 and prev_chunk_images is not None:
+                if prev_chunk_images is not None:
                     # vae_reencode_carry_test uses its own requested carry length here
                     # instead of _KEYFRAME_INJECTION_FRAMES — the real amount actually
                     # protected (chunk_carry_trim_frames, set below once the masked-
@@ -1550,7 +1567,7 @@ class MuseMinimaxDirector:
                         # A continuation chunk opens on the frames that are cut off again after
                         # decoding (the same estimate the Lip Sync clock uses), then its new frames.
                         lead = (min(int(carry_estimate), chunk_length - 1)
-                                if chunk_idx > 0 and prev_chunk_images is not None else 0)
+                                if prev_chunk_images is not None else 0)
                         chunk_middles = _keyframes.in_chunk(middle_frames, claimed_middles, frames_done,
                                                             visible_chunk_length, chunk_length, lead, is_last_chunk)
                     if prev_chunk_images is not None:
@@ -2021,7 +2038,7 @@ class MuseMinimaxDirector:
                 # frozen region with the true high-res re-encode instead of leaving it as
                 # whatever the naive latent-space upscale + unprotected priming pass left
                 # behind. Both run together for two-stage; only this one for single-pass.
-                if vae_reencode_carry_test and chunk_idx > 0 and prev_chunk_images is not None:
+                if vae_reencode_carry_test and prev_chunk_images is not None:
                     carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
                     tail_pixels = prev_chunk_images[-carry_n:]
                     # prev_chunk_images is decoded from whatever resolution the previous
@@ -2068,7 +2085,7 @@ class MuseMinimaxDirector:
                 # latent frame sits that much before frames_done on the video's clock.
                 if lip_sync_here:
                     lead_frames = 0
-                    if chunk_idx > 0 and prev_chunk_images is not None:
+                    if prev_chunk_images is not None:
                         lead_frames = chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES
                         lead_frames = min(lead_frames, chunk_length - 1)
                     lock_start = max(0, frames_done - lead_frames) / 24.0
@@ -2234,7 +2251,7 @@ class MuseMinimaxDirector:
                         # Test 17 relies on. Only the future (unprotected) region actually
                         # denoises against low_sigmas below; the copied prefix rides through
                         # unchanged.
-                        if vae_reencode_carry_test and chunk_idx > 0 and prev_chunk_images is not None:
+                        if vae_reencode_carry_test and prev_chunk_images is not None:
                             carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
                             tail_pixels = prev_chunk_images[-carry_n:]
                             tail_video_latent = _unpack_node_result(_execute_comfy_node(
@@ -2279,7 +2296,8 @@ class MuseMinimaxDirector:
                 chunk_images = _unpack_node_result(_execute_comfy_node(VAEDecode, samples=sampled, vae=vae))[0]
                 chunk_audio = _unpack_node_result(_execute_comfy_node(VAEDecodeAudio, samples=sampled, vae=audio_vae))[0]
 
-                # Every continuation chunk (chunk_idx > 0) is keyframe-anchored to start
+                # Every continuation chunk (chunk 2 on, and chunk 1 of a video that continues a
+                # clip: prev_chunk_images is then the clip's last frames) is keyframe-anchored to start
                 # from the immediately preceding chunk's own last frame (see the
                 # <Picture N> first-frame anchor / hybrid first_frame above) — but its
                 # first _KEYFRAME_INJECTION_FRAMES frames are still a transient shaped by
@@ -2287,7 +2305,7 @@ class MuseMinimaxDirector:
                 # constant's own comment for why). Drop the whole block, not just the one
                 # duplicate first frame.
                 trim_n = 0
-                if chunk_idx > 0 and chunk_images.shape[0] > 1:
+                if prev_chunk_images is not None and chunk_images.shape[0] > 1:
                     # chunk_carry_trim_frames (vae_reencode_carry_test) is the amount
                     # MiniMaxH3GeneratedAVMaskedContext actually protected, after its own
                     # H3/audio-clock snapping — authoritative over the pre-generation
@@ -2356,7 +2374,7 @@ class MuseMinimaxDirector:
                 # length-changing math needed at all, and the two can never drift.
                 n_interp = int(seam_interpolation_frames) if seam_interpolation_frames else 0
                 mid_frame_count = 0
-                if chunk_idx > 0 and n_interp > 0 and new_frames.shape[0] > 1 and prev_chunk_images is not None:
+                if n_interp > 0 and new_frames.shape[0] > 1 and prev_chunk_images is not None:
                     if RIFE_VFI is None:
                         log.warning("[MuseMinimaxDirector] seam_interpolation_frames=%d but the RIFE VFI "
                                     "node (ComfyUI-Frame-Interpolation) isn't installed — skipping seam "
@@ -2504,6 +2522,8 @@ class MuseMinimaxDirector:
                         "carry_length": int(vae_reencode_carry_length) if vae_reencode_carry_test else 0,
                         "seam_frames": int(seam_interpolation_frames or 0),
                         "resize_method": resize_method,
+                        # the clip the take continues (stubelius_clip.py), for the polish and the Finish
+                        "source": source_clip.info() if source_clip is not None else None,
                     }
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
