@@ -82,7 +82,7 @@ the first frame to the last.
   ComfyUI's own multiframe template. The text encoder sees the first and the last frame, as before,
   so describe what happens on the way in the prompt.
 - In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
-  The Quality polish keeps the middle frames, at the polish size.
+  The Quality polish follows the take through the middle frames.
 
 ## PDMD mode
 

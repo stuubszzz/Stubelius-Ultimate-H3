@@ -114,7 +114,11 @@ def _conditioning(chunk, bundle, clip, vae, previous):
         made_w, made_h = int(video.shape[-1]) * 16, int(video.shape[-2]) * 16
         how = bundle.get("resize_method") or "crop"
         first, last = keyframes.get("first"), keyframes.get("last")
-        middles = keyframes.get("middles") or []        # (frame index in the chunk, picture as uploaded)
+        # Middle frames: (frame index in the chunk, picture as uploaded). Those pinned with Add Guide
+        # are left out: the take already passes through them, and pinned again at the polish size
+        # one pulls the 4 frames of its latent toward the picture, so the video jumps there and
+        # back. Those the text encoder read stay, as the prompt names them.
+        middles = (keyframes.get("middles") or []) if keyframes.get("in_text", False) else []
         continues = isinstance(first, str)      # "previous": it starts on the last frame before it
         if continues:
             first = previous[-1:] if previous is not None else None
