@@ -8,6 +8,11 @@ plays as it is, with its own sound unless "sound" is false.
 
 - A clip is pinned from its first frame, as long as H3's clip lengths allow (5, 22, 39, ... frames:
   17k + 5). It goes in the chunk whose new frames hold its start and has to fit in that chunk.
+- A clip starts on H3's 17-frame grid (every 17/24 s): H3's video comes in groups of 17 frames, a token
+  of 1 frame and four of 4, and so does a clip pinned with Add Guide. Pinned between two group starts,
+  its tokens meet the video's out of step and the frames where they meet come out grey (measured: a
+  wave clip at frame 72 matched its frames at 28 dB with two frames at 17 dB; at frame 68, 33 dB on
+  every frame). So a clip moves to the nearest group start in its chunk, its own sound with it.
 - A sound plays from its second to its end. Where it runs into the next chunk, each chunk pins its own
   part. Sounds that overlap are mixed into one.
 - The Quality polish doesn't pin them again: the take already plays them (stubelius_polish.py).
@@ -25,6 +30,7 @@ log = logging.getLogger(__name__)
 
 FPS = 24
 MAX_CUES = 8
+GRID = 17          # frames in one of H3's token groups: a clip starts on a multiple of it in its chunk
 
 
 def clip_length(frames):
@@ -94,30 +100,50 @@ def load(tdata, resolve_path, duration_seconds, width, height, rate):
     return found
 
 
+def grid_start(index, frames, chunk_length, lead):
+    """The chunk frame a clip of `frames` frames asked for at chunk frame `index` starts on: the nearest
+    start of a 17-frame group after the carried-over frames (`lead`), or the one before it where the
+    clip would run past the chunk from there. None when it runs past the chunk where it was asked, or
+    no group start fits."""
+    if index + frames > chunk_length:
+        return None
+    first = -(-int(lead) // GRID) * GRID
+    at = max(int(round(index / GRID)) * GRID, first)
+    if at + frames > chunk_length:
+        at -= GRID
+    return at if at >= first else None
+
+
 def in_chunk(cues, frames_done, chunk_length, lead, is_last_chunk):
     """What this chunk pins: ([(frame index in the chunk, clip frames)], [(frame index, AUDIO)]).
 
     frames_done = frames of the finished video before this chunk's first new frame; lead = frames it
     opens with that are cut off again (a continuation's carry-over), so video frame g is chunk frame
     g - frames_done + lead. A clip lands in the chunk that holds its first frame (the last chunk takes
-    what is left) and has to fit; a sound is pinned where it plays in this chunk's new frames, the
-    overlapping ones mixed."""
+    what is left), on the nearest group start where it fits (grid_start); a sound is pinned where it
+    plays in this chunk's new frames, the overlapping ones mixed."""
     end = math.inf if is_last_chunk else frames_done + chunk_length - lead   # the video frame after this chunk's
     clips, parts = [], []
     for cue in cues:
+        frame = cue.frame
         if cue.kind == "clip":
             if not frames_done <= cue.frame < end:
                 continue
-            index = cue.frame - frames_done + lead
-            if index + cue.frames > chunk_length:
+            asked = cue.frame - frames_done + lead
+            index = grid_start(asked, cue.frames, chunk_length, lead)
+            if index is None:
                 log.warning("[StubeliusCues] the clip %s at %.2f s (%d frames) runs past its chunk; left out",
                             cue.name, cue.time, cue.frames)
                 continue
+            frame = index + frames_done - lead
+            if index != asked:
+                log.info("[StubeliusCues] the clip %s starts at %.2f s (%+d frames), on H3's 17-frame grid",
+                         cue.name, frame / FPS, index - asked)
             clips.append((index, cue.pictures))
         if cue.sound is None:
             continue
         rate, wave = cue.sound["sample_rate"], cue.sound["waveform"]
-        start = cue.frame / FPS                                     # seconds of the video
+        start = frame / FPS                                         # seconds of the video
         here0, here1 = max(start, frames_done / FPS), min(start + wave.shape[-1] / rate, end / FPS)
         index = int(round(here0 * FPS)) - frames_done + lead
         if here1 <= here0 or index >= chunk_length:

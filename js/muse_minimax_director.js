@@ -3,7 +3,7 @@ import {
   snapToNearest,
 } from "./stubelius_middle_frames.js";
 import {
-  MAX_CUES, clipFrames, cueSeconds, isCueFile, cueKindOf, normalizeCues, clampCueTime,
+  MAX_CUES, clipFrames, cueSeconds, isCueFile, cueKindOf, normalizeCues, clampCueTime, clipGridOffset,
 } from "./stubelius_cues.js";
 
 const { app } = window.comfyAPI.app;
@@ -868,6 +868,24 @@ class MinimaxTimelineEditor {
     list.length = 0;
     list.push(...kept);
     return list;
+  }
+
+  // Stubelius: clips start on H3's 17-frame groups. A video that continues a clip opens on carried-over
+  // frames (22, or the carry length), which moves the groups on its clock.
+  _clipGridOffset() {
+    if (!this.timeline.source_clip) return 0;
+    const carry = this.realWidgets?.vae_reencode_carry_test?.value
+      ? Number(this.realWidgets?.vae_reencode_carry_length?.value) || 39 : 22;
+    return clipGridOffset(carry);
+  }
+
+  // ... so the clips move with them when the video starts or stops continuing a clip
+  _snapClipCues() {
+    const bounds = this._chunkBoundsSeconds();
+    const offset = this._clipGridOffset();
+    for (const cue of this._cues()) {
+      if (cue.kind === "clip") cue.time = clampCueTime(cue, cue.time, bounds, this.durationSeconds, offset);
+    }
   }
 
   commitChanges() {
@@ -1901,6 +1919,7 @@ class MinimaxTimelineEditor {
       label.textContent = `${what} \u00B7 ${this._formatDuration(cue.time)}`;
       block.appendChild(label);
       block.title = `${cue.fileName || cue.file}: drag to move it`
+        + (cue.kind === "clip" ? " (a clip starts on H3's 17-frame grid, every 0.71 s)" : "")
         + (runsOn ? " (it plays on into the next chunk)" : "");
 
       const del = document.createElement("button");
@@ -1941,7 +1960,8 @@ class MinimaxTimelineEditor {
         block.classList.add("mmd-dragging");
         const onMove = (ev) => {
           const t = start + ((ev.clientX - rect.left) / rect.width) * span - grab;
-          cue.time = clampCueTime(cue, Math.min(end - 0.1, Math.max(start, t)), bounds, this.durationSeconds);
+          cue.time = clampCueTime(cue, Math.min(end - 0.1, Math.max(start, t)), bounds, this.durationSeconds,
+            this._clipGridOffset());
           place(block, cue);
           label.textContent = `${what} \u00B7 ${this._formatDuration(cue.time)}`;
         };
@@ -2021,7 +2041,7 @@ class MinimaxTimelineEditor {
           v.src = URL.createObjectURL(file);
         });
       }
-      cue.time = clampCueTime(cue, t, this._chunkBoundsSeconds(), this.durationSeconds);
+      cue.time = clampCueTime(cue, t, this._chunkBoundsSeconds(), this.durationSeconds, this._clipGridOffset());
       list.push(cue);
       this._cues();
       this.commitChanges();
@@ -3612,7 +3632,10 @@ class MinimaxTimelineEditor {
   // is continued from its last frame (timeline_data.source_clip; see stubelius_clip.py). One or the other.
   async _setFirst(file) {
     if (isVideoFile(file)) return this._setSourceClip(file);
-    delete this.timeline.source_clip;
+    if (this.timeline.source_clip) {
+      delete this.timeline.source_clip;
+      this._snapClipCues();
+    }
     return this._setSlotImage(0, false, file);
   }
 
@@ -3621,6 +3644,7 @@ class MinimaxTimelineEditor {
       const uploaded = await uploadRefFile(file);
       this.timeline.source_clip = { file: uploaded.file, fileName: uploaded.fileName };
       this.timeline.characters[0] = null;
+      this._snapClipCues();
       this.commitChanges();
       this.renderReferences();
       this.renderTimeline();
@@ -3650,6 +3674,7 @@ class MinimaxTimelineEditor {
     del.addEventListener("click", (e) => {
       e.stopPropagation();
       delete this.timeline.source_clip;
+      this._snapClipCues();
       this.commitChanges();
       this.renderReferences();
       this.renderTimeline();
