@@ -78,9 +78,9 @@ the first frame to the last.
   video reaches it, or type the second in its box.
 - Middle frames stay half a second apart, and half a second from the first and the last frame. A
   CUT edge dragged close to one snaps onto it, so a CUT can run from one frame to the next.
-- The text encoder sees the pictures in time order (`<Picture 1>` is the first frame, then the middle
-  frames, then the last frame), and the prompt says at which second each one is reached. Each
-  picture is anchored on its own frame, the same way as the first and the last frame.
+- Each middle frame is pinned on its own frame with ComfyUI's **Add Guide for MiniMax H3**, as in
+  ComfyUI's own multiframe template. The text encoder sees the first and the last frame, as before,
+  so describe what happens on the way in the prompt.
 - In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
   The Quality polish keeps the middle frames, at the polish size.
 

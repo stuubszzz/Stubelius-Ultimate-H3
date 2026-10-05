@@ -1197,7 +1197,7 @@ class MuseMinimaxDirector:
                          if mode != MODE_REFERENCE else [])
         for middle in middle_frames:
             middle["picture"] = _fit_image_to_target(middle["source"], width, height, resize_method)
-        middles_in_text = bool(tdata.get("middle_frames_in_text", True))
+        middles_in_text = bool(tdata.get("middle_frames_in_text", False))
         # Background/continuity-anchor slot: the next free dense position after however
         # many character images actually made it into char_ref_images — NOT a fixed index
         # — same reasoning as _build_character_subjects: H3 tags by iteration order, so

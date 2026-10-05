@@ -6,11 +6,12 @@ puts each one in the chunk whose new frames hold that moment, on the same clock 
 (a chunk that continues the video opens on frames that are cut off again after decoding).
 
 MiniMax H3 anchors a keyframe anywhere on the video's time axis: the first and last frame are two such
-anchors, and ComfyUI's own "Add Guide for MiniMax H3" places more. By default the text encoder also sees
-the middle pictures, as <Picture 2>, <Picture 3> between the first and the last frame, the way it sees
-those two, and the prompt says at which second each one is reached. timeline_data
-"middle_frames_in_text": false anchors them with Add Guide alone (the text encoder then sees only the
-first and last frame), for A/B renders.
+anchors, and ComfyUI's own "Add Guide for MiniMax H3" places more, one per middle frame; the text encoder
+sees only the first and last frame, as in ComfyUI's own multiframe template. timeline_data
+"middle_frames_in_text": true also shows the middle pictures to the text encoder, as <Picture 2>,
+<Picture 3> between the first and the last frame, with the second each one is reached in the prompt.
+That is not the default: in a chunk that continues the video it made Quality and Hybrid stall and
+then jump to the middle frame, and Add Guide alone reaches the same picture without the jump.
 """
 import logging
 
@@ -133,7 +134,7 @@ class KeyframesToVideo:
 
 
 def conditioning(execute, unpack, clip, vae, prompt, width, height, length, first=None, last=None,
-                 middles=(), in_text=True):
+                 middles=(), in_text=False):
     """(positive, latent) for one chunk made from keyframes. middles = [(frame index in the chunk, picture)].
     `execute` / `unpack` = the caller's node runner (the Director's and the polish's own)."""
     if not middles:

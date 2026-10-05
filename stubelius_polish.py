@@ -126,7 +126,7 @@ def _conditioning(chunk, bundle, clip, vae, previous):
             first=first if continues else _fit_image_to_target(first, made_w, made_h, how),
             last=_fit_image_to_target(last, made_w, made_h, how),
             middles=[(index, _fit_image_to_target(picture, made_w, made_h, how)) for index, picture in middles],
-            in_text=keyframes.get("in_text", True))[0]
+            in_text=keyframes.get("in_text", False))[0]
         # The keyframes themselves are frames of the video, so they have to be on the grid the
         # polish samples at: the same pictures again, at that size (a polished frame is already
         # there; an uploaded image is fitted from the original, not enlarged from the small copy).
