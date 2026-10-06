@@ -14,7 +14,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 |---|---|
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
-| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not |
+| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not, **de-stutter** |
 | **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, **sounds and clips** pinned on the timeline (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
@@ -120,6 +120,25 @@ timeline. Drop a sound or a short video clip on it and it is pinned at that seco
   come out grey) and stays inside its chunk.
 - Drag a block to move it, × removes it; up to 8. A sound may run on into the next chunk.
 - The Quality polish doesn't pin them again: the take already plays them.
+
+## De-stutter
+
+Some takes judder: the picture holds still for a frame in a steady rhythm while the rest moves, "move, move,
+hold" (every third frame almost a copy of the one before, like 16 fps footage stretched to 24) or "move,
+hold". It shows most in Speed mode: a 15 s Speed take measured 95 held frames, one every 3 frames, where PDMD
+on the same seed had none. RIFE to 48/60 fps doesn't fix it; it only splits each jump in two.
+
+**de-stutter** on the Output node finds the held frames and RIFE draws them again on the way to the next pose,
+so the motion runs evenly. A held picture is one pose shown twice: it is placed halfway between its two frames
+and both are drawn again. Every other frame stays as it was rendered, the length and the sound stay as they
+were, and nothing is drawn across a hard cut.
+
+- **auto** (the default) acts only on takes that judder (held frames on at least 8% of the moving steps);
+  **on** takes every held frame it finds; **off** never.
+- The **Seed Previews** node puts it on the seed previews too, so the seed you pick looks the way it will in the
+  finished video. Changing the switch re-runs only the previews and the Finish, never the seeds.
+- On the Speed take above: roughness (how unevenly the picture moves from frame to frame) 0.83 before, 0.23
+  after, against 0.27 for PDMD.
 
 ## PDMD mode
 

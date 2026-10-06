@@ -207,6 +207,13 @@ class StubeliusH3Output:
                     "First/Last Frame mode with a video clip in the First Frame box: put the clip itself "
                     "in front of the video that continues it, as one file (its frames are only resized), "
                     "or give the new part alone, to place after the clip in an editor."}),
+                "de_stutter": (["auto", "on", "off"], {"default": "auto", "tooltip":
+                    "Some takes judder: the picture holds still for a frame in a steady rhythm (move, move, "
+                    "hold), most of all in Speed mode. De-stutter finds those held frames and RIFE draws them "
+                    "again on the way to the next pose, so the motion runs evenly; every other frame, the "
+                    "length and the sound stay as they were. auto = only takes that judder; on = every held "
+                    "frame found; off = never. It applies to the seed previews and the Finish, and changing "
+                    "it re-runs only those."}),
             }
         }
 
@@ -216,7 +223,8 @@ class StubeliusH3Output:
     CATEGORY = "Stubelius"
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
-            quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True):
+            quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
+            de_stutter="auto"):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -226,7 +234,8 @@ class StubeliusH3Output:
         o = dict(mode=mode, resolution=final_resolution, fps=float(final_fps), upscaler=upscaler,
                  polish_strength=quality_polish_strength, polish_steps=quality_polish_steps,
                  polish_method=_polish_methods().get(quality_polish_method, quality_polish_method),
-                 polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output))
+                 polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output),
+                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto")
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -594,6 +603,9 @@ class StubeliusH3Finish:
         if target and _short(images) > target:
             # e.g. Quality 2K: the polish comes out above 1440p. Downscale before RIFE (less work).
             images = _fit(images, target)
+        # held frames drawn again (stubelius_destutter.py): the take only, before RIFE and the upscale
+        from .stubelius_destutter import destutter
+        images = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")[0]
 
         fps = SOURCE_FPS
         if clip is None:
@@ -730,6 +742,32 @@ class StubeliusLivePreview:
         return ()
 
 
+class StubeliusSeedPreviews:
+    """The seeds for their previews, with the Output node's de-stutter applied, so the seed you pick looks
+    the way it will in the finished video. It reads the Director's takes, not the Director itself: changing
+    the switch re-runs only this node, the previews and the Finish, never the seeds."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)}}
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("seed_1", "seed_2", "seed_3", "seed_4")
+    FUNCTION = "run"
+    CATEGORY = "Stubelius"
+
+    def run(self, takes, output):
+        from .stubelius_destutter import destutter
+        mode = output.get("de_stutter", "auto")
+        out = []
+        for i, images in enumerate(list(takes["images"])[:4]):
+            if images is None or i >= takes["count"] or images.shape[0] < 4:
+                out.append(images)            # a seed that wasn't rendered: its empty frames, as before
+            else:
+                out.append(destutter(images, mode, label=f"seed {i + 1}: ")[0])
+        return tuple(out)
+
+
 NODE_CLASS_MAPPINGS = {
     "StubeliusTheme": StubeliusTheme,
     "StubeliusLivePreview": StubeliusLivePreview,
@@ -737,6 +775,7 @@ NODE_CLASS_MAPPINGS = {
     "StubeliusH3Output": StubeliusH3Output,
     "StubeliusH3Models": StubeliusH3Models,
     "StubeliusH3Finish": StubeliusH3Finish,
+    "StubeliusSeedPreviews": StubeliusSeedPreviews,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "StubeliusTheme": "Stubelius Theme (this workflow)",
@@ -745,4 +784,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "StubeliusH3Output": "Stubelius H3 Output",
     "StubeliusH3Models": "Stubelius H3 Models",
     "StubeliusH3Finish": "Stubelius H3 Finish",
+    "StubeliusSeedPreviews": "Stubelius Seed Previews (de-stutter)",
 }
