@@ -111,15 +111,35 @@ timeline. Drop a sound or a short video clip on it and it is pinned at that seco
 **Add Guide for MiniMax H3**: the video is made around it.
 
 - **A sound** (a spoken line, a sound effect, music) plays from that second as it is. For a line,
-  write it in the CUT as usual; the lips follow the recording. A sound doesn't move the picture on its
-  own, though: H3 still times the action from the CUT's words. For a reaction right on the sound, pin
-  a middle frame of it just after (a door slam at 3.0 s, a frame of her looking back at 3.3 s).
+  type the same words in the CUT, in quotes, at that moment: the recording gives the words and the
+  CUT tells H3 that someone is talking. Without the words in the CUT the lips may not follow. In our
+  tests every word landed within about 40 ms of its pin and the lips followed. A sound doesn't move the
+  picture on its own, though: H3 still times the action from the CUT's words. For a reaction right on
+  the sound, pin a middle frame of it just after (a door slam at 3.0 s, a frame of her looking back at
+  3.3 s).
 - **A clip** plays its own frames from that second, and its own sound unless the speaker on it is
   off. It is pinned for as many frames as H3's clip lengths allow (5, 22, 39, 56 ... frames), starts
   on H3's 17-frame grid (every 0.71 s, the strip snaps it there: between two grid points its frames
   come out grey) and stays inside its chunk.
 - Drag a block to move it, × removes it; up to 8. A sound may run on into the next chunk.
 - The Quality polish doesn't pin them again: the take already plays them.
+
+## Voices: a recorded line, a voice sample, Lip Sync
+
+| You have | Where it goes | What the character says |
+|---|---|---|
+| A recording of the exact line | First/Last Frame mode: the sound strip, at its second (type the words in the CUT too). Or Reference (Omni) mode: a reference audio set to **Lip Sync**, for the whole video's sound | The recording, word for word |
+| A voice sample and new words | Reference (Omni) mode: the sample in **Ref Audio N** next to the character's picture in **Ref N**, set to **Voice Reference — new dialogue, same voice**; type the new line in the CUT | The CUT's words, in a voice like the sample's |
+| A voice sample, and the voice has to match closely | Make the line first with a voice-clone TTS (for example the LongCat AudioDiT, Fish Audio S2 or VoxCPM2 nodes), then use it as a recording (first row) | The cloned line |
+
+- **Voice Reference reaches the first chunk only.** Past one chunk, a Reference (Omni) video continues on
+  the First/Last Frame checkpoint (hybrid continuation, switched on by itself), which takes no audio; the
+  later chunks carry the voice on from the last 1.6 s of the chunk before, not from the sample. For longer
+  dialogue, clone the lines and use Lip Sync, which reaches every chunk.
+- **Lip Sync or a line on the strip.** Lip Sync makes the recording the video's whole sound: every chunk
+  follows it and the finished video plays the file itself, with nothing generated under it.
+  **Transcribe → Insert as Timed CUTs** types its words into the CUTs. A line on the strip is one sound
+  at its second, in a video whose other sound H3 makes.
 
 ## De-stutter
 
@@ -139,6 +159,18 @@ were, and nothing is drawn across a hard cut.
   finished video. Changing the switch re-runs only the previews and the Finish, never the seeds.
 - On the Speed take above: roughness (how unevenly the picture moves from frame to frame) 0.83 before, 0.23
   after, against 0.27 for PDMD.
+
+## Jagged or smeared motion
+
+- **Judder** (a held frame every second or third frame): Speed mode's takes do it most. **de-stutter**
+  (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. 48/60 fps
+  alone doesn't fix it.
+- **Fast, small motion smears** (fingers, hands): render in PDMD instead of Speed. At Speed's ≈480p a
+  finger is a few pixels wide; PDMD renders ≈768p in 4 steps and fixes most of it.
+- **Jerky after pinning a line**, things to check: the CUT has the line's exact words and keeps the action
+  light while the character speaks; the line stays inside one chunk; the recording has no hard cuts, long
+  pauses or clipping (short fades, peaks around -3 dBFS). And try two or three seeds: any pin changes the
+  whole take, so the same seed with a pin is a different take.
 
 ## PDMD mode
 
