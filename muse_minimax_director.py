@@ -2726,8 +2726,7 @@ _MUSE_MINIMAX_PROMPTGEN_SYSTEM_PROMPT = (
 )
 
 
-# Condensed from MiniMax's own official H3 prompt-example catalog (Notion doc, saved locally
-# at C:\\Users\\andyv\\Downloads\\# MiniMax H3 The Next-Gen Open-Weig.txt). Deliberately NOT the
+# Condensed from MiniMax's own official H3 prompt-example catalog (a Notion doc). Deliberately NOT the
 # full ~68KB catalog — dumping that wholesale into every call would compete with the six-section
 # format instructions above for the model's attention and inflate every request for no benefit
 # (this is exactly the class of problem that caused the earlier Gemini thinking-token truncation
