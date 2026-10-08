@@ -202,6 +202,18 @@ class StubeliusH3Output:
                     "their model); without it the polish runs at 2x. 2x (≈1536p) for a take rendered "
                     "smaller, or to polish 2K itself; on a 32 GB card it fits chunks up to 8 s at the "
                     "Quality preset."}),
+                "clip_in_output": ("BOOLEAN", {"default": True, "label_on": "clip + new part",
+                                               "label_off": "new part only", "tooltip":
+                    "First/Last Frame mode with a video clip in the First Frame box: put the clip itself "
+                    "in front of the video that continues it, as one file (its frames are only resized), "
+                    "or give the new part alone, to place after the clip in an editor."}),
+                "de_stutter": (["auto", "on", "off"], {"default": "auto", "tooltip":
+                    "Some takes judder: the picture holds still for a frame in a steady rhythm (move, move, "
+                    "hold), most of all in Speed mode. De-stutter finds those held frames and RIFE draws them "
+                    "again on the way to the next pose, so the motion runs evenly; every other frame, the "
+                    "length and the sound stay as they were. auto = only takes that judder; on = every held "
+                    "frame found; off = never. It applies to the seed previews and the Finish, and changing "
+                    "it re-runs only those."}),
             }
         }
 
@@ -211,7 +223,8 @@ class StubeliusH3Output:
     CATEGORY = "Stubelius"
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
-            quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x"):
+            quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
+            de_stutter="auto"):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -221,7 +234,8 @@ class StubeliusH3Output:
         o = dict(mode=mode, resolution=final_resolution, fps=float(final_fps), upscaler=upscaler,
                  polish_strength=quality_polish_strength, polish_steps=quality_polish_steps,
                  polish_method=_polish_methods().get(quality_polish_method, quality_polish_method),
-                 polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5))
+                 polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output),
+                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto")
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -464,17 +478,69 @@ def _dlss5(images, need):
     return _run("DLSS5EnhanceImages", images=images, settings=settings, verify_neural_rendering=True)[0]
 
 
-def _ram_check(images, target, fps):
+def _ram_check(images, target, fps, extra_frames=0):
     """The finished frames are held uncompressed (width x height x 12 bytes each). Say so up front
     when they alone won't fit in RAM, instead of letting the job crawl through the pagefile."""
     import psutil
-    frames = round(images.shape[0] * max(1.0, fps / SOURCE_FPS))
+    frames = round((images.shape[0] + extra_frames) * max(1.0, fps / SOURCE_FPS))
     width, height = _target_size(images, target) if target else (images.shape[2], images.shape[1])
     need, total = frames * width * height * 12, psutil.virtual_memory().total
     if need > 0.6 * total:
         log.warning("[StubeliusH3Finish] %d frames at %dx%d need about %.0f GB of RAM on this %.0f GB "
                     "machine: expect a heavy slowdown. A shorter clip, a lower final FPS or a smaller "
                     "resolution avoids it.", frames, width, height, need / 1e9, total / 1e9)
+
+
+def _to_fps(images, fps):
+    """24 fps frames -> (frames at `fps`, fps): RIFE draws the in-betweens; 24 leaves them as they are."""
+    if fps > SOURCE_FPS + 1e-6:
+        from .stubelius_rife_fps import StubeliusRIFEToFPS
+        return StubeliusRIFEToFPS().run(images, SOURCE_FPS, fps, "rife47.pth", True, True, 8)
+    return images, SOURCE_FPS
+
+
+def _clip_frames(info):
+    """How many frames the clip a take continues adds in front of it (0 without one)."""
+    from . import stubelius_clip as _clip
+    return _clip.Clip.from_info(info).frames if info else 0
+
+
+def _with_clip(info, images, audio, enlarge=None):
+    """The clip a take continues, then the take: the clip's frames on the 24 fps clock at the take's
+    finished size, and its sound in front of the take's. A clip smaller than that goes through
+    `enlarge` (the Output node's upscaler) rather than a plain resize, so it comes as close to the
+    take's finish as it can without being rendered again."""
+    from . import stubelius_clip as _clip
+    clip = _clip.Clip.from_info(info)
+    if not os.path.exists(clip.path):
+        log.warning("[StubeliusH3Finish] the clip %s is gone; the video comes out without it", clip.name)
+        return images, audio
+    n = clip.frames
+    height, width = int(images.shape[1]), int(images.shape[2])
+    joined = torch.empty((n + int(images.shape[0]),) + tuple(images.shape[1:]), dtype=images.dtype)
+    short = min(clip.width, clip.height)
+    if enlarge is not None and short < min(width, height):
+        # at its own size, in the take's shape, then the upscaler
+        scale = short / min(width, height)
+        own = _clip.read(clip, max(16, round(width * scale / 2) * 2), max(16, round(height * scale / 2) * 2))
+        own = enlarge(own)
+        if tuple(own.shape[1:3]) != (height, width):
+            from .muse_minimax_director import _fit_image_to_target
+            own = _fit_image_to_target(own, width, height, "stretch")
+        joined[:n] = own[:n]
+        del own
+    else:
+        _clip.read(clip, width, height, out=joined[:n])
+    joined[n:] = images
+    wave, rate = audio["waveform"], audio["sample_rate"]
+    under = _clip.sound(clip, rate=rate)
+    head = under["waveform"] if under is not None else torch.zeros((1, 2, round(clip.seconds * rate)))
+    head = head.to(device=wave.device, dtype=wave.dtype)
+    if head.shape[1] != wave.shape[1]:
+        head = head.mean(dim=1, keepdim=True).expand(-1, wave.shape[1], -1)
+    log.info("[StubeliusH3Finish] the clip %s (%.2f s) in front of the video that continues it",
+             clip.name, clip.seconds)
+    return joined, {"waveform": torch.cat([head, wave], dim=-1), "sample_rate": rate}
 
 
 _POLISH_MEMO = []   # [(key, (images, audio))], newest last, two kept
@@ -517,32 +583,47 @@ class StubeliusH3Finish:
         o = output
         target = RESOLUTIONS.get(o["resolution"])
         images, audio = takes["images"][w - 1], takes["audio"][w - 1]
+        from .stubelius_polish import chunks_of, source_of
+        candidate = (takes.get("latents") or [None] * w)[w - 1]
+        # the clip this take continues (First/Last Frame mode), to go in front of it (stubelius_clip.py)
+        clip = source_of(candidate) if o.get("clip_in_output", True) else None
         if o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images):
             # Quality re-renders the take 1.5x or 2x bigger (the polish) when the size picked is
             # above what it rendered; at or below that, the render itself is the final picture.
             # The upscaler takes it the rest of the way. A take past one chunk is polished chunk
             # by chunk. Either way only the picture is rendered again, so the take keeps its own sound.
             from .muse_minimax_refine import effective_polish_scale
-            from .stubelius_polish import chunks_of
-            polish = self._polish_chunks if len(chunks_of(takes["latents"][w - 1])) > 1 else self._polish
+            # chunk by chunk past one chunk, and for a take that continues a clip (it starts from the clip)
+            polish = (self._polish_chunks if len(chunks_of(candidate)) > 1 or source_of(candidate)
+                      else self._polish)
             scale = effective_polish_scale(o["polish_method"], o.get("polish_scale", 2.0), "[StubeliusH3Finish]")
             images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
                             o["polish_method"], unique_id, scale=scale)[0]
-        _ram_check(images, target, o["fps"])
+        _ram_check(images, target, o["fps"], extra_frames=_clip_frames(clip))
         if target and _short(images) > target:
             # e.g. Quality 2K: the polish comes out above 1440p. Downscale before RIFE (less work).
             images = _fit(images, target)
+        # held frames drawn again (stubelius_destutter.py): the take only, before RIFE and the upscale
+        from .stubelius_destutter import destutter
+        images = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")[0]
 
         fps = SOURCE_FPS
-        if o["fps"] > SOURCE_FPS + 1e-6:
-            from .stubelius_rife_fps import StubeliusRIFEToFPS
-            images, fps = StubeliusRIFEToFPS().run(images, SOURCE_FPS, o["fps"], "rife47.pth", True, True, 8)
+        if clip is None:
+            images, fps = _to_fps(images, o["fps"])
 
         upscaled = bool(target and target / _short(images) > 1.02)
         if upscaled:
             images = self._upscale(images, target, o["upscaler"])
         if target:
             images = _fit(images, target)   # exact size (DLSS5 only scales 1.5x / 2x)
+        if clip is not None:
+            # the clip in front, at the finished size (through the same upscaler when it is smaller),
+            # then the whole video to the final frame rate, so RIFE also draws the frames between the
+            # clip's last frame and the take's first
+            enlarge = ((lambda frames: _fit(self._upscale(frames, target, o["upscaler"]), target))
+                       if target else None)
+            images, audio = _with_clip(clip, images, audio, enlarge)
+            images, fps = _to_fps(images, o["fps"])
         log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s",
                  o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps,
                  o["upscaler"] if upscaled else "none")
@@ -555,14 +636,20 @@ class StubeliusH3Finish:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        from .stubelius_v2 import StubeliusH3RefineV2
+        from .stubelius_v2 import StubeliusH3RefineV2, _hold_run_models, _release_held_models
+        _release_held_models()
         lat = takes["latents"]
-        images, audio = _unpack_node_result(StubeliusH3RefineV2().execute_v2(
-            model=models.preview(models.model(takes["kind"]), node_id), clip=models.clip(), vae=models.vae(),
-            audio_vae=models.audio_vae(), prompt=takes["prompt"], candidate=w,
-            upscale_method=method, polish_strength=strength, polish_steps=steps,
-            candidate_1_latent=lat[0], candidate_2_latent=lat[1], candidate_3_latent=lat[2],
-            candidate_4_latent=lat[3], ref_images=takes["ref_images"], polish_scale=scale))[:2]
+        model = models.preview(models.model(takes["kind"]), node_id)
+        try:
+            images, audio = _unpack_node_result(StubeliusH3RefineV2().execute_v2(
+                model=model, clip=models.clip(), vae=models.vae(),
+                audio_vae=models.audio_vae(), prompt=takes["prompt"], candidate=w,
+                upscale_method=method, polish_strength=strength, polish_steps=steps,
+                candidate_1_latent=lat[0], candidate_2_latent=lat[1], candidate_3_latent=lat[2],
+                candidate_4_latent=lat[3], ref_images=takes["ref_images"], polish_scale=scale))[:2]
+        except BaseException:
+            _hold_run_models(model)      # a cancelled polish: see _hold_run_models
+            raise
         _POLISH_MEMO.append((key, (images, audio)))
         del _POLISH_MEMO[:-2]
         return images, audio
@@ -582,8 +669,15 @@ class StubeliusH3Finish:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
-                        scale=scale)
+        from .stubelius_v2 import _hold_run_models, _release_held_models
+        _release_held_models()
+        try:
+            images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
+                            scale=scale)
+        except BaseException:
+            # a cancelled polish: every clone it made hangs off the bundle's cached models
+            _hold_run_models(*_PATCHED.values(), *_BASE.values())
+            raise
         _POLISH_MEMO.append((key, (images, takes["audio"][w - 1])))
         del _POLISH_MEMO[:-2]
         # two polished long takes are tens of GB: keep the older one only while both fit easily
@@ -648,6 +742,32 @@ class StubeliusLivePreview:
         return ()
 
 
+class StubeliusSeedPreviews:
+    """The seeds for their previews, with the Output node's de-stutter applied, so the seed you pick looks
+    the way it will in the finished video. It reads the Director's takes, not the Director itself: changing
+    the switch re-runs only this node, the previews and the Finish, never the seeds."""
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)}}
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("seed_1", "seed_2", "seed_3", "seed_4")
+    FUNCTION = "run"
+    CATEGORY = "Stubelius"
+
+    def run(self, takes, output):
+        from .stubelius_destutter import destutter
+        mode = output.get("de_stutter", "auto")
+        out = []
+        for i, images in enumerate(list(takes["images"])[:4]):
+            if images is None or i >= takes["count"] or images.shape[0] < 4:
+                out.append(images)            # a seed that wasn't rendered: its empty frames, as before
+            else:
+                out.append(destutter(images, mode, label=f"seed {i + 1}: ")[0])
+        return tuple(out)
+
+
 NODE_CLASS_MAPPINGS = {
     "StubeliusTheme": StubeliusTheme,
     "StubeliusLivePreview": StubeliusLivePreview,
@@ -655,6 +775,7 @@ NODE_CLASS_MAPPINGS = {
     "StubeliusH3Output": StubeliusH3Output,
     "StubeliusH3Models": StubeliusH3Models,
     "StubeliusH3Finish": StubeliusH3Finish,
+    "StubeliusSeedPreviews": StubeliusSeedPreviews,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "StubeliusTheme": "Stubelius Theme (this workflow)",
@@ -663,4 +784,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "StubeliusH3Output": "Stubelius H3 Output",
     "StubeliusH3Models": "Stubelius H3 Models",
     "StubeliusH3Finish": "Stubelius H3 Finish",
+    "StubeliusSeedPreviews": "Stubelius Seed Previews (de-stutter)",
 }

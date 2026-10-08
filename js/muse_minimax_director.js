@@ -1,3 +1,11 @@
+import {
+  MAX_MIDDLE_FRAMES, MIDDLE_GAP, normalizeMiddleFrames, defaultMiddleTime, clampMiddleTime, chunkOfTime,
+  snapToNearest,
+} from "./stubelius_middle_frames.js";
+import {
+  MAX_CUES, clipFrames, cueSeconds, isCueFile, cueKindOf, normalizeCues, clampCueTime, clipGridOffset,
+} from "./stubelius_cues.js";
+
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
@@ -18,7 +26,10 @@ const { api } = window.comfyAPI.api;
 // relevant — file path + trim window live in timeline_data; Python resolves/decodes them
 // (with PyAV for video/audio) at execute time. There are no first_frame/last_frame graph
 // sockets — First/Last Frame mode reuses Ref 1 / Ref 2 (the same character-slot UI) as its
-// first/last frame source instead, with every other reference slot disabled in that mode.
+// first/last frame source instead, plus up to two middle frames between them (Stubelius:
+// timeline_data.middle_frames, dragged along a lane above each chunk's ruler; the placement rules
+// are in stubelius_middle_frames.js); the other reference slots don't apply in that mode. A video
+// dropped on the First Frame box is a clip the video continues (timeline_data.source_clip).
 
 const MAX_CHARACTER_SLOTS = 9;
 const REF_AV_SLOTS = 3;
@@ -417,6 +428,82 @@ function injectStyles() {
     font-size: 12px; color: #8a8a98; background: #1e1e26; border: 1px solid #3a3a48;
     border-radius: 8px; padding: 10px 12px; line-height: 1.5;
   }
+  .mmd-fl-note + .mmd-char-row { margin-top: 10px; }
+
+  /* Stubelius: middle frames (First/Last Frame mode) — their boxes, and the lane above each ruler */
+  .mmd-mid-time-row { display: flex; align-items: center; justify-content: center; gap: 3px; margin-top: 5px; }
+  .mmd-mid-time-input {
+    width: 58px; background: #14141a; border: 1px solid #2a2a35; border-radius: 3px;
+    color: #d4d4dc; font-size: 11.5px; font-weight: 700; font-family: inherit; padding: 2px 3px; text-align: right;
+  }
+  .mmd-mid-time-input:focus { outline: none; border-color: #4F8EF7; }
+  .mmd-frame-lane {
+    position: relative; height: 54px; margin: 2px 0 4px 0; border-radius: 8px;
+    background: #141419; border: 1px dashed #2a2a35; box-sizing: border-box;
+  }
+  .mmd-frame-lane.mmd-drop-over { border-color: #4F8EF7; background: #182033; }
+  .mmd-frame-hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #4a4a58; pointer-events: none;
+  }
+  .mmd-frame-marker {
+    position: absolute; top: 4px; transform: translateX(-50%); z-index: 2;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; user-select: none;
+  }
+  .mmd-frame-marker.mmd-frame-start { transform: translateX(0); align-items: flex-start; }
+  .mmd-frame-marker.mmd-frame-end { transform: translateX(-100%); align-items: flex-end; }
+  .mmd-frame-thumb {
+    width: 48px; height: 30px; border-radius: 5px; overflow: hidden; background: #0a0a0d;
+    border: 2px solid #5a5a6a; box-sizing: border-box;
+  }
+  .mmd-frame-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .mmd-frame-mid { cursor: grab; }
+  .mmd-frame-mid.mmd-dragging { cursor: grabbing; z-index: 3; }
+  .mmd-frame-mid .mmd-frame-thumb { border-color: #B26BF7; box-shadow: 0 0 0 1px rgba(178,107,247,0.3); }
+  .mmd-frame-mid:hover .mmd-frame-thumb { border-color: #d39cff; }
+  .mmd-frame-time {
+    font-size: 10px; color: #c8c8d4; white-space: nowrap; background: rgba(0,0,0,0.6);
+    border-radius: 3px; padding: 0 4px; line-height: 14px;
+  }
+
+  /* Stubelius: a clip in the First Frame box — the video continues it */
+  .mmd-char-preview video, .mmd-frame-thumb video {
+    width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none;
+  }
+  .mmd-clip-slot .mmd-char-preview { box-shadow: 0 0 0 1px #3fbf7f; }
+  .mmd-clip-note { font-size: 10.5px; color: #8fd6b0; text-align: center; margin-top: 5px; line-height: 1.35; }
+  .mmd-frame-clip .mmd-frame-thumb { border-color: #3fbf7f; }
+
+  /* Stubelius: sounds and clips on the timeline, under the frames */
+  .mmd-cue-lane {
+    position: relative; height: 34px; margin: 0 0 4px 0; border-radius: 8px;
+    background: #141419; border: 1px dashed #2a2a35; box-sizing: border-box;
+  }
+  .mmd-cue-lane.mmd-drop-over { border-color: #FF8800; background: #2a1d10; }
+  .mmd-cue {
+    position: absolute; top: 3px; bottom: 3px; border-radius: 5px; overflow: hidden; cursor: grab;
+    box-sizing: border-box; min-width: 18px; user-select: none;
+  }
+  .mmd-cue.mmd-dragging { cursor: grabbing; z-index: 3; }
+  .mmd-cue-sound { background: rgba(255,136,0,0.16); border: 1px solid #FF8800; }
+  .mmd-cue-clip { background: rgba(79,142,247,0.16); border: 1px solid #4F8EF7; }
+  .mmd-cue-runs-on { border-right-style: dashed; }
+  .mmd-cue-wave { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.6; pointer-events: none; }
+  .mmd-cue-still {
+    position: absolute; left: 0; top: 0; height: 100%; width: 44px; object-fit: cover; opacity: 0.9; pointer-events: none;
+  }
+  .mmd-cue-label {
+    position: absolute; left: 4px; bottom: 2px; font-size: 10px; color: #e8e8f0; white-space: nowrap;
+    background: rgba(0,0,0,0.55); border-radius: 3px; padding: 0 4px; line-height: 14px; pointer-events: none;
+  }
+  .mmd-cue-clip .mmd-cue-label { left: 48px; }
+  .mmd-cue-btn {
+    position: absolute; top: 1px; width: 17px; height: 16px; padding: 0; border: none; border-radius: 3px;
+    background: rgba(0,0,0,0.65); color: #ddd; font-size: 11px; line-height: 16px; cursor: pointer; display: none;
+  }
+  .mmd-cue:hover .mmd-cue-btn, .mmd-cue-snd.mmd-off { display: block; }
+  .mmd-cue-del { right: 2px; }
+  .mmd-cue-snd { right: 21px; }
 
   /* Reference video / audio slots */
   .mmd-av-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
@@ -549,6 +636,28 @@ async function uploadRefFile(file) {
   const data = await resp.json();
   const subfolder = data.subfolder || "";
   return { file: subfolder ? subfolder + "/" + data.name : data.name, fileName: file.name };
+}
+
+// Stubelius: a video dropped on the First Frame box is a clip the video continues
+function isVideoFile(file) {
+  return (file?.type || "").startsWith("video/") || /\.(mp4|webm|mov|mkv|m4v|avi)$/i.test(file?.name || "");
+}
+
+// The clip's last frame (where the video continues from), or its first (atStart: a clip pinned on
+// the timeline), as a still <video>
+function clipStill(clip, onDuration, atStart = false) {
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.addEventListener("loadedmetadata", () => {
+    if (!isFinite(video.duration)) return;
+    // inside the last frame, not before it
+    video.currentTime = atStart ? Math.min(0.02, video.duration) : Math.max(0, video.duration - 0.02);
+    onDuration?.(video.duration);
+  });
+  video.src = comfyViewUrl(clip.file);
+  return video;
 }
 
 function comfyViewUrl(entryFile) {
@@ -727,7 +836,56 @@ class MinimaxTimelineEditor {
     if (typeof parsed.prompt_gen_provider !== "string") parsed.prompt_gen_provider = "ollama";
     if (typeof parsed.prompt_gen_base_url !== "string") parsed.prompt_gen_base_url = "";
     if (typeof parsed.prompt_gen_model !== "string") parsed.prompt_gen_model = "";
+    // Stubelius: up to two middle frames in First/Last Frame mode, each at its own time
+    // (stubelius_middle_frames.js). Kept when the mode is Reference, used only in First/Last.
+    if (!Array.isArray(parsed.middle_frames)) parsed.middle_frames = [];
+    // Stubelius: sounds and clips pinned on the timeline in First/Last Frame mode (stubelius_cues.js)
+    if (!Array.isArray(parsed.cues)) parsed.cues = [];
+    // Stubelius: a clip in the First Frame box (First/Last Frame mode): {file, fileName}
+    if (parsed.source_clip && (typeof parsed.source_clip !== "object" || !parsed.source_clip.file)) {
+      delete parsed.source_clip;
+    }
     return parsed;
+  }
+
+  // The middle frames, in time order and inside the current Total Duration. Always the same array,
+  // tidied in place, so a box or marker built earlier still edits the real list.
+  _middleFrames() {
+    if (!Array.isArray(this.timeline.middle_frames)) this.timeline.middle_frames = [];
+    const list = this.timeline.middle_frames;
+    const kept = normalizeMiddleFrames(list, this.durationSeconds);
+    list.length = 0;
+    list.push(...kept);
+    return list;
+  }
+
+  // The sounds and clips on the timeline, in time order and inside the current Total Duration.
+  // Always the same array, tidied in place (like _middleFrames).
+  _cues() {
+    if (!Array.isArray(this.timeline.cues)) this.timeline.cues = [];
+    const list = this.timeline.cues;
+    const kept = normalizeCues(list, this.durationSeconds);
+    list.length = 0;
+    list.push(...kept);
+    return list;
+  }
+
+  // Stubelius: clips start on H3's 17-frame groups. A video that continues a clip opens on carried-over
+  // frames (22, or the carry length), which moves the groups on its clock.
+  _clipGridOffset() {
+    if (!this.timeline.source_clip) return 0;
+    const carry = this.realWidgets?.vae_reencode_carry_test?.value
+      ? Number(this.realWidgets?.vae_reencode_carry_length?.value) || 39 : 22;
+    return clipGridOffset(carry);
+  }
+
+  // ... so the clips move with them when the video starts or stops continuing a clip
+  _snapClipCues() {
+    const bounds = this._chunkBoundsSeconds();
+    const offset = this._clipGridOffset();
+    for (const cue of this._cues()) {
+      if (cue.kind === "clip") cue.time = clampCueTime(cue, cue.time, bounds, this.durationSeconds, offset);
+    }
   }
 
   commitChanges() {
@@ -957,6 +1115,7 @@ class MinimaxTimelineEditor {
         pill.className = "mmd-mode-pill " + (this.isReferenceMode() ? "ref" : "fl");
         pill.textContent = this.isReferenceMode() ? "Reference (Omni)" : "First / Last Frame";
         this.renderReferences();
+        this.renderTimeline();      // the frame lane above each chunk's ruler is First/Last only
         this._toggleReferenceBox();
       }));
     }
@@ -1550,6 +1709,9 @@ class MinimaxTimelineEditor {
     const rulerWrap = document.createElement("div");
     rulerWrap.className = "mmd-ruler-wrap";
     timelineBox.appendChild(rulerWrap);
+    // Stubelius: First/Last Frame mode's frames, on the same scale as the ruler below
+    if (!this.isReferenceMode()) rulerWrap.appendChild(this._buildFrameLane(chunkIdx));
+    if (!this.isReferenceMode()) rulerWrap.appendChild(this._buildCueLane(chunkIdx));
 
     const ruler = document.createElement("div");
     ruler.className = "mmd-ruler";
@@ -1604,6 +1766,290 @@ class MinimaxTimelineEditor {
     timelineBox.appendChild(deleteChunkBar);
 
     return wrap;
+  }
+
+  // Stubelius: First/Last Frame mode's frames above this chunk's ruler — the first frame at the
+  // start of chunk 1, the last frame at the end of the last chunk, each middle frame at its time in
+  // the chunk that holds it. Drag a middle frame along the lane to move it (within its chunk; its
+  // box above takes any time); drop a picture onto the lane to add a middle frame right there.
+  _buildFrameLane(chunkIdx) {
+    const bounds = this._chunkBoundsSeconds();
+    const [start, end] = bounds[chunkIdx];
+    const span = Math.max(0.001, end - start);
+    const lane = document.createElement("div");
+    lane.className = "mmd-frame-lane";
+    const place = (el, t) => { el.style.left = `${Math.min(100, Math.max(0, ((t - start) / span) * 100))}%`; };
+
+    const marker = (cls, entry, label, t) => {
+      const m = document.createElement("div");
+      m.className = "mmd-frame-marker " + cls;
+      const thumb = document.createElement("div");
+      thumb.className = "mmd-frame-thumb";
+      const src = entry.file ? comfyViewUrl(entry.file) : (entry._blobUrl || entry.image_b64);
+      if (src) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.draggable = false;
+        thumb.appendChild(img);
+      }
+      m.appendChild(thumb);
+      const time = document.createElement("div");
+      time.className = "mmd-frame-time";
+      time.textContent = label;
+      m.appendChild(time);
+      place(m, t);
+      lane.appendChild(m);
+      return { m, time };
+    };
+
+    const clip = this.timeline.source_clip;
+    const first = this.timeline.characters[0];
+    if (chunkIdx === 0 && clip) {
+      // the clip the video continues: chunk 1 picks up from its last frame
+      const { m } = marker("mmd-frame-fixed mmd-frame-start mmd-frame-clip", {}, "Clip", start);
+      m.querySelector(".mmd-frame-thumb").appendChild(clipStill(clip));
+      m.title = "Continues your clip from its last frame";
+    } else if (chunkIdx === 0 && first && (first.file || first.image_b64)) {
+      marker("mmd-frame-fixed mmd-frame-start", first, "First", start).m.title = "First Frame";
+    }
+    const last = this.timeline.characters[1];
+    if (chunkIdx === bounds.length - 1 && last && (last.file || last.image_b64)) {
+      marker("mmd-frame-fixed mmd-frame-end", last, "Last", end).m.title = "Last Frame";
+    }
+
+    const list = this._middleFrames();
+    list.forEach((mf, k) => {
+      if (chunkOfTime(bounds, mf.time) !== chunkIdx) return;
+      const label = () => `M${k + 1} · ${this._formatDuration(mf.time)}`;
+      const { m, time } = marker("mmd-frame-mid", mf, label(), mf.time);
+      m.title = `Middle ${k + 1}: drag to change when the video reaches it`;
+      m.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = lane.getBoundingClientRect();
+        m.classList.add("mmd-dragging");
+        const onMove = (ev) => {
+          const t = start + ((ev.clientX - rect.left) / rect.width) * span;
+          mf.time = clampMiddleTime(list, k, Math.min(end - 0.05, Math.max(start, t)), this.durationSeconds);
+          place(m, mf.time);
+          time.textContent = label();
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          m.classList.remove("mmd-dragging");
+          this.commitChanges();
+          this.renderReferences();
+          this.renderTimeline();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+    });
+
+    if (list.length < MAX_MIDDLE_FRAMES) {
+      const hint = document.createElement("div");
+      hint.className = "mmd-frame-hint";
+      hint.textContent = "Drop a picture here to add a middle frame";
+      lane.appendChild(hint);
+    }
+    // pictures from the desktop only: dragging a CUT block over the lane does nothing here
+    const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+    lane.addEventListener("dragover", (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      lane.classList.add("mmd-drop-over");
+    });
+    lane.addEventListener("dragleave", () => lane.classList.remove("mmd-drop-over"));
+    lane.addEventListener("drop", async (e) => {
+      lane.classList.remove("mmd-drop-over");
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = lane.getBoundingClientRect();
+      const t = start + ((e.clientX - rect.left) / rect.width) * span;
+      if (isCueFile(file)) return this._addCue(file, t);     // a sound or a clip: the strip below
+      const at = Math.round(Math.min(this.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, t)) * 10) / 10;
+      await this._setMiddleFrame(null, file, at);
+    });
+    return lane;
+  }
+
+  // Stubelius: sounds and clips on the timeline (First/Last Frame mode), under the frames above this
+  // chunk's ruler. Each block starts at its second and is as long as the sound, or as the part of the
+  // clip H3 pins (5, 22, 39, ... frames). Drag a block to move it, x removes it, the speaker on a clip
+  // switches its own sound on or off. Drop a sound or a video here to add one at that second.
+  _buildCueLane(chunkIdx) {
+    const bounds = this._chunkBoundsSeconds();
+    const [start, end] = bounds[chunkIdx];
+    const span = Math.max(0.001, end - start);
+    const lane = document.createElement("div");
+    lane.className = "mmd-cue-lane";
+    const list = this._cues();
+    const place = (el, cue) => {
+      const left = ((cue.time - start) / span) * 100;
+      el.style.left = `${Math.min(100, Math.max(0, left))}%`;
+      el.style.width = `${Math.max(1.5, Math.min(100 - left, (cueSeconds(cue) / span) * 100))}%`;
+    };
+
+    list.forEach((cue) => {
+      if (chunkOfTime(bounds, cue.time) !== chunkIdx) return;
+      const block = document.createElement("div");
+      block.className = "mmd-cue " + (cue.kind === "clip" ? "mmd-cue-clip" : "mmd-cue-sound");
+      const runsOn = cue.time + cueSeconds(cue) > end + 0.01;
+      if (runsOn) block.classList.add("mmd-cue-runs-on");
+      if (cue.kind === "sound" && Array.isArray(cue.peaks) && cue.peaks.length) {
+        const canvas = document.createElement("canvas");
+        canvas.className = "mmd-cue-wave";
+        canvas.width = 240;
+        canvas.height = 26;
+        block.appendChild(canvas);
+        requestAnimationFrame(() => this._drawWaveform(canvas, { waveformPeaks: cue.peaks }, "#FFC37A"));
+      }
+      if (cue.kind === "clip") {
+        const still = clipStill(cue, null, true);
+        still.className = "mmd-cue-still";
+        block.appendChild(still);
+      }
+      const label = document.createElement("div");
+      label.className = "mmd-cue-label";
+      const what = cue.kind === "clip" ? `\u25B6 ${clipFrames(cue.seconds)} frames` : `\u266A ${cueSeconds(cue).toFixed(1)} s`;
+      label.textContent = `${what} \u00B7 ${this._formatDuration(cue.time)}`;
+      block.appendChild(label);
+      block.title = `${cue.fileName || cue.file}: drag to move it`
+        + (cue.kind === "clip" ? " (a clip starts on H3's 17-frame grid, every 0.71 s)" : "")
+        + (runsOn ? " (it plays on into the next chunk)" : "");
+
+      const del = document.createElement("button");
+      del.className = "mmd-cue-btn mmd-cue-del";
+      del.innerHTML = "&times;";
+      del.title = "Remove";
+      del.addEventListener("mousedown", (e) => e.stopPropagation());
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const k = list.indexOf(cue);
+        if (k >= 0) list.splice(k, 1);
+        this.commitChanges();
+        this.renderTimeline();
+      });
+      block.appendChild(del);
+      if (cue.kind === "clip") {
+        const snd = document.createElement("button");
+        snd.className = "mmd-cue-btn mmd-cue-snd" + (cue.sound === false ? " mmd-off" : "");
+        snd.textContent = cue.sound === false ? "\u{1F507}" : "\u{1F50A}";
+        snd.title = cue.sound === false ? "The clip's own sound is off: click to pin it too"
+          : "The clip's own sound is pinned with it: click to leave it out";
+        snd.addEventListener("mousedown", (e) => e.stopPropagation());
+        snd.addEventListener("click", (e) => {
+          e.stopPropagation();
+          cue.sound = cue.sound === false;
+          this.commitChanges();
+          this.renderTimeline();
+        });
+        block.appendChild(snd);
+      }
+
+      block.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = lane.getBoundingClientRect();
+        const grab = start + ((e.clientX - rect.left) / rect.width) * span - cue.time;
+        block.classList.add("mmd-dragging");
+        const onMove = (ev) => {
+          const t = start + ((ev.clientX - rect.left) / rect.width) * span - grab;
+          cue.time = clampCueTime(cue, Math.min(end - 0.1, Math.max(start, t)), bounds, this.durationSeconds,
+            this._clipGridOffset());
+          place(block, cue);
+          label.textContent = `${what} \u00B7 ${this._formatDuration(cue.time)}`;
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          block.classList.remove("mmd-dragging");
+          this.commitChanges();
+          this.renderTimeline();
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+      place(block, cue);
+      lane.appendChild(block);
+    });
+
+    if (!list.some((cue) => chunkOfTime(bounds, cue.time) === chunkIdx)) {
+      const hint = document.createElement("div");
+      hint.className = "mmd-frame-hint";
+      hint.textContent = list.length < MAX_CUES
+        ? "Drop a sound (a line, an effect, music) or a video clip here to pin it at that second"
+        : `${MAX_CUES} sounds and clips at most`;
+      lane.appendChild(hint);
+    }
+    const isFileDrag = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+    lane.addEventListener("dragover", (e) => {
+      if (!isFileDrag(e)) return;
+      e.preventDefault();
+      lane.classList.add("mmd-drop-over");
+    });
+    lane.addEventListener("dragleave", () => lane.classList.remove("mmd-drop-over"));
+    lane.addEventListener("drop", async (e) => {
+      lane.classList.remove("mmd-drop-over");
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = lane.getBoundingClientRect();
+      const t = start + ((e.clientX - rect.left) / rect.width) * span;
+      if (!isCueFile(file)) {          // a picture: a middle frame, as on the strip above
+        const at = Math.round(Math.min(this.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, t)) * 10) / 10;
+        return this._setMiddleFrame(null, file, at);
+      }
+      await this._addCue(file, t);
+    });
+    return lane;
+  }
+
+  // A sound or a clip dropped at second `t`: uploaded, measured (its length, and a waveform for a
+  // sound), and pinned there
+  async _addCue(file, t) {
+    const list = this._cues();
+    if (list.length >= MAX_CUES) {
+      alert(`Up to ${MAX_CUES} sounds and clips \u2014 remove one first.`);
+      return;
+    }
+    try {
+      const kind = cueKindOf(file);
+      const uploaded = await uploadRefFile(file);
+      const cue = { kind, file: uploaded.file, fileName: uploaded.fileName, time: 0, seconds: 0 };
+      if (kind === "sound") {
+        try {
+          const { peaks, duration } = await extractAudioPeaks(file, 60);
+          cue.peaks = peaks.map((p) => Math.round(p * 1000) / 1000);
+          cue.seconds = Math.round(duration * 1000) / 1000;
+        } catch (err) {
+          console.warn("[MuseMinimaxDirector] could not read the sound's length", err);
+        }
+      } else {
+        cue.sound = true;
+        cue.seconds = await new Promise((resolve) => {
+          const v = document.createElement("video");
+          v.preload = "metadata";
+          v.onloadedmetadata = () => resolve(isFinite(v.duration) ? Math.round(v.duration * 1000) / 1000 : 0);
+          v.onerror = () => resolve(0);
+          v.src = URL.createObjectURL(file);
+        });
+      }
+      cue.time = clampCueTime(cue, t, this._chunkBoundsSeconds(), this.durationSeconds, this._clipGridOffset());
+      list.push(cue);
+      this._cues();
+      this.commitChanges();
+      this.renderTimeline();
+    } catch (err) {
+      console.error("[MuseMinimaxDirector] sound/clip upload failed", err);
+      alert("Upload failed \u2014 see console for details.");
+    }
   }
 
   // Per-chunk Style / Overall Soundscape / Non-Diegetic Music — see the
@@ -2171,11 +2617,23 @@ class MinimaxTimelineEditor {
     const pairWeight = (segA.weight || 1) + (segB.weight || 1);
     const startX = e.clientX;
     const startAWeight = segA.weight || 1;
+    // Stubelius: in First/Last Frame mode a cut edge snaps onto a middle frame (8 px either side),
+    // so a CUT can run exactly from one frame to the next.
+    const [chunkStart, chunkEnd] = this._chunkBoundsSeconds()[chunkIdx];
+    const chunkDur = Math.max(0.001, chunkEnd - chunkStart);
+    const before = chunk.segments.slice(0, i).reduce((s, seg) => s + (seg.weight || 1), 0);
+    const snapTargets = this.isReferenceMode() ? [] : this._middleFrames()
+      .map((m) => m.time - chunkStart).filter((t) => t > 0 && t < chunkDur);
 
     const onMove = (ev) => {
       const deltaPx = ev.clientX - startX;
       const deltaWeight = (deltaPx / trackRect.width) * totalWeight;
       let newA = startAWeight + deltaWeight;
+      if (snapTargets.length) {
+        const edge = ((before + newA) / totalWeight) * chunkDur;
+        const snapped = snapToNearest(edge, snapTargets, (8 / trackRect.width) * chunkDur);
+        if (snapped !== edge) newA = (snapped / chunkDur) * totalWeight - before;
+      }
       newA = Math.max(0.15, Math.min(pairWeight - 0.15, newA));
       segA.weight = newA;
       segB.weight = pairWeight - newA;
@@ -2204,8 +2662,15 @@ class MinimaxTimelineEditor {
     if (isFL) {
       const note = document.createElement("div");
       note.className = "mmd-fl-note";
-      note.textContent = "First/Last Frame mode — Ref 1 is used as the first frame, Ref 2 as the last frame (leave either empty to skip it). Other reference slots and reference video/audio don't apply in this mode.";
+      note.textContent = "First/Last Frame mode — the First Frame opens the video and the Last Frame ends it; up to two Middle frames are pictures it passes through on the way. Drag a middle frame along the timeline below to set when it's reached (or type its time, or drop a picture straight onto the timeline). Drop a video clip on the First Frame instead and the video continues that clip, picture and sound, from its last frame. Drop sounds (a spoken line, a sound effect, music) or short video clips on the strip under the frames to pin them at that second. Leave any of them empty to skip it. Reference video/audio don't apply in this mode.";
       this.refsArea.appendChild(note);
+      const frameRow = document.createElement("div");
+      frameRow.className = "mmd-char-row";
+      frameRow.appendChild(this.timeline.source_clip ? this._buildClipSlot() : this._buildCharSlot(0, false, "First Frame", true));
+      for (let k = 0; k < MAX_MIDDLE_FRAMES; k++) frameRow.appendChild(this._buildMiddleSlot(k));
+      frameRow.appendChild(this._buildCharSlot(1, false, "Last Frame"));
+      this.refsArea.appendChild(frameRow);
+      return; // no reference video/audio in First/Last Frame mode
     }
 
     const charRow = document.createElement("div");
@@ -3045,13 +3510,13 @@ class MinimaxTimelineEditor {
     readoutEl.textContent = `In ${inSec}s — Out ${outSec}s`;
   }
 
-  _drawWaveform(canvas, entry) {
+  _drawWaveform(canvas, entry, color = "#4F8EF7") {
     const peaks = entry.waveformPeaks;
     if (!peaks || !peaks.length) return;
     const ctx = canvas.getContext("2d");
     const w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = "#4F8EF7";
+    ctx.fillStyle = color;
     const barW = w / peaks.length;
     for (let i = 0; i < peaks.length; i++) {
       const amp = Math.max(1, peaks[i] * h * 0.9);
@@ -3059,7 +3524,8 @@ class MinimaxTimelineEditor {
     }
   }
 
-  _buildCharSlot(idx, disabled = false, labelOverride = null) {
+  // takesClip (Stubelius): the First Frame box in First/Last Frame mode also takes a video clip
+  _buildCharSlot(idx, disabled = false, labelOverride = null, takesClip = false) {
     const isBg = idx === "bg";
     const data = isBg ? this.timeline.background : this.timeline.characters[idx];
     const filled = data && (data.file || data.image_b64);
@@ -3134,9 +3600,9 @@ class MinimaxTimelineEditor {
     } else {
       const placeholder = document.createElement("div");
       placeholder.className = "mmd-char-placeholder";
-      placeholder.innerHTML = `${ICON_UPLOAD}<br>Drop image`;
+      placeholder.innerHTML = `${ICON_UPLOAD}<br>${takesClip ? "Drop image or video" : "Drop image"}`;
       slot.appendChild(placeholder);
-      slot.addEventListener("click", () => this._promptFilePick(idx, isBg));
+      slot.addEventListener("click", () => this._promptFilePick(idx, isBg, takesClip));
     }
 
     slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#4F8EF7"; });
@@ -3145,20 +3611,97 @@ class MinimaxTimelineEditor {
       e.preventDefault();
       slot.style.borderColor = "";
       const file = e.dataTransfer.files?.[0];
-      if (file) await this._setSlotImage(idx, isBg, file);
+      if (file) await (takesClip ? this._setFirst(file) : this._setSlotImage(idx, isBg, file));
     });
 
     return slot;
   }
 
-  _promptFilePick(idx, isBg) {
+  _promptFilePick(idx, isBg, takesClip = false) {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = "image/*";
+    input.accept = takesClip ? "image/*,video/*" : "image/*";
     input.onchange = async () => {
-      if (input.files?.[0]) await this._setSlotImage(idx, isBg, input.files[0]);
+      const file = input.files?.[0];
+      if (file) await (takesClip ? this._setFirst(file) : this._setSlotImage(idx, isBg, file));
     };
     input.click();
+  }
+
+  // Stubelius: the First Frame box (First/Last Frame mode) — a picture opens the video, a video clip
+  // is continued from its last frame (timeline_data.source_clip; see stubelius_clip.py). One or the other.
+  async _setFirst(file) {
+    if (isVideoFile(file)) return this._setSourceClip(file);
+    if (this.timeline.source_clip) {
+      delete this.timeline.source_clip;
+      this._snapClipCues();
+    }
+    return this._setSlotImage(0, false, file);
+  }
+
+  async _setSourceClip(file) {
+    try {
+      const uploaded = await uploadRefFile(file);
+      this.timeline.source_clip = { file: uploaded.file, fileName: uploaded.fileName };
+      this.timeline.characters[0] = null;
+      this._snapClipCues();
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    } catch (err) {
+      console.error("[MuseMinimaxDirector] clip upload failed", err);
+      alert("Clip upload failed — see console for details.");
+    }
+  }
+
+  // The First Frame box holding a clip: its last frame (where the video picks up) and its length.
+  // × removes it; another clip or a picture dropped on it takes its place.
+  _buildClipSlot() {
+    const clip = this.timeline.source_clip;
+    const slot = document.createElement("div");
+    slot.className = "mmd-char-slot mmd-clip-slot mmd-filled";
+    slot.title = clip.fileName || clip.file;
+
+    const label = document.createElement("div");
+    label.className = "mmd-char-label";
+    label.textContent = "First Frame — clip";
+    slot.appendChild(label);
+
+    const del = document.createElement("button");
+    del.className = "mmd-char-del";
+    del.innerHTML = "&times;";
+    del.title = "Remove the clip";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      delete this.timeline.source_clip;
+      this._snapClipCues();
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    });
+    slot.appendChild(del);
+
+    const note = document.createElement("div");
+    note.className = "mmd-clip-note";
+    note.textContent = "The video continues this clip";
+    const preview = document.createElement("div");
+    preview.className = "mmd-char-preview";
+    preview.appendChild(clipStill(clip, (seconds) => {
+      note.textContent = `Continues this ${seconds.toFixed(1)} s clip, at its shape. The timeline is the new part.`;
+    }));
+    slot.appendChild(preview);
+    slot.appendChild(note);
+
+    slot.addEventListener("click", () => this._promptFilePick(0, false, true));
+    slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#3fbf7f"; });
+    slot.addEventListener("dragleave", () => { slot.style.borderColor = ""; });
+    slot.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      slot.style.borderColor = "";
+      const file = e.dataTransfer.files?.[0];
+      if (file) await this._setFirst(file);
+    });
+    return slot;
   }
 
   async _setSlotImage(idx, isBg, file) {
@@ -3177,6 +3720,124 @@ class MinimaxTimelineEditor {
       this.renderTimeline();
     } catch (err) {
       console.error("[MuseMinimaxDirector] reference image upload failed", err);
+      alert("Image upload failed — see console for details.");
+    }
+  }
+
+  // Stubelius: a middle frame's box (First/Last Frame mode) — the picture, the second the video
+  // reaches it (typed here, or dragged on the timeline: see _buildFrameLane), × to remove it.
+  // Boxes follow time order, so Middle 1 is always the earlier one.
+  _buildMiddleSlot(k) {
+    const list = this._middleFrames();
+    const data = list[k];
+    const slot = document.createElement("div");
+    slot.className = "mmd-char-slot mmd-mid-slot" + (data ? " mmd-filled" : "");
+
+    const label = document.createElement("div");
+    label.className = "mmd-char-label";
+    label.textContent = `Middle ${k + 1}`;
+    slot.appendChild(label);
+
+    if (data) {
+      const del = document.createElement("button");
+      del.className = "mmd-char-del";
+      del.innerHTML = "&times;";
+      del.title = "Remove this middle frame";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const live = this._middleFrames();
+        const at = live.indexOf(data);
+        if (at >= 0) live.splice(at, 1);
+        this.commitChanges();
+        this.renderReferences();
+        this.renderTimeline();
+      });
+      slot.appendChild(del);
+
+      const preview = document.createElement("div");
+      preview.className = "mmd-char-preview";
+      const img = document.createElement("img");
+      img.src = comfyViewUrl(data.file);
+      preview.appendChild(img);
+      slot.appendChild(preview);
+
+      const row = document.createElement("div");
+      row.className = "mmd-mid-time-row";
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "mmd-mid-time-input";
+      input.step = "0.1";
+      input.min = String(MIDDLE_GAP);
+      input.max = String(Math.max(MIDDLE_GAP, this.durationSeconds - MIDDLE_GAP));
+      input.value = String(Math.round(data.time * 100) / 100);
+      input.title = "When the video reaches this picture, in seconds from its start. Drag it on the timeline below, or type the exact second (any chunk).";
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("change", () => {
+        const t = parseFloat(input.value);
+        if (Number.isFinite(t)) {
+          data.time = Math.min(this.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, t));
+        }
+        this._middleFrames();       // back in time order, apart from each other
+        this.commitChanges();
+        this.renderReferences();
+        this.renderTimeline();
+      });
+      row.appendChild(input);
+      const unit = document.createElement("span");
+      unit.className = "mmd-cut-duration-unit";
+      unit.textContent = "s";
+      row.appendChild(unit);
+      slot.appendChild(row);
+    } else {
+      const placeholder = document.createElement("div");
+      placeholder.className = "mmd-char-placeholder";
+      placeholder.innerHTML = `${ICON_UPLOAD}<br>Drop image`;
+      slot.appendChild(placeholder);
+      slot.addEventListener("click", () => this._pickMiddleFrame(null));
+    }
+
+    slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#4F8EF7"; });
+    slot.addEventListener("dragleave", () => { slot.style.borderColor = ""; });
+    slot.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      slot.style.borderColor = "";
+      const file = e.dataTransfer.files?.[0];
+      if (file) await this._setMiddleFrame(data || null, file, null);
+    });
+    return slot;
+  }
+
+  _pickMiddleFrame(time) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      if (input.files?.[0]) await this._setMiddleFrame(null, input.files[0], time);
+    };
+    input.click();
+  }
+
+  // entry = the middle frame whose picture is replaced (its time stays), or null for a new one,
+  // placed at `time` or, without one, in the middle of the longest free stretch.
+  async _setMiddleFrame(entry, file, time) {
+    if (!entry && this._middleFrames().length >= MAX_MIDDLE_FRAMES) {
+      alert(`Up to ${MAX_MIDDLE_FRAMES} middle frames — remove one first.`);
+      return;
+    }
+    try {
+      const uploaded = await uploadRefFile(file);    // {file, fileName}: no picture data in the workflow
+      const list = this._middleFrames();             // read again: the upload took a moment
+      if (entry && list.includes(entry)) {
+        Object.assign(entry, uploaded);
+      } else if (list.length < MAX_MIDDLE_FRAMES) {
+        list.push({ ...uploaded, time: time ?? defaultMiddleTime(list, this.durationSeconds) });
+      }
+      this._middleFrames();
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    } catch (err) {
+      console.error("[MuseMinimaxDirector] middle frame upload failed", err);
       alert("Image upload failed — see console for details.");
     }
   }

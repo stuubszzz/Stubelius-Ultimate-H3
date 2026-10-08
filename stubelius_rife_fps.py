@@ -74,6 +74,37 @@ def _hard_cuts(images, device):
     return {int(j) for j in torch.nonzero((d > threshold) & (d > CUT_X_NEIGHBOUR * neighbours)).flatten()}
 
 
+def draw_between(images, pairs, ckpt_name="rife47.pth", fast_mode=True, ensemble=True, batch_size=8):
+    """RIFE frames between any two source frames: pairs = [(a, b, t)] -> {pair index: frame [H, W, C]}.
+    The frame at t (0..1) on the way from images[a] to images[b]; used by the de-stutter."""
+    if not pairs:
+        return {}
+    device = get_torch_device()
+    net, arch_ver = _model(ckpt_name)
+    if arch_ver == "4.26":
+        ensemble = False
+        scale_list = [16, 8, 4, 2, 1]
+    else:
+        scale_list = [8, 4, 2, 1]
+    _, h, w, _ = images.shape
+    frames = images.permute(0, 3, 1, 2)
+    pad_h, pad_w = (32 - h % 32) % 32, (32 - w % 32) % 32
+    out = {}
+    with torch.inference_mode():
+        for s in range(0, len(pairs), batch_size):
+            chunk = pairs[s:s + batch_size]
+            f0 = torch.stack([frames[a] for a, _, _ in chunk]).to(device)
+            f1 = torch.stack([frames[b] for _, b, _ in chunk]).to(device)
+            if pad_h or pad_w:
+                f0 = torch.nn.functional.pad(f0, (0, pad_w, 0, pad_h), mode="replicate")
+                f1 = torch.nn.functional.pad(f1, (0, pad_w, 0, pad_h), mode="replicate")
+            ts = torch.tensor([t for _, _, t in chunk], device=device).view(-1, 1, 1, 1)
+            mid = net(f0, f1, ts, scale_list, fast_mode, ensemble).clamp(0, 1)[:, :, :h, :w].movedim(1, -1).cpu()
+            for i, m in enumerate(mid):
+                out[s + i] = m
+    return out
+
+
 class StubeliusRIFEToFPS:
     @classmethod
     def INPUT_TYPES(cls):

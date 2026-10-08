@@ -13,7 +13,7 @@ joined the originals:
   and its own LoRAs;
 - a chunk that continues the one before it starts from that chunk's polished last frame and
   holds its polished last frames (the Director's own carry-over), so a seam is polished as one
-  picture;
+  picture; the first chunk of a take that continues a clip starts from the clip's frames;
 - the same opening frames cut off each chunk and the same seam smoothing. The polished video
   has exactly the take's frames, so the take's own sound still fits it: the polish re-renders
   the picture and never the sound.
@@ -24,8 +24,10 @@ import torch
 
 import comfy.sd
 import node_helpers
-from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo
+from comfy_extras.nodes_minimax_h3 import align_frame_count
 
+from . import stubelius_clip as _clip
+from . import stubelius_keyframes as _keyframes
 from .muse_minimax_refine import (_execute_comfy_node, _fit_image_to_target, _refine_one_chunk,
                                   _unpack_node_result)
 
@@ -41,6 +43,12 @@ def chunks_of(candidate):
     """The chunks the Director kept for this take; [] for a take without them."""
     bundle = candidate.get(KEY) if isinstance(candidate, dict) else None
     return (bundle or {}).get("chunks") or []
+
+
+def source_of(candidate):
+    """The clip this take continues (stubelius_clip.Clip.info()), or None."""
+    bundle = candidate.get(KEY) if isinstance(candidate, dict) else None
+    return (bundle or {}).get("source")
 
 
 HEAVY_TOKENS = 100_000          # a polish with more video tokens than this gets the memory savers below
@@ -113,30 +121,44 @@ def _conditioning(chunk, bundle, clip, vae, previous):
         made_w, made_h = int(video.shape[-1]) * 16, int(video.shape[-2]) * 16
         how = bundle.get("resize_method") or "crop"
         first, last = keyframes.get("first"), keyframes.get("last")
+        # Middle frames: (frame index in the chunk, picture as uploaded). Those pinned with Add Guide
+        # are left out: the take already passes through them, and pinned again at the polish size
+        # one pulls the 4 frames of its latent toward the picture, so the video jumps there and
+        # back. Those the text encoder read stay, as the prompt names them.
+        middles = (keyframes.get("middles") or []) if keyframes.get("in_text", False) else []
         continues = isinstance(first, str)      # "previous": it starts on the last frame before it
         if continues:
             first = previous[-1:] if previous is not None else None
         # The text and the pictures the text encoder reads: exactly as when the chunk was made,
         # at the size it was made at.
-        positive = _unpack_node_result(_execute_comfy_node(
-            MiniMaxH3ImageToVideo, clip=clip, vae=vae, prompt=chunk["prompt"], width=made_w, height=made_h,
-            length=int(chunk["length"]),
-            first_frame=first if continues else _fit_image_to_target(first, made_w, made_h, how),
-            last_frame=_fit_image_to_target(last, made_w, made_h, how)))[0]
+        positive = _keyframes.conditioning(
+            _execute_comfy_node, _unpack_node_result, clip=clip, vae=vae, prompt=chunk["prompt"],
+            width=made_w, height=made_h, length=int(chunk["length"]),
+            first=first if continues else _fit_image_to_target(first, made_w, made_h, how),
+            last=_fit_image_to_target(last, made_w, made_h, how),
+            middles=[(index, _fit_image_to_target(picture, made_w, made_h, how)) for index, picture in middles],
+            in_text=keyframes.get("in_text", False))[0]
         # The keyframes themselves are frames of the video, so they have to be on the grid the
         # polish samples at: the same pictures again, at that size (a polished frame is already
         # there; an uploaded image is fitted from the original, not enlarged from the small copy).
-        pictures = [p for p in (first if continues else _fit_image_to_target(first, width, height, how),
-                                _fit_image_to_target(last, width, height, how)) if p is not None]
+        # Matched to the conditioning's keyframes by the frame each one sits on.
+        pictures = {}
+        if first is not None:
+            pictures[0] = first if continues else _fit_image_to_target(first, width, height, how)
+        for index, picture in middles:
+            pictures[int(index)] = _fit_image_to_target(picture, width, height, how)
+        if last is not None:
+            pictures[align_frame_count(max(5, int(chunk["length"]))) - 1] = _fit_image_to_target(last, width, height, how)
         if not pictures or (width, height) == (made_w, made_h):
             return positive
         made = list(positive[0][1].get("minimax_keyframes") or [])
-        if len(made) != len(pictures):
-            raise RuntimeError(f"[StubeliusPolish] {len(pictures)} keyframe picture(s) but the conditioning "
-                               f"holds {len(made)}: this ComfyUI's MiniMax H3 nodes changed, update the pack.")
+        if sorted(int(k["resolved_frame_index"]) for k in made) != sorted(pictures):
+            raise RuntimeError(f"[StubeliusPolish] keyframe pictures at frames {sorted(pictures)} but the conditioning "
+                               f"holds {sorted(int(k['resolved_frame_index']) for k in made)}: this ComfyUI's "
+                               f"MiniMax H3 nodes changed, update the pack.")
         resized = []
-        for keyframe, picture in zip(made, pictures):
-            picture = picture[:1, :, :, :3]
+        for keyframe in made:
+            picture = pictures[int(keyframe["resolved_frame_index"])][:1, :, :, :3]
             if tuple(picture.shape[1:3]) != (height, width):
                 picture = _fit_image_to_target(picture, width, height, "stretch")
             resized.append({**keyframe, "latent": vae.encode(picture)})
@@ -220,6 +242,14 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     # they came out; the rest of the video waits in 8 bits.
     keep = carry_length + 34 if carry_length else 1   # the carry is rounded up to the frame grid (+16 at most)
     out, done, previous, previous_audio = None, 0, None, None
+    if bundle.get("source"):
+        # A take that continues a clip: its first chunk starts from the clip's own frames, at about
+        # the polish size (the carry-over fits them exactly), as later chunks start from the ones before.
+        video = chunks[0]["latent"]["samples"].unbind()[0]
+        previous, previous_audio = _clip.tail(_clip.Clip.from_info(bundle["source"]),
+                                              round(int(video.shape[-1]) * 16 * scale),
+                                              round(int(video.shape[-2]) * 16 * scale), keep,
+                                              rate=getattr(audio_vae, "audio_sample_rate", None))
     for index, chunk in enumerate(chunks):
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
@@ -232,7 +262,8 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",
             positive=positive, trim_frames=int(chunk.get("trim") or 0))
         if previous is not None:
-            _smooth_seam(previous[-1:], images, bundle.get("seam_frames"))
+            seam_from = _fit_image_to_target(previous[-1:], int(images.shape[2]), int(images.shape[1]), "stretch")
+            _smooth_seam(seam_from, images, bundle.get("seam_frames"))
 
         # One 8-bit tensor for the whole video, filled chunk by chunk: 3 bytes a pixel instead of
         # 12 while the next chunks render (20 s polished for 2K: 6 GB instead of 25 GB, which

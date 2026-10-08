@@ -14,8 +14,8 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 |---|---|
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
-| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x) |
-| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode, references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
+| **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not, **de-stutter** |
+| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, **sounds and clips** pinned on the timeline (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
@@ -67,6 +67,110 @@ The Output node runs 12 polish steps by default. A large polish turns on KJNodes
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
 in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset, about 6 GB at
 1.5x. Long takes need a lot of RAM.
+
+## Middle frames
+
+In **First/Last Frame** mode the video can pass through up to two **middle frames** on its way from
+the first frame to the last.
+
+- Drop a picture on the **Middle 1** or **Middle 2** box, or straight onto the strip above a chunk's
+  timeline, where it lands at that second. Drag its thumbnail along the strip to change when the
+  video reaches it, or type the second in its box.
+- Middle frames stay half a second apart, and half a second from the first and the last frame. A
+  CUT edge dragged close to one snaps onto it, so a CUT can run from one frame to the next.
+- Each middle frame is pinned on its own frame with ComfyUI's **Add Guide for MiniMax H3**, as in
+  ComfyUI's own multiframe template. The text encoder sees the first and the last frame, as before,
+  so describe what happens on the way in the prompt.
+- In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
+  The Quality polish follows the take through the middle frames.
+
+## Continue a clip
+
+In **First/Last Frame** mode the First Frame box also takes a video. Drop a clip there and the new
+video starts where the clip ends: the clip's last 1.6 s of picture and sound are carried in, the
+same way each chunk of a long video continues the one before it, so the motion and the sound go on
+without a cut.
+
+- The video is rendered at the clip's shape; the aspect ratio setting doesn't apply.
+- The timeline and the total duration are the new part. Middle frames and a Last Frame work as
+  usual, so a clip can be continued to a picture of your choice.
+- **clip in output** on the Output node puts the clip in front of the new part, as one video (its
+  own frames, only resized), or leaves it out, to place the new part after the clip in an editor.
+  Changing it re-runs only the finish.
+- A clip at another frame rate is read on H3's 24 fps clock, a clip without sound is continued in
+  silence, and a phone clip is turned upright.
+- The Quality polish starts from the clip's frames too, so the motion runs on smoothly at the
+  polished size. The clip itself is only resized (with the Output's upscaler), so from the join on
+  the polished part shows more fine detail. For an even look, continue a clip at its own size, in
+  the mode it was made in.
+
+## Sounds and clips on the timeline
+
+In **First/Last Frame** mode a strip for sounds and clips runs under the frames above each chunk's
+timeline. Drop a sound or a short video clip on it and it is pinned at that second, with ComfyUI's
+**Add Guide for MiniMax H3**: the video is made around it.
+
+- **A sound** (a spoken line, a sound effect, music) plays from that second as it is. For a line,
+  type the same words in the CUT, in quotes, at that moment: the recording gives the words and the
+  CUT tells H3 that someone is talking. Without the words in the CUT the lips may not follow. In our
+  tests every word landed within about 40 ms of its pin and the lips followed. A sound doesn't move the
+  picture on its own, though: H3 still times the action from the CUT's words. For a reaction right on
+  the sound, pin a middle frame of it just after (a door slam at 3.0 s, a frame of her looking back at
+  3.3 s).
+- **A clip** plays its own frames from that second, and its own sound unless the speaker on it is
+  off. It is pinned for as many frames as H3's clip lengths allow (5, 22, 39, 56 ... frames), starts
+  on H3's 17-frame grid (every 0.71 s, the strip snaps it there: between two grid points its frames
+  come out grey) and stays inside its chunk.
+- Drag a block to move it, × removes it; up to 8. A sound may run on into the next chunk.
+- The Quality polish doesn't pin them again: the take already plays them.
+
+## Voices: a recorded line, a voice sample, Lip Sync
+
+| You have | Where it goes | What the character says |
+|---|---|---|
+| A recording of the exact line | First/Last Frame mode: the sound strip, at its second (type the words in the CUT too). Or Reference (Omni) mode: a reference audio set to **Lip Sync**, for the whole video's sound | The recording, word for word |
+| A voice sample and new words | Reference (Omni) mode: the sample in **Ref Audio N** next to the character's picture in **Ref N**, set to **Voice Reference — new dialogue, same voice**; type the new line in the CUT | The CUT's words, in a voice like the sample's |
+| A voice sample, and the voice has to match closely | Make the line first with a voice-clone TTS (for example the LongCat AudioDiT, Fish Audio S2 or VoxCPM2 nodes), then use it as a recording (first row) | The cloned line |
+
+- **Voice Reference reaches the first chunk only.** Past one chunk, a Reference (Omni) video continues on
+  the First/Last Frame checkpoint (hybrid continuation, switched on by itself), which takes no audio; the
+  later chunks carry the voice on from the last 1.6 s of the chunk before, not from the sample. For longer
+  dialogue, clone the lines and use Lip Sync, which reaches every chunk.
+- **Lip Sync or a line on the strip.** Lip Sync makes the recording the video's whole sound: every chunk
+  follows it and the finished video plays the file itself, with nothing generated under it.
+  **Transcribe → Insert as Timed CUTs** types its words into the CUTs. A line on the strip is one sound
+  at its second, in a video whose other sound H3 makes.
+
+## De-stutter
+
+Some takes judder: the picture holds still for a frame in a steady rhythm while the rest moves, "move, move,
+hold" (every third frame almost a copy of the one before, like 16 fps footage stretched to 24) or "move,
+hold". It shows most in Speed mode: a 15 s Speed take measured 95 held frames, one every 3 frames, where PDMD
+on the same seed had none. RIFE to 48/60 fps doesn't fix it; it only splits each jump in two.
+
+**de-stutter** on the Output node finds the held frames and RIFE draws them again on the way to the next pose,
+so the motion runs evenly. A held picture is one pose shown twice: it is placed halfway between its two frames
+and both are drawn again. Every other frame stays as it was rendered, the length and the sound stay as they
+were, and nothing is drawn across a hard cut.
+
+- **auto** (the default) acts only on takes that judder (held frames on at least 8% of the moving steps);
+  **on** takes every held frame it finds; **off** never.
+- The **Seed Previews** node puts it on the seed previews too, so the seed you pick looks the way it will in the
+  finished video. Changing the switch re-runs only the previews and the Finish, never the seeds.
+- On the Speed take above: roughness (how unevenly the picture moves from frame to frame) 0.83 before, 0.23
+  after, against 0.27 for PDMD.
+
+## Jagged or smeared motion
+
+- **Judder** (a held frame every second or third frame): Speed mode's takes do it most. **de-stutter**
+  (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. 48/60 fps
+  alone doesn't fix it.
+- **Fast, small motion smears** (fingers, hands): render in PDMD instead of Speed. At Speed's ≈480p a
+  finger is a few pixels wide; PDMD renders ≈768p in 4 steps and fixes most of it.
+- **Jerky after pinning a line**, things to check: the CUT has the line's exact words and keeps the action
+  light while the character speaks; the line stays inside one chunk; the recording has no hard cuts, long
+  pauses or clipping (short fades, peaks around -3 dBFS). And try two or three seeds: any pin changes the
+  whole take, so the same seed with a pin is a different take.
 
 ## PDMD mode
 

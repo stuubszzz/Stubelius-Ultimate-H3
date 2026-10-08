@@ -7,11 +7,13 @@ Two-stage sampling and latent scouting are gone; the VAE re-encode carry (extend
 continuity, only acts on 2+ chunks) is on whenever its helper pack is installed. The main
 images/audio output is always candidate 1 (V1.2 blocks it during a hunt).
 """
+import gc
 import json
 import logging
 import os
 import re
 
+import comfy.model_management
 import comfy.samplers
 import comfy.sd
 import comfy.utils
@@ -46,6 +48,41 @@ def _lora_state_dict(path):
             sd = convert_diffusers_h3(sd, metadata)
         _LORA_SD_CACHE[key] = sd
     return _LORA_SD_CACHE[key]
+
+
+_HELD = []   # model clones of the last cancelled or failed run, see _hold_run_models()
+
+
+def _hold_run_models(*roots):
+    """Keep a cancelled or failed run's model clones alive until the next run starts.
+
+    ComfyUI hands the exception back up its executor and keeps it in a reference cycle, and the
+    run's frames go with it. The clones made during the run (the live-preview clone, sigma shift,
+    chunk LoRAs, the polish's memory savers) are then freed by the garbage collector in one pass.
+    ComfyUI follows a loaded model from a freed clone to its parent, and loses it when both go in
+    the same pass: "memory leak with model MiniMaxH3" and a full garbage collect at every later
+    model load, until a restart.
+
+    Nothing is freed here: ComfyUI still cleans up after the exception (the model compiler among
+    it), and freeing the run's memory before that took ComfyUI down on every cancel. This only
+    keeps each loaded clone's chain back to `roots` (the models the run started from) alive."""
+    roots = [r for r in roots if r is not None]
+    for loaded in list(comfy.model_management.current_loaded_models):
+        chain, patcher = [], loaded.model
+        while patcher is not None:
+            chain.append(patcher)
+            if any(patcher is r for r in roots):
+                _HELD.extend(chain)
+                break
+            patcher = getattr(patcher, "parent", None)
+
+
+def _release_held_models():
+    """Drop what _hold_run_models() kept, at the start of the next run. Collect first, while it
+    is still held, so the cancelled run's frames are gone and the clones then go one at a time."""
+    if _HELD:
+        gc.collect()
+        _HELD.clear()
 
 
 def _build_lora_plan(timeline_data):
@@ -116,6 +153,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                    model_fl2va=None, prompt_override=None,
                    megapixels=0.98, steps=8, sampler_name="euler", scheduler="beta", seed_count=1,
                    unique_id=None):
+        _release_held_models()
         if setup is not None:
             megapixels, steps = setup["megapixels"], setup["steps"]
             sampler_name, scheduler, seed_count = setup["sampler"], setup["scheduler"], setup["seed_count"]
@@ -150,6 +188,9 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,
                                    use_override, steps, sampler_name, scheduler, upscale_methods,
                                    timeline_data, n, model_fl2va, prompt_override)
+        except BaseException:
+            _hold_run_models(model, model_fl2va)
+            raise
         finally:
             self._lora_plan, self._lora_models = {}, {}
         out[0], out[1] = out[4], out[5]
