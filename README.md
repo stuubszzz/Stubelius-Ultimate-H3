@@ -15,7 +15,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 | **Stubelius H3 Setup** | Mode preset: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps); 1–4 seeds |
 | **Stubelius H3 Models** | ref2va + fl2va checkpoints (safetensors or GGUF), text encoder, VAEs, speedup LoRA, PDMD LoRA, two global LoRAs, attention and low-VRAM options, live preview |
 | **Stubelius H3 Output** | Final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), a continued clip in front of the video or not, **de-stutter** |
-| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to two **middle frames**, **sounds and clips** pinned on the timeline (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
+| **Stubelius H3 Director V2** | Timeline, Reference (Omni) or First/Last Frame mode with up to eight **middle frames**, **sounds and clips** pinned on the timeline (or a **clip to continue** in place of the first frame), references, aspect, duration (Extend past one chunk), seed, **LoRAs per chunk** |
 | **Stubelius H3 Finish** | WINNER 1–4 (0 = hold after the seeds). Changing it re-runs only the finish, from cache |
 | **Stubelius Live Preview** | Watch the Director (and the Quality polish) while it samples |
 | **Stubelius RIFE to FPS**, **Stubelius Color Lock** | Frame rate conversion that keeps hard cuts clean; restores the original colours after DLSS5 |
@@ -70,12 +70,14 @@ in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset
 
 ## Middle frames
 
-In **First/Last Frame** mode the video can pass through up to two **middle frames** on its way from
+In **First/Last Frame** mode the video can pass through up to eight **middle frames** on its way from
 the first frame to the last.
 
-- Drop a picture on the **Middle 1** or **Middle 2** box, or straight onto the strip above a chunk's
-  timeline, where it lands at that second. Drag its thumbnail along the strip to change when the
-  video reaches it, or type the second in its box.
+- Add them in the **Middle frames** box between the First Frame and the Last Frame (click it, or drop
+  pictures on it), or drop a picture straight onto the strip above a chunk's timeline, where it lands
+  at that second. Drag its thumbnail along the strip to change when the video reaches it, or type the
+  second under its picture in the box. Drop another picture on a middle frame to swap the picture and
+  keep its time.
 - Middle frames stay half a second apart, and half a second from the first and the last frame. A
   CUT edge dragged close to one snaps onto it, so a CUT can run from one frame to the next.
 - Each middle frame is pinned on its own frame with ComfyUI's **Add Guide for MiniMax H3**, as in
@@ -83,6 +85,13 @@ the first frame to the last.
   so describe what happens on the way in the prompt.
 - In a video longer than one chunk, a middle frame belongs to the chunk that renders that second.
   The Quality polish follows the take through the middle frames.
+- **How many.** Each middle frame adds a little render time: eight add about a tenth. In tests every
+  one landed on its own frame, also when the pictures were moved to other times than in the take
+  they came from. The video follows the pictures more closely the more there are, up to about one
+  every half second.
+- **Fast action at the start of a chunk.** A middle frame on fast action (something racing through
+  the picture) in the first half second of a chunk that continues the video can snap into place for
+  one frame. Pin the moments just before and after it instead. Anywhere else, fast action pins cleanly.
 
 ## Continue a clip
 

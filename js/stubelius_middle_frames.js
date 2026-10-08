@@ -1,16 +1,17 @@
-// Middle frames for the Director's First/Last Frame mode: up to two pictures the video passes through,
+// Middle frames for the Director's First/Last Frame mode: up to eight pictures the video passes through,
 // each at its own time in seconds of the whole video, kept in timeline_data "middle_frames"
 // ([{file, fileName, time}]). The rules for where they may sit, without any DOM: the Director's
 // timeline (muse_minimax_director.js) uses them, and they can be checked outside the browser.
 
-export const MAX_MIDDLE_FRAMES = 2;
-export const MIDDLE_GAP = 0.5;   // seconds: from the first and last frame, and between the two
+export const MAX_MIDDLE_FRAMES = 8;
+export const MIDDLE_GAP = 0.5;   // seconds: from the first and last frame, and between each other
 
 const tenths = (t) => Math.round(t * 10) / 10;
 
-// The middle frames that count, in time order: at most two, each inside the video and at least
-// MIDDLE_GAP from the first frame, the last frame and each other. Times are moved as little as
-// that needs. Works on the entries themselves and returns them as a new array.
+// The middle frames that count, in time order: at most MAX_MIDDLE_FRAMES, each inside the video and
+// at least MIDDLE_GAP from the first frame, the last frame and each other. Times are moved as little
+// as that needs. A video too short for all of them keeps the earliest ones that fit (just one, in its
+// middle, when only one fits). Works on the entries themselves and returns them as a new array.
 export function normalizeMiddleFrames(list, duration) {
   const kept = (Array.isArray(list) ? list : [])
     .filter((m) => m && typeof m === "object" && m.file && Number.isFinite(Number(m.time)))
@@ -19,11 +20,13 @@ export function normalizeMiddleFrames(list, duration) {
     .slice(0, MAX_MIDDLE_FRAMES);
   const lo = MIDDLE_GAP;
   const hi = duration - MIDDLE_GAP;
-  if (hi - lo < MIDDLE_GAP * (kept.length - 1)) {
-    // a video too short for them: keep the first one, in the middle
-    kept.length = Math.min(kept.length, 1);
-    kept.forEach((m) => { m.time = Math.round((duration / 2) * 100) / 100; });
-    return kept;
+  const fit = hi < lo ? 1 : Math.floor((hi - lo) / MIDDLE_GAP + 1e-9) + 1;
+  if (kept.length > fit || hi < lo) {
+    kept.length = Math.min(kept.length, fit);
+    if (fit === 1) {
+      kept.forEach((m) => { m.time = Math.round((duration / 2) * 100) / 100; });
+      return kept;
+    }
   }
   let floor = lo;
   for (const m of kept) {

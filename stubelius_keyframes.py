@@ -1,4 +1,4 @@
-"""Middle frames for First/Last Frame mode: up to two pictures the video passes through, each at its own time.
+"""Middle frames for First/Last Frame mode: up to eight pictures the video passes through, each at its own time.
 
 The timeline keeps them in timeline_data "middle_frames": [{"file", "fileName", "time"}], time in seconds of
 the whole video. The Director's timeline shows them as thumbnails you drag along the ruler; the Director
@@ -23,7 +23,7 @@ from comfy_extras.nodes_minimax_h3 import (
 
 log = logging.getLogger(__name__)
 
-MAX_MIDDLE_FRAMES = 2
+MAX_MIDDLE_FRAMES = 8
 FPS = 24
 
 
