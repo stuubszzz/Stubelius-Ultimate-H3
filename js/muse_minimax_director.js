@@ -26,9 +26,10 @@ const { api } = window.comfyAPI.api;
 // relevant — file path + trim window live in timeline_data; Python resolves/decodes them
 // (with PyAV for video/audio) at execute time. There are no first_frame/last_frame graph
 // sockets — First/Last Frame mode reuses Ref 1 / Ref 2 (the same character-slot UI) as its
-// first/last frame source instead, plus up to two middle frames between them (Stubelius:
-// timeline_data.middle_frames, dragged along a lane above each chunk's ruler; the placement rules
-// are in stubelius_middle_frames.js); the other reference slots don't apply in that mode. A video
+// first/last frame source instead, plus up to eight middle frames between them (Stubelius:
+// timeline_data.middle_frames, in the Middle frames box between the two and dragged along a lane
+// above each chunk's ruler; the placement rules are in stubelius_middle_frames.js); the other
+// reference slots don't apply in that mode. A video
 // dropped on the First Frame box is a clip the video continues (timeline_data.source_clip).
 
 const MAX_CHARACTER_SLOTS = 9;
@@ -44,6 +45,8 @@ const HIDDEN_WIDGET_NAMES = ["timeline_data"];
 // Per-chunk LoRA picker (V2): one shared list per page, amber above this total strength.
 const MMD_LORAS = { list: null, pending: false };
 const MMD_LORA_SUM_WARN = 2.0;
+// Strength range of a chunk's LoRA: slider LoRAs run to ±9.
+const MMD_LORA_STRENGTH_MAX = 9;
 const MMD_TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe/i;
 const _loraShortName = (n) => (n || "").split(/[\\/]/).pop().replace(/\.safetensors$/i, "");
 const _loraFolder = (n) => { const i = Math.max((n || "").lastIndexOf("\\"), (n || "").lastIndexOf("/")); return i > 0 ? n.slice(0, i).replace(/\\/g, " / ") : "(loras root)"; };
@@ -465,6 +468,34 @@ function injectStyles() {
     font-size: 10px; color: #c8c8d4; white-space: nowrap; background: rgba(0,0,0,0.6);
     border-radius: 3px; padding: 0 4px; line-height: 14px;
   }
+  .mmd-frame-mid:hover { z-index: 4; }        /* close together, the one under the mouse reads on top */
+
+  /* Stubelius: the Middle frames box between First Frame and Last Frame — a tile per middle frame
+     (picture, the second it's reached, x), and an Add tile while there's room */
+  .mmd-char-row.mmd-fl-frame-row {
+    grid-template-columns: minmax(88px, 1fr) minmax(0, 3fr) minmax(88px, 1fr); align-items: start;
+  }
+  .mmd-char-slot.mmd-mid-panel { align-items: stretch; cursor: default; min-height: 92px; }
+  .mmd-char-slot.mmd-mid-panel.mmd-can-add { cursor: pointer; }
+  .mmd-mid-tiles { display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 19px; }
+  .mmd-mid-tile { position: relative; width: 66px; display: flex; flex-direction: column; align-items: center; }
+  .mmd-mid-thumb {
+    position: relative; width: 66px; height: 40px; border-radius: 5px; overflow: hidden; background: #0a0a0d;
+    border: 2px solid #B26BF7; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  }
+  .mmd-mid-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .mmd-mid-badge {
+    position: absolute; left: 2px; bottom: 2px; font-size: 9px; font-weight: 700; color: #fff;
+    background: rgba(0,0,0,0.6); border-radius: 3px; padding: 0 3px; line-height: 12px; pointer-events: none;
+  }
+  .mmd-mid-tile .mmd-char-del { top: -6px; right: -6px; }
+  .mmd-mid-tile.mmd-drop-over .mmd-mid-thumb { border-color: #4F8EF7; }
+  .mmd-mid-tile .mmd-mid-time-input { width: 46px; }
+  .mmd-mid-add { cursor: pointer; }
+  .mmd-mid-add .mmd-mid-thumb { border: 2px dashed #5a5a6a; color: #8a8a98; font-size: 20px; font-weight: 700; }
+  .mmd-mid-add:hover .mmd-mid-thumb { border-color: #4F8EF7; color: #d4d4dc; }
+  .mmd-mid-add-label { font-size: 10.5px; color: #8a8a98; line-height: 22px; margin-top: 5px; }
+  .mmd-mid-hint { flex: 1; min-width: 130px; align-self: center; font-size: 10.5px; color: #6a6a78; line-height: 1.45; }
 
   /* Stubelius: a clip in the First Frame box — the video continues it */
   .mmd-char-preview video, .mmd-frame-thumb video {
@@ -836,7 +867,7 @@ class MinimaxTimelineEditor {
     if (typeof parsed.prompt_gen_provider !== "string") parsed.prompt_gen_provider = "ollama";
     if (typeof parsed.prompt_gen_base_url !== "string") parsed.prompt_gen_base_url = "";
     if (typeof parsed.prompt_gen_model !== "string") parsed.prompt_gen_model = "";
-    // Stubelius: up to two middle frames in First/Last Frame mode, each at its own time
+    // Stubelius: up to eight middle frames in First/Last Frame mode, each at its own time
     // (stubelius_middle_frames.js). Kept when the mode is Reference, used only in First/Last.
     if (!Array.isArray(parsed.middle_frames)) parsed.middle_frames = [];
     // Stubelius: sounds and clips pinned on the timeline in First/Last Frame mode (stubelius_cues.js)
@@ -2175,7 +2206,8 @@ class MinimaxTimelineEditor {
     const sum = document.createElement("span");
     sum.className = "mmd-lora-sum" + (total > MMD_LORA_SUM_WARN ? " high" : "");
     sum.textContent = enabledRows.length ? `${enabledRows.length} · sum ${total.toFixed(2)}` : "none";
-    if (total > MMD_LORA_SUM_WARN) sum.title = "High combined LoRA strength may break the render";
+    if (total > MMD_LORA_SUM_WARN) sum.title = "High combined LoRA strength may break the render "
+      + "(slider LoRAs are made for high strengths: ignore this for them)";
     titleRow.appendChild(sum);
 
     if (chunkIdx > 0) {
@@ -2317,11 +2349,11 @@ class MinimaxTimelineEditor {
     const strength = document.createElement("input");
     strength.type = "number";
     strength.className = "mmd-box-number";
-    strength.min = -2; strength.max = 2; strength.step = 0.05;
+    strength.min = -MMD_LORA_STRENGTH_MAX; strength.max = MMD_LORA_STRENGTH_MAX; strength.step = 0.05;
     strength.value = row.strength ?? 1.0;
     strength.addEventListener("change", () => {
       const v = parseFloat(strength.value);
-      row.strength = Number.isFinite(v) ? Math.max(-2, Math.min(2, v)) : 1.0;
+      row.strength = Number.isFinite(v) ? Math.max(-MMD_LORA_STRENGTH_MAX, Math.min(MMD_LORA_STRENGTH_MAX, v)) : 1.0;
       this.commitChanges();
       this.renderTimeline();
     });
@@ -2662,12 +2694,12 @@ class MinimaxTimelineEditor {
     if (isFL) {
       const note = document.createElement("div");
       note.className = "mmd-fl-note";
-      note.textContent = "First/Last Frame mode — the First Frame opens the video and the Last Frame ends it; up to two Middle frames are pictures it passes through on the way. Drag a middle frame along the timeline below to set when it's reached (or type its time, or drop a picture straight onto the timeline). Drop a video clip on the First Frame instead and the video continues that clip, picture and sound, from its last frame. Drop sounds (a spoken line, a sound effect, music) or short video clips on the strip under the frames to pin them at that second. Leave any of them empty to skip it. Reference video/audio don't apply in this mode.";
+      note.textContent = "First/Last Frame mode — the First Frame opens the video and the Last Frame ends it; up to eight Middle frames are pictures it passes through on the way, at least half a second apart. Add them in the Middle frames box (or drop pictures straight onto the timeline below), then drag them along the timeline to set when each one is reached, or type its second. Drop a video clip on the First Frame instead and the video continues that clip, picture and sound, from its last frame. Drop sounds (a spoken line, a sound effect, music) or short video clips on the strip under the frames to pin them at that second. Leave any of them empty to skip it. Reference video/audio don't apply in this mode.";
       this.refsArea.appendChild(note);
       const frameRow = document.createElement("div");
-      frameRow.className = "mmd-char-row";
+      frameRow.className = "mmd-char-row mmd-fl-frame-row";
       frameRow.appendChild(this.timeline.source_clip ? this._buildClipSlot() : this._buildCharSlot(0, false, "First Frame", true));
-      for (let k = 0; k < MAX_MIDDLE_FRAMES; k++) frameRow.appendChild(this._buildMiddleSlot(k));
+      frameRow.appendChild(this._buildMiddlePanel());
       frameRow.appendChild(this._buildCharSlot(1, false, "Last Frame"));
       this.refsArea.appendChild(frameRow);
       return; // no reference video/audio in First/Last Frame mode
@@ -3724,87 +3756,136 @@ class MinimaxTimelineEditor {
     }
   }
 
-  // Stubelius: a middle frame's box (First/Last Frame mode) — the picture, the second the video
-  // reaches it (typed here, or dragged on the timeline: see _buildFrameLane), × to remove it.
-  // Boxes follow time order, so Middle 1 is always the earlier one.
-  _buildMiddleSlot(k) {
+  // Stubelius: the Middle frames box (First/Last Frame mode), between the First and Last Frame boxes:
+  // a tile per middle frame in time order (see _buildMiddleTile), and an Add tile while there are fewer
+  // than MAX_MIDDLE_FRAMES. A new one goes in the middle of the longest free stretch; dropped straight
+  // on the timeline it goes where it's dropped (_buildFrameLane), and it's dragged along there.
+  _buildMiddlePanel() {
     const list = this._middleFrames();
-    const data = list[k];
-    const slot = document.createElement("div");
-    slot.className = "mmd-char-slot mmd-mid-slot" + (data ? " mmd-filled" : "");
+    const room = list.length < MAX_MIDDLE_FRAMES;
+    const panel = document.createElement("div");
+    panel.className = "mmd-char-slot mmd-mid-panel" + (list.length ? " mmd-filled" : "") + (room ? " mmd-can-add" : "");
 
     const label = document.createElement("div");
     label.className = "mmd-char-label";
-    label.textContent = `Middle ${k + 1}`;
-    slot.appendChild(label);
+    label.textContent = `Middle frames · ${list.length} / ${MAX_MIDDLE_FRAMES}`;
+    panel.appendChild(label);
 
-    if (data) {
-      const del = document.createElement("button");
-      del.className = "mmd-char-del";
-      del.innerHTML = "&times;";
-      del.title = "Remove this middle frame";
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const live = this._middleFrames();
-        const at = live.indexOf(data);
-        if (at >= 0) live.splice(at, 1);
-        this.commitChanges();
-        this.renderReferences();
-        this.renderTimeline();
-      });
-      slot.appendChild(del);
-
-      const preview = document.createElement("div");
-      preview.className = "mmd-char-preview";
-      const img = document.createElement("img");
-      img.src = comfyViewUrl(data.file);
-      preview.appendChild(img);
-      slot.appendChild(preview);
-
-      const row = document.createElement("div");
-      row.className = "mmd-mid-time-row";
-      const input = document.createElement("input");
-      input.type = "number";
-      input.className = "mmd-mid-time-input";
-      input.step = "0.1";
-      input.min = String(MIDDLE_GAP);
-      input.max = String(Math.max(MIDDLE_GAP, this.durationSeconds - MIDDLE_GAP));
-      input.value = String(Math.round(data.time * 100) / 100);
-      input.title = "When the video reaches this picture, in seconds from its start. Drag it on the timeline below, or type the exact second (any chunk).";
-      input.addEventListener("click", (e) => e.stopPropagation());
-      input.addEventListener("change", () => {
-        const t = parseFloat(input.value);
-        if (Number.isFinite(t)) {
-          data.time = Math.min(this.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, t));
-        }
-        this._middleFrames();       // back in time order, apart from each other
-        this.commitChanges();
-        this.renderReferences();
-        this.renderTimeline();
-      });
-      row.appendChild(input);
-      const unit = document.createElement("span");
-      unit.className = "mmd-cut-duration-unit";
-      unit.textContent = "s";
-      row.appendChild(unit);
-      slot.appendChild(row);
-    } else {
-      const placeholder = document.createElement("div");
-      placeholder.className = "mmd-char-placeholder";
-      placeholder.innerHTML = `${ICON_UPLOAD}<br>Drop image`;
-      slot.appendChild(placeholder);
-      slot.addEventListener("click", () => this._pickMiddleFrame(null));
+    const tiles = document.createElement("div");
+    tiles.className = "mmd-mid-tiles";
+    list.forEach((data, k) => tiles.appendChild(this._buildMiddleTile(data, k)));
+    if (room) {
+      const add = document.createElement("div");
+      add.className = "mmd-mid-tile mmd-mid-add";
+      add.title = "Add a middle frame: a picture the video passes through. It goes in the middle of the longest free stretch; drag it on the timeline below or type its second.";
+      const plus = document.createElement("div");
+      plus.className = "mmd-mid-thumb";
+      plus.textContent = "+";
+      add.appendChild(plus);
+      const addLabel = document.createElement("div");
+      addLabel.className = "mmd-mid-add-label";
+      addLabel.textContent = "Add";
+      add.appendChild(addLabel);
+      tiles.appendChild(add);
     }
+    if (!list.length) {
+      const hint = document.createElement("div");
+      hint.className = "mmd-mid-hint";
+      hint.textContent = `Pictures the video passes through on the way, up to ${MAX_MIDDLE_FRAMES}, at least half a second apart. Click or drop pictures here, or drop them straight onto the timeline below.`;
+      tiles.appendChild(hint);
+    }
+    panel.appendChild(tiles);
 
-    slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.style.borderColor = "#4F8EF7"; });
-    slot.addEventListener("dragleave", () => { slot.style.borderColor = ""; });
-    slot.addEventListener("drop", async (e) => {
+    // a click or a dropped picture anywhere but on a middle frame's tile: a new middle frame
+    if (room) panel.addEventListener("click", () => this._pickMiddleFrame(null));
+    panel.addEventListener("dragover", (e) => { e.preventDefault(); panel.style.borderColor = "#4F8EF7"; });
+    panel.addEventListener("dragleave", () => { panel.style.borderColor = ""; });
+    panel.addEventListener("drop", async (e) => {
       e.preventDefault();
-      slot.style.borderColor = "";
+      panel.style.borderColor = "";
       const file = e.dataTransfer.files?.[0];
-      if (file) await this._setMiddleFrame(data || null, file, null);
+      if (file) await this._setMiddleFrame(null, file, null);
     });
-    return slot;
+    return panel;
+  }
+
+  // Stubelius: one middle frame's tile in the Middle frames box — its picture (drop another on it to
+  // swap the picture; its time stays), the second the video reaches it (typed here, or dragged on the
+  // timeline below), × to remove it. Tiles follow time order, so M1 is always the earliest.
+  _buildMiddleTile(data, k) {
+    const tile = document.createElement("div");
+    tile.className = "mmd-mid-tile";
+    tile.title = `Middle ${k + 1}: drop a picture on it to swap the picture, type the second the video reaches it, or drag it on the timeline below`;
+    tile.addEventListener("click", (e) => e.stopPropagation());   // not the box's click (that adds one)
+
+    const thumb = document.createElement("div");
+    thumb.className = "mmd-mid-thumb";
+    const img = document.createElement("img");
+    img.src = comfyViewUrl(data.file);
+    img.draggable = false;
+    thumb.appendChild(img);
+    const badge = document.createElement("span");
+    badge.className = "mmd-mid-badge";
+    badge.textContent = `M${k + 1}`;
+    thumb.appendChild(badge);
+    tile.appendChild(thumb);
+
+    const del = document.createElement("button");
+    del.className = "mmd-char-del";
+    del.innerHTML = "&times;";
+    del.title = "Remove this middle frame";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const live = this._middleFrames();
+      const at = live.indexOf(data);
+      if (at >= 0) live.splice(at, 1);
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    });
+    tile.appendChild(del);
+
+    const row = document.createElement("div");
+    row.className = "mmd-mid-time-row";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "mmd-mid-time-input";
+    input.step = "0.1";
+    input.min = String(MIDDLE_GAP);
+    input.max = String(Math.max(MIDDLE_GAP, this.durationSeconds - MIDDLE_GAP));
+    input.value = String(Math.round(data.time * 100) / 100);
+    input.title = "When the video reaches this picture, in seconds from its start. Drag it on the timeline below, or type the exact second (any chunk).";
+    input.addEventListener("change", () => {
+      const t = parseFloat(input.value);
+      if (Number.isFinite(t)) {
+        data.time = Math.min(this.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, t));
+      }
+      this._middleFrames();       // back in time order, apart from each other
+      this.commitChanges();
+      this.renderReferences();
+      this.renderTimeline();
+    });
+    row.appendChild(input);
+    const unit = document.createElement("span");
+    unit.className = "mmd-cut-duration-unit";
+    unit.textContent = "s";
+    row.appendChild(unit);
+    tile.appendChild(row);
+
+    tile.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      tile.classList.add("mmd-drop-over");
+    });
+    tile.addEventListener("dragleave", () => tile.classList.remove("mmd-drop-over"));
+    tile.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      tile.classList.remove("mmd-drop-over");
+      const file = e.dataTransfer.files?.[0];
+      if (file) await this._setMiddleFrame(data, file, null);
+    });
+    return tile;
   }
 
   _pickMiddleFrame(time) {

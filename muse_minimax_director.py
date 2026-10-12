@@ -1203,7 +1203,7 @@ class MuseMinimaxDirector:
         first_frame = _fit_image_to_target(first_frame_source, width, height, resize_method)
         last_frame_source = _load_character_image(characters_raw[1]) if len(characters_raw) > 1 and characters_raw[1] else None
         last_frame = _fit_image_to_target(last_frame_source, width, height, resize_method)
-        # Stubelius: up to two middle frames between them, each at its own time (stubelius_keyframes.py).
+        # Stubelius: up to eight middle frames between them, each at its own time (stubelius_keyframes.py).
         middle_frames = (_keyframes.load(tdata, _load_character_image, duration_seconds)
                          if mode != MODE_REFERENCE else [])
         for middle in middle_frames:
