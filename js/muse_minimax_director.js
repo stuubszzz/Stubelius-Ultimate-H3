@@ -45,6 +45,8 @@ const HIDDEN_WIDGET_NAMES = ["timeline_data"];
 // Per-chunk LoRA picker (V2): one shared list per page, amber above this total strength.
 const MMD_LORAS = { list: null, pending: false };
 const MMD_LORA_SUM_WARN = 2.0;
+// Strength range of a chunk's LoRA: slider LoRAs run to ±9.
+const MMD_LORA_STRENGTH_MAX = 9;
 const MMD_TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe/i;
 const _loraShortName = (n) => (n || "").split(/[\\/]/).pop().replace(/\.safetensors$/i, "");
 const _loraFolder = (n) => { const i = Math.max((n || "").lastIndexOf("\\"), (n || "").lastIndexOf("/")); return i > 0 ? n.slice(0, i).replace(/\\/g, " / ") : "(loras root)"; };
@@ -2204,7 +2206,8 @@ class MinimaxTimelineEditor {
     const sum = document.createElement("span");
     sum.className = "mmd-lora-sum" + (total > MMD_LORA_SUM_WARN ? " high" : "");
     sum.textContent = enabledRows.length ? `${enabledRows.length} · sum ${total.toFixed(2)}` : "none";
-    if (total > MMD_LORA_SUM_WARN) sum.title = "High combined LoRA strength may break the render";
+    if (total > MMD_LORA_SUM_WARN) sum.title = "High combined LoRA strength may break the render "
+      + "(slider LoRAs are made for high strengths: ignore this for them)";
     titleRow.appendChild(sum);
 
     if (chunkIdx > 0) {
@@ -2346,11 +2349,11 @@ class MinimaxTimelineEditor {
     const strength = document.createElement("input");
     strength.type = "number";
     strength.className = "mmd-box-number";
-    strength.min = -2; strength.max = 2; strength.step = 0.05;
+    strength.min = -MMD_LORA_STRENGTH_MAX; strength.max = MMD_LORA_STRENGTH_MAX; strength.step = 0.05;
     strength.value = row.strength ?? 1.0;
     strength.addEventListener("change", () => {
       const v = parseFloat(strength.value);
-      row.strength = Number.isFinite(v) ? Math.max(-2, Math.min(2, v)) : 1.0;
+      row.strength = Number.isFinite(v) ? Math.max(-MMD_LORA_STRENGTH_MAX, Math.min(MMD_LORA_STRENGTH_MAX, v)) : 1.0;
       this.commitChanges();
       this.renderTimeline();
     });

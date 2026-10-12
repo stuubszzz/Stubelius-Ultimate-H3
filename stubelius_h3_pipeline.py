@@ -370,9 +370,10 @@ class StubeliusH3Models:
                     "tooltip": "Turbo/distill LoRA. Strength comes from the Setup mode (1.0 / 0.75 / 0.0)."}),
                 "extra_lora_1": (loras, {"default": "none", "tooltip": "Applies to every chunk. "
                                           "Chunk-specific LoRAs go in the Director's chunk boxes."}),
-                "extra_lora_1_strength": ("FLOAT", {"default": 1.0, "min": -2.0, "max": 2.0, "step": 0.05}),
+                "extra_lora_1_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05,
+                                                    "tooltip": "Slider LoRAs run to ±9."}),
                 "extra_lora_2": (loras, {"default": "none"}),
-                "extra_lora_2_strength": ("FLOAT", {"default": 1.0, "min": -2.0, "max": 2.0, "step": 0.05}),
+                "extra_lora_2_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05}),
                 "attention": (attention, {"default": "comfy kitchen attention"}),
                 "sage_attention": ("BOOLEAN", {"default": False}),
                 "low_vram_attention": ("BOOLEAN", {"default": False, "tooltip": "Attention in head chunks (saves VRAM)."}),
