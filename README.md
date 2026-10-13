@@ -42,7 +42,10 @@ it for the whole video, and the finished video plays the recording itself.
 
 **A chunk with nothing to say stays quiet.** Without a recording, a chunk that continues a talking
 shot and has no quoted line in its CUTs is told that nobody speaks. Quote a line, or describe a
-voice in the CUT (she sings, the crowd cheers), and it is left alone.
+voice in the CUT (she sings, the crowd cheers, heavy breathing), and it is left alone. A talking
+shot is one with a quoted line or words like *says* or *whispers* in an earlier chunk, or the clip
+the video continues. In a video where nobody talks, no chunk is told this, so breathing and other
+voice sounds carry on into the next chunk.
 
 **Quality polish.** Quality at 1080p and up renders the take again, bigger, and the upscaler
 takes it the rest of the way to 2K or 4K. **quality polish scale** on the Output node sets how

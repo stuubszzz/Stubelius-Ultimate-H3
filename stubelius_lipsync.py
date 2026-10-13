@@ -40,7 +40,19 @@ LIP_SYNC = "fully_copy"  # H3's own retention word, what the panel calls "Lip Sy
 SILENT = "Nobody speaks in this shot: anyone on screen stays silent and their lips remain completely closed."
 VOICE_WORDS = re.compile(
     r"\b(say|said|speak|spoke|talk|tell|told|sing|sang|song|shout|yell|scream|whisper|laugh|giggl|chuckl|narrat|"
-    r"voice|chant|hum|cry|cries|sob|cheer|announc|repl|answer|ask|murmur|mutter|recit|rap|pray|moan|groan|gasp)\w*",
+    r"voice|chant|hum|cry|cries|sob|cheer|announc|repl|answer|ask|murmur|mutter|recit|rap|pray|moan|groan|gasp|"
+    r"breath|whimper|grunt|squeal|shriek|wail|howl|sniffl|cough|snor|huff|vocal)\w*"
+    r"|\b(sigh|sighs|sighed|sighing|pant|panted|panting)\b",
+    re.IGNORECASE)
+# Someone talking, with or without a quoted line (he says, she whispers to him). After a chunk like that
+# the model may keep them talking in invented words, so the chunks after it may get SILENT.
+SPEECH_WORDS = re.compile(
+    r"\b(say|says|said|saying|speak|speaks|speaking|spoke|spoken|talk|talks|talked|talking|tell|tells|told|"
+    r"telling|shout|shouts|shouted|shouting|yell|yells|yelled|yelling|whisper|whispers|whispered|whispering|"
+    r"ask|asks|asked|asking|answer|answers|answered|answering|reply|replies|replied|replying|murmur|murmurs|"
+    r"murmured|murmuring|mutter|mutters|muttered|muttering|narrate|narrates|narrated|narrating|sing|sings|sang|"
+    r"singing|chant|chants|chanted|chanting|announce|announces|announced|announcing|recite|recites|recited|"
+    r"reciting|pray|prays|prayed|praying)\b",
     re.IGNORECASE)
 
 
@@ -57,8 +69,13 @@ def has_spoken_line(segments):
 
 def mentions_voice(segments):
     """Do the CUTs describe someone using their voice without quoting a line (she sings, the crowd
-    cheers)? Then the chunk is not told to stay silent."""
+    cheers, heavy breathing)? Then the chunk is not told to stay silent."""
     return any(VOICE_WORDS.search(seg.get("prompt") or "") for seg in segments or [])
+
+
+def talks(segments):
+    """Does someone talk in these CUTs: a quoted line, or words like says, asks, whispers?"""
+    return has_spoken_line(segments) or any(SPEECH_WORDS.search(seg.get("prompt") or "") for seg in segments or [])
 
 
 def supported():

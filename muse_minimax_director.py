@@ -1412,6 +1412,8 @@ class MuseMinimaxDirector:
             last_chunk_stage1_latent = None
             lip_sync_locked = False
             claimed_middles = set()  # Stubelius: middle frames already placed in a chunk of this take
+            # Stubelius: has anyone talked yet in this take? (a clip the video continues may have)
+            talked = source_tail is not None
 
             for chunk_idx, chunk_segments in enumerate(buckets):
                 chunk_len_seconds = chunk_lengths[chunk_idx]
@@ -1475,17 +1477,20 @@ class MuseMinimaxDirector:
                         recording_ends = soundtrack.seconds - clock_zero
                         if lip_sync_silence:
                             silence_note = _lipsync.ends_note(recording_ends)
-                # Stubelius: a chunk that continues a shot and has no line of its own to say. After a
-                # talking chunk the model kept the character talking, in invented words (36 of them in
-                # a 10 s chunk; the soundscape note written for that case further down did not stop
-                # it). Saying in the shot itself that nobody speaks does: no words, mouth shut.
+                # Stubelius: a chunk that continues a talking shot and has no line of its own to say.
+                # After a talking chunk the model kept the character talking, in invented words (36 of
+                # them in a 10 s chunk; the soundscape note written for that case further down did not
+                # stop it). Saying in the shot itself that nobody speaks does: no words, mouth shut.
+                # Only after talking, though: in a video where nobody had talked, the note also took
+                # out breathing and every other voice sound, and left dull thumps (2-chunk test, 10/2026).
                 # timeline_data "quiet_chunk_note": false leaves the prompt as it was.
-                quiet_here = (prev_chunk_images is not None and not lip_sync_here
+                quiet_here = (prev_chunk_images is not None and talked and not lip_sync_here
                               and not _lipsync.has_spoken_line(chunk_segments)
                               and not _lipsync.mentions_voice(chunk_segments)
                               and not chunk_sounds)        # a sound on the timeline may be a voice
                 if quiet_here and tdata.get("quiet_chunk_note", True):
                     silence_note = _lipsync.SILENT
+                talked = talked or recording_here or bool(chunk_sounds) or _lipsync.talks(chunk_segments)
                 # With the recording locked in, a spoken line's "[Shot N] At ..." time has to be when
                 # the line is really said. A CUT that carries a transcript line (Insert as Timed CUTs)
                 # takes that line's own start, on this chunk's clock; the weight-based place it had
