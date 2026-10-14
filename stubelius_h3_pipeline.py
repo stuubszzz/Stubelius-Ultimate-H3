@@ -17,6 +17,8 @@ are skipped (or reported clearly) when their pack isn't installed.
 """
 import logging
 import os
+import re
+import time
 import types
 
 import comfy.samplers
@@ -751,30 +753,76 @@ class StubeliusLivePreview:
         return ()
 
 
+PREVIEWS = ("StubeliusH3", "previews")     # in the output folder: one mp4 per seed, overwritten by the next run
+QUIET_DBFS = -45.0                          # a seed whose loudest second stays under this is flagged as silent
+
+
+def _seed_flags(report, audio):
+    """Hints for the Seeds window, never a ranking: held frames that de-stutter drew again, a silent take."""
+    flags = []
+    held = re.search(r"(\d+) held frame\(s\)", report or "")
+    if held and "drawn again" in (report or ""):
+        flags.append({"kind": "motion", "text": f"{held.group(1)} held frames redrawn"})
+    wave = (audio or {}).get("waveform")
+    rate = int((audio or {}).get("sample_rate") or 0)
+    if torch.is_tensor(wave) and wave.numel() and rate:
+        w = wave[0].float().mean(dim=0)
+        n = w.shape[-1] // rate
+        if n:
+            loudest = float(w[:n * rate].reshape(n, rate).pow(2).mean(dim=1).sqrt().max())
+            if loudest < 10 ** (QUIET_DBFS / 20):
+                flags.append({"kind": "sound", "text": "Nearly silent"})
+    return flags
+
+
 class StubeliusSeedPreviews:
     """The seeds for their previews, with the Output node's de-stutter applied, so the seed you pick looks
     the way it will in the finished video. It reads the Director's takes, not the Director itself: changing
-    the switch re-runs only this node, the previews and the Finish, never the seeds."""
+    the switch re-runs only this node, the previews and the Finish, never the seeds. It also writes each seed
+    as an mp4 (output/StubeliusH3/previews) for the Director and Seeds windows."""
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)}}
+        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)},
+                "hidden": {"unique_id": "UNIQUE_ID"}}
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
     RETURN_NAMES = ("seed_1", "seed_2", "seed_3", "seed_4")
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, takes, output):
+    def run(self, takes, output, unique_id=None):
         from .stubelius_destutter import destutter
+        from .stubelius_takes import write_mp4
         mode = output.get("de_stutter", "auto")
-        out = []
+        folder = os.environ.get("STUBELIUS_PREVIEWS_DIR") or os.path.join(folder_paths.get_output_directory(), *PREVIEWS)
+        prefix = re.sub(r"[^A-Za-z0-9_-]", "", str(takes.get("takes_id") or f"node{unique_id or ''}")) or "seeds"
+        seeds = list(takes.get("chunk_seeds") or [])
+        partial = takes.get("partial") or None
+        sounds = list(takes.get("audio") or [])
+        out, shown = [], []
         for i, images in enumerate(list(takes["images"])[:4]):
             if images is None or i >= takes["count"] or images.shape[0] < 4:
                 out.append(images)            # a seed that wasn't rendered: its empty frames, as before
-            else:
-                out.append(destutter(images, mode, label=f"seed {i + 1}: ")[0])
-        return tuple(out)
+                continue
+            frames, report = destutter(images, mode, label=f"seed {i + 1}: ")
+            out.append(frames)
+            name = f"{prefix}_seed{i + 1}.mp4"
+            try:
+                os.makedirs(folder, exist_ok=True)
+                write_mp4(os.path.join(folder, name), frames, sounds[i] if i < len(sounds) else None, fps=SOURCE_FPS, crf=20)
+            except Exception as e:
+                log.warning("[StubeliusSeedPreviews] seed %d: no preview video (%s)", i + 1, e)
+                continue
+            shown.append({"filename": name, "subfolder": "/".join(PREVIEWS), "type": "output", "candidate": i + 1,
+                          "frames": int(frames.shape[0]), "seconds": round(int(frames.shape[0]) / SOURCE_FPS, 3),
+                          "width": int(frames.shape[2]), "height": int(frames.shape[1]),
+                          "chunk_seeds": seeds[i] if i < len(seeds) else None,
+                          "flags": _seed_flags(report, sounds[i] if i < len(sounds) else None), "destutter": report,
+                          "partial": bool(partial), "chunks": partial["chunks"] if partial else None,
+                          "of": partial["of"] if partial else None, "hunt": takes.get("hunt_chunk"),
+                          "v": int(time.time() * 1000)})
+        return {"ui": {"stubelius_seeds": shown}, "result": tuple(out)}
 
 
 NODE_CLASS_MAPPINGS = {

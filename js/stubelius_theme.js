@@ -106,6 +106,7 @@ function apply() {
     if (name) clearOurColours(graph);
     window.__stubeliusGoldRepaint?.();
     canvas?.setDirty(true, true);
+    window.dispatchEvent(new CustomEvent("stubelius-theme", { detail: { name } }));   // the windows follow
     return;
   }
 
@@ -130,6 +131,7 @@ function apply() {
     if (k in stageByGroup) g.color = p.s[stageByGroup[k]];
   }
   canvas?.setDirty(true, true);
+  window.dispatchEvent(new CustomEvent("stubelius-theme", { detail: { name } }));   // the windows follow
 }
 
 const later = () => setTimeout(apply, 0);   // run after other extensions (gold) have painted

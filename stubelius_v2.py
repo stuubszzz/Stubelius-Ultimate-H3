@@ -192,6 +192,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
         self._lora_models = {}
         # the Models node's settings are part of every take's key (stubelius_takes.py)
         self._takes_models = _takes.bundle_key(models)
+        self._takes_node = unique_id           # the window that shows this render's progress
         try:
             out = self._execute_v1(mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,

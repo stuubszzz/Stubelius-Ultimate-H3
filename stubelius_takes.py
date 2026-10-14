@@ -45,6 +45,8 @@ SEED_MASK = 0xffffffffffffffff
 FRAME_FORMAT = "ffv1"       # "pt" keeps the frames exactly as decoded (the CPU tests read their values)
 PREVIEW_WIDTH = 512
 THUMB_WIDTH = 320
+STRIP_FRAMES = 8            # strip.jpg: this many frames across a take, for the Director's filmstrip
+STRIP_WIDTH = 160
 HASH_MEMO_BYTES = 8 << 20   # tensors this big are hashed once per render (the same object every chunk)
 NODES = "_nodes"            # the last report of each node, next to the takes
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -352,48 +354,70 @@ def _read_frames(folder):
     return torch.from_numpy(np.stack(frames)).to(torch.float32).div_(255.0)
 
 
+def _uint8(frame):
+    return frame.detach().cpu().mul(255.0).round().clamp(0, 255).to(torch.uint8).numpy()
+
+
+def write_mp4(path, frames, audio=None, audio_from=0.0, fps=24, max_width=None, crf=23):
+    """frames (IMAGE) and their sound as an H.264 + AAC mp4 (even size, at most max_width wide)."""
+    import av
+    height, width = int(frames.shape[1]), int(frames.shape[2])
+    pw = width if not max_width else min(int(max_width), width)
+    pw = max(2, pw // 2 * 2)
+    ph = max(2, round(height * pw / width) // 2 * 2)
+    with av.open(path, "w", options={"movflags": "+faststart"}) as out:
+        video = out.add_stream("libx264", rate=int(round(fps)))
+        video.width, video.height, video.pix_fmt = pw, ph, "yuv420p"
+        video.options = {"crf": str(crf), "preset": "veryfast"}
+        sound = wave = None
+        if audio is not None and audio.get("waveform") is not None and audio["waveform"].shape[-1] > 0:
+            rate = int(audio["sample_rate"])
+            wave = audio["waveform"][0].detach().cpu().float()[:2]
+            wave = wave[:, int(round(float(audio_from) * rate)):]
+            wave = wave[:, :int(round(frames.shape[0] / fps * rate)) + rate // 10]
+            layout = "mono" if wave.shape[0] == 1 else "stereo"
+            sound = out.add_stream("aac", rate=rate, layout=layout)
+        for i in range(0, int(frames.shape[0]), 16):
+            part = frames[i:i + 16].detach().cpu()
+            if (pw, ph) != (width, height):
+                part = torch.nn.functional.interpolate(part.movedim(-1, 1), size=(ph, pw), mode="area").movedim(1, -1)
+            for frame in part.mul(255.0).round_().clamp_(0, 255).to(torch.uint8).numpy():
+                out.mux(video.encode(av.VideoFrame.from_ndarray(frame, format="rgb24")))
+        out.mux(video.encode(None))
+        if sound is not None and wave.shape[-1] > 0:
+            frame = av.AudioFrame.from_ndarray(wave.clamp(-1, 1).contiguous().numpy(), format="fltp", layout=layout)
+            frame.sample_rate, frame.pts = rate, 0
+            out.mux(sound.encode(frame))
+            out.mux(sound.encode(None))
+
+
+def write_stills(folder, frames, strip=STRIP_FRAMES):
+    """thumb.jpg (a frame from the middle) and strip.jpg (`strip` frames across it, side by side)."""
+    from PIL import Image
+    n = int(frames.shape[0])
+    picture = Image.fromarray(_uint8(frames[n // 2]))
+    width = min(THUMB_WIDTH, picture.width)
+    size = (width, max(2, round(picture.height * width / picture.width)))
+    picture.resize(size, Image.LANCZOS).save(os.path.join(folder, "thumb.jpg"), quality=85)
+    cell = (STRIP_WIDTH, max(2, round(picture.height * STRIP_WIDTH / picture.width)))
+    sheet = Image.new("RGB", (cell[0] * strip, cell[1]))
+    for i in range(strip):
+        k = min(n - 1, int((i + 0.5) / strip * n))
+        sheet.paste(Image.fromarray(_uint8(frames[k])).resize(cell, Image.BILINEAR), (i * cell[0], 0))
+    sheet.save(os.path.join(folder, "strip.jpg"), quality=78)
+
+
 def _write_preview(folder, images, audio, trim):
-    """thumb.jpg (a frame from the middle) and preview.mp4 (small, with its sound) of the frames the chunk
-    adds to the video. Best effort: a take without them still works."""
+    """thumb.jpg, strip.jpg and preview.mp4 (small, with its sound) of the frames the chunk adds to the
+    video. Best effort: a take without them still works."""
     frames = images[int(trim):] if int(trim) < int(images.shape[0]) else images[-1:]
     try:
-        from PIL import Image
-        middle = frames[int(frames.shape[0]) // 2].detach().cpu().mul(255.0).round().clamp(0, 255).to(torch.uint8).numpy()
-        picture = Image.fromarray(middle)
-        width = min(THUMB_WIDTH, picture.width)
-        picture.resize((width, max(2, round(picture.height * width / picture.width))), Image.LANCZOS).save(
-            os.path.join(folder, "thumb.jpg"), quality=85)
+        write_stills(folder, frames)
     except Exception as e:
         log.warning("[StubeliusTakes] no thumbnail for this take: %s", e)
     try:
-        import av
-        height, width = int(frames.shape[1]), int(frames.shape[2])
-        pw = max(2, min(PREVIEW_WIDTH, width) // 2 * 2)
-        ph = max(2, round(height * pw / width) // 2 * 2)
-        with av.open(os.path.join(folder, "preview.mp4"), "w", options={"movflags": "+faststart"}) as out:
-            video = out.add_stream("libx264", rate=24)
-            video.width, video.height, video.pix_fmt = pw, ph, "yuv420p"
-            video.options = {"crf": "26", "preset": "veryfast"}
-            sound = None
-            wave = None
-            if audio is not None and audio.get("waveform") is not None and audio["waveform"].shape[-1] > 0:
-                rate = int(audio["sample_rate"])
-                wave = audio["waveform"][0].detach().cpu().float()
-                wave = wave[:, int(round(int(trim) / 24.0 * rate)):][:2]
-                layout = "mono" if wave.shape[0] == 1 else "stereo"
-                sound = out.add_stream("aac", rate=rate, layout=layout)
-            for i in range(0, int(frames.shape[0]), 16):
-                part = frames[i:i + 16].detach().cpu().movedim(-1, 1)
-                part = torch.nn.functional.interpolate(part, size=(ph, pw), mode="area")
-                part = part.movedim(1, -1).mul(255.0).round_().clamp_(0, 255).to(torch.uint8).numpy()
-                for frame in part:
-                    out.mux(video.encode(av.VideoFrame.from_ndarray(frame, format="rgb24")))
-            out.mux(video.encode(None))
-            if sound is not None and wave.shape[-1] > 0:
-                frame = av.AudioFrame.from_ndarray(wave.contiguous().numpy(), format="fltp", layout=layout)
-                frame.sample_rate, frame.pts = rate, 0
-                out.mux(sound.encode(frame))
-                out.mux(sound.encode(None))
+        write_mp4(os.path.join(folder, "preview.mp4"), frames, audio, audio_from=int(trim) / 24.0,
+                  max_width=PREVIEW_WIDTH, crf=26)
     except Exception as e:
         log.warning("[StubeliusTakes] no preview video for this take: %s", e)
         try:
@@ -503,6 +527,7 @@ def listing(base, top=None):
         if meta and meta.get("version") == VERSION:
             meta["thumb"] = os.path.isfile(os.path.join(folder, name, "thumb.jpg"))
             meta["preview"] = os.path.isfile(os.path.join(folder, name, "preview.mp4"))
+            meta["strip"] = STRIP_FRAMES if os.path.isfile(os.path.join(folder, name, "strip.jpg")) else 0
             out.append(meta)
     return sorted(out, key=lambda m: m.get("made", 0))
 
@@ -710,6 +735,17 @@ def read_report(takes_id, top=None):
         return None
 
 
+def progress(event):
+    """Tell the open windows where a render is (a chunk started, found as a take, ...)."""
+    try:
+        from server import PromptServer
+        send = getattr(PromptServer.instance, "send_sync", None)
+        if send is not None:
+            send("stubelius_ultimate_h3.chunk", event)
+    except Exception:
+        pass
+
+
 def announce(report):
     """Tell the open panels this node's takes changed."""
     if not report:
@@ -749,7 +785,7 @@ def _routes():
     @routes.get("/stubelius_ultimate_h3/takes/file")
     async def _file(request):
         base, seed, name = request.query.get("base", ""), request.query.get("seed", ""), request.query.get("name", "")
-        if not (_BASE.match(base) and _SEED.match(seed) and name in ("thumb.jpg", "preview.mp4")):
+        if not (_BASE.match(base) and _SEED.match(seed) and name in ("thumb.jpg", "strip.jpg", "preview.mp4")):
             return web.Response(status=400)
         path = os.path.join(_take_folder(base, seed), name)
         if not os.path.isfile(path):

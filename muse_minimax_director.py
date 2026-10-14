@@ -2125,6 +2125,11 @@ class MuseMinimaxDirector:
                     recipe.add("before", before_key if reads_before else None)
                     take_base = recipe.hexdigest()
                     take = store.find(take_base, chunk_seed, chunk_idx)
+                # Stubelius: where the render is, for the Director window's status
+                _takes.progress({"takes_id": plan.takes_id, "node": getattr(self, "_takes_node", None),
+                                 "chunk": chunk_idx, "of": plan.last + 1, "total": num_chunks,
+                                 "candidate": candidate_idx, "candidates": candidate_count,
+                                 "seed": int(chunk_seed), "reused": take is not None})
                 chunk_lip_locked = False        # did this chunk lock in the Lip Sync recording?
                 if take is None:
                     if use_hybrid_chunk:
