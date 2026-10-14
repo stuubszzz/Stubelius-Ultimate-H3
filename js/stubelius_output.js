@@ -296,9 +296,24 @@ class OutputWindow {
     const offered = w("final_resolution")?.options?.values || SIZES.map((x) => x[0]);
     panel.appendChild(h("div.o-sec", label("Final size"),
       seg(SIZES.filter(([v]) => offered.includes(v)), w("final_resolution")?.value, (v) => set("final_resolution", v))));
-    const fps = Math.round(Number(w("final_fps")?.value ?? 24));
-    panel.appendChild(h("div.o-sec", label("Frame rate"),
-      seg([[24, "24"], [48, "48"], [60, "60"]], [24, 48, 60].includes(fps) ? fps : null, (v) => set("final_fps", v))));
+    // any rate from 24 up (the node's own range): above 24 RIFE draws the frames in between, length and sync kept
+    const fpsW = w("final_fps");
+    const lo = Number.isFinite(fpsW?.options?.min) ? fpsW.options.min : 24;
+    const hi = Number.isFinite(fpsW?.options?.max) ? fpsW.options.max : 120;
+    const fps = Math.round(Number(fpsW?.value ?? 24));
+    const fpsVal = h("b.o-fps-val");
+    const fpsHint = h("span.sh3-muted.o-fps-hint");
+    const showFps = (v) => {
+      fpsVal.textContent = `${Math.round(v)} fps`;
+      fpsHint.textContent = v > 24 ? "RIFE draws the frames in between" : "untouched, as rendered";
+    };
+    showFps(fps);
+    const picks = h("div.o-fps-picks", ...[24, 30, 48, 60, 120].filter((v) => v >= lo && v <= hi).map((v) =>
+      h("button.o-fps-pick", { type: "button", class: v === fps ? "on" : null, title: `${v} fps`, onclick: () => set("final_fps", v) }, String(v))));
+    panel.appendChild(h("div.o-sec", h("div.o-fps-h", label("Frame rate"), fpsVal),
+      slider({ min: lo, max: hi, step: 1, value: fps, title: "Frame rate of the finished video", onInput: showFps,
+        onChange: (v) => set("final_fps", v) }),
+      h("div.o-fps-foot", fpsHint, picks)));
     const up = String(w("upscaler")?.value || "RTX VSR");
     const card = (value, name, ic, text) => h("button.o-card", { type: "button", class: up === value ? "on" : null,
       onclick: () => set("upscaler", value) }, h("div.o-card-h", icon(ic, 16), h("b", name)), h("div.sh3-muted", text));
@@ -522,6 +537,15 @@ function injectOutputStyles() {
 .sh3-o .o-step-s .ok{color:rgb(var(--ok))}
 .sh3-o .o-step-s .warn{color:rgb(var(--cut))}
 .sh3-o .o-sec{display:flex;flex-direction:column;gap:8px}
+.sh3-o .o-fps-h{display:flex;align-items:center;justify-content:space-between}
+.sh3-o .o-fps-val{font-family:var(--fh);font-weight:600;font-size:15px}
+.sh3-o .o-fps-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sh3-o .o-fps-hint{font-size:12px}
+.sh3-o .o-fps-picks{display:flex;gap:4px}
+.sh3-o .o-fps-pick{min-width:38px;height:26px;padding:0 8px;border-radius:8px;border:1px solid var(--stroke);background:var(--glass);
+  color:var(--text2);font-family:var(--fh);font-size:12px}
+.sh3-o .o-fps-pick:hover{color:var(--text);border-color:var(--stroke2)}
+.sh3-o .o-fps-pick.on{color:var(--text);border-color:rgba(var(--ac),.7);background:rgba(var(--ac),.15)}
 .sh3-o .o-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sh3-o .o-card{border-radius:14px;padding:12px;background:var(--glass);border:1px solid var(--stroke);text-align:left;display:flex;flex-direction:column;gap:5px}
 .sh3-o .o-card:hover{border-color:var(--stroke2)}

@@ -178,9 +178,9 @@ class StubeliusH3Output:
                     "(and the upscaler for what the polish doesn't reach). PDMD: native (≈768p) up to 4K, "
                     "upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
-                    "per frame, so keep 4K clips short, especially at 48/60 fps."}),
+                    "per frame, so keep 4K clips short, especially at high frame rates."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
-                    "24 = untouched. 48 / 60 = RIFE draws the in-between frames; length and sync kept."}),
+                    "24 = untouched. Above 24, any rate up to 120: RIFE draws the in-between frames; length and sync kept."}),
                 "upscaler": (UPSCALERS, {"default": "RTX VSR", "tooltip":
                     "Used when the final resolution needs an upscale. DLSS5 adds far more detail; Color Lock "
                     "then restores the original colours. Needs ComfyUI-DLSS5-Enhancer."}),

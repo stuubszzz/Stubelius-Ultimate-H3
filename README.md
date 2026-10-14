@@ -18,7 +18,7 @@ jumps to the others.
 | **1 Setup** | Stubelius H3 Setup | The four modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), and their fine-tuning; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
-| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), 24/48/60 fps through RIFE, RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
+| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Collapsed under the windows: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
@@ -234,7 +234,7 @@ at that second with ComfyUI's **Add Guide for MiniMax H3**: the video is made ar
 Some takes judder: the picture holds still for a frame in a steady rhythm while the rest moves, "move, move,
 hold" (every third frame almost a copy of the one before, like 16 fps footage stretched to 24) or "move,
 hold". It shows most in Speed mode: a 15 s Speed take measured 95 held frames, one every 3 frames, where PDMD
-on the same seed had none. RIFE to 48/60 fps doesn't fix it; it only splits each jump in two.
+on the same seed had none. RIFE to a higher frame rate doesn't fix it; it only splits each jump.
 
 **De-stutter** in the Output window finds the held frames and RIFE draws them again on the way to the next pose,
 so the motion runs evenly. A held picture is one pose shown twice: it is placed halfway between its two frames
@@ -251,7 +251,7 @@ were, and nothing is drawn across a hard cut.
 ## Jagged or smeared motion
 
 - **Judder** (a held frame every second or third frame): Speed mode's takes do it most. **de-stutter**
-  (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. 48/60 fps
+  (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. A higher frame rate
   alone doesn't fix it.
 - **Fast, small motion smears** (fingers, hands): render in PDMD instead of Speed. At Speed's ≈480p a
   finger is a few pixels wide; PDMD renders ≈768p in 4 steps and fixes most of it.
@@ -308,7 +308,7 @@ Load the workflow and use Manager → **Install Missing Custom Nodes**, or insta
 | [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite) | video outputs |
 | [Nvidia RTX nodes](https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI) | RTX VSR upscaling (NVIDIA RTX GPU) |
 | [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) | live preview, low-VRAM options, a large Quality polish |
-| [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) | 48 / 60 fps |
+| [ComfyUI-Frame-Interpolation](https://github.com/Fannovel16/ComfyUI-Frame-Interpolation) | frame rates above 24 |
 | [ComfyUI-H3-Motion-Context-MultiRef](https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef) | recommended: smoother continuity past one chunk |
 | [ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler) + [ComfyUI-H3-Latent-Upscaler-Mamad8](https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8) | Quality polish at 2x ("learned model (2x)") |
 | [Comfyui_Minimax_h3_latent_Upscaler](https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler) | Quality polish at 1.5x (zhangccccc's H3 latent upscaler, model below) |
@@ -331,7 +331,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
 
-RIFE downloads its checkpoint the first time you pick 48 or 60 fps. Direct links for every
+RIFE downloads its checkpoint the first time you pick a frame rate above 24. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).
 
 Developed on an RTX 5090 (32 GB). With less VRAM, turn on the low-VRAM switches under Performance in
