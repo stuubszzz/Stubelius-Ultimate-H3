@@ -607,7 +607,8 @@ export function windowOrCompact(nodeType, { name, widgets = [], create, minWidth
 
 // ------------------------------------------------------------------------------------------- styles
 
-const FONTS = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap";
+// the fonts ship with the pack (js/fonts), so the windows look the same offline and ask no other server
+const FONTS = new URL("./fonts/fonts.css", import.meta.url).href;
 
 export function injectStyles() {
   if (document.getElementById("stubelius-uh3-ui")) return;
@@ -629,9 +630,9 @@ const CSS = `
   --k:143,123,255;--snd:63,213,255;--cut:255,201,61;--ok:61,242,176;--bad:255,92,92;
   --shadow:0 40px 120px rgba(0,0,0,.65);--panel-shadow:0 30px 80px rgba(0,0,0,.45);
   --grain:rgba(255,255,255,.035);--pattern:none;--ambient:.42;--menu:#15131c;--video:#000;
-  --ff:Inter,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
-  --fh:"Space Grotesk","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
-  --fm:"JetBrains Mono",Consolas,"Cascadia Mono",monospace;}
+  --ff:"SH3 Inter",Inter,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --fh:"SH3 Space Grotesk","Space Grotesk","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --fm:"SH3 JetBrains Mono","JetBrains Mono",Consolas,"Cascadia Mono",monospace;}
 .sh3[data-theme="slate"]{--page:#040506;--glow1:rgba(45,212,191,.15);--glow2:rgba(96,165,250,.14);--glow3:rgba(167,139,250,.05);
   --in-a:#131418;--in-b:#0b0c0f;--in-hi:rgba(45,212,191,.06);
   --edge:linear-gradient(135deg,rgba(45,212,191,.85),rgba(96,165,250,.35) 30%,rgba(255,255,255,.07) 50%,rgba(167,139,250,.45));

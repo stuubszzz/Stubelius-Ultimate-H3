@@ -3,8 +3,10 @@ Copyright (c) 2026 stuubszzz
 
 Built on Muse Minimax Director V1.2 and its companion Muse Minimax Refine V1.2
 (Copyright (c) 2026 Muse Collective, MIT License). Their engine code is carried
-in muse_minimax_director.py, muse_minimax_refine.py and js/muse_minimax_director.js,
-with changes (per-chunk LoRAs, renamed server routes and front-end names).
+in muse_minimax_director.py and muse_minimax_refine.py, with changes (per-chunk
+LoRAs, takes, renamed server routes and front-end names). The Director window
+(js/stubelius_director*.js) is a new front end that keeps the Director's
+timeline format.
 
 ============================================================
 THIRD-PARTY NOTICE — MINIMAX H3
@@ -59,3 +61,16 @@ Refine V2, Finish, Live Preview, Theme, RIFE to FPS, Color Lock), the example
 workflow and the changes to the engine are Copyright (c) 2026 stuubszzz.
 All of it is licensed under the MIT License — see LICENSE. The MIT License
 applies only to this code and confers no rights over MiniMax H3 itself.
+
+============================================================
+FONTS
+============================================================
+
+The windows' fonts ship in js/fonts as woff2 files from Google Fonts, each
+under the SIL Open Font License, Version 1.1 (the full text is next to them):
+
+    Inter            Copyright 2020 The Inter Project Authors         OFL-Inter.txt
+    Space Grotesk    Copyright 2020 The Space Grotesk Project Authors OFL-SpaceGrotesk.txt
+    JetBrains Mono   Copyright 2020 The JetBrains Mono Project Authors OFL-JetBrainsMono.txt
+
+The MIT License of this repository does not apply to the fonts.

@@ -38,8 +38,8 @@ the seeds.
 
 **Workflows from before the windows** keep the Setup, Seed Previews and Finish nodes as they were,
 with a **Show as window** button on each; the Director is a window everywhere. ComfyUI's own Queue
-button works as before. The windows load the Inter, Space Grotesk and JetBrains Mono fonts from
-Google Fonts and fall back to the system fonts without a connection.
+button works as before. The windows' fonts (Inter, Space Grotesk, JetBrains Mono) ship with the pack,
+so the windows look the same offline and ask no other server for anything.
 
 ## Videos past one chunk
 
@@ -345,6 +345,8 @@ sampler step on and crawled. Other nodes keep the compiler.
 
 Built on [Muse Minimax Director V1.2](https://github.com/muse-collective-26/MiniMaxH3-Director-V1.2)
 by Muse Collective. MIT licensed, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+The windows use the Inter, Space Grotesk and JetBrains Mono fonts (SIL Open Font License 1.1, in
+[`js/fonts`](js/fonts) with their licence texts).
 PDMD mode uses the 4-step LoRA by Zimo Wang et al. ([paper](https://arxiv.org/abs/2609.35768),
 [code](https://github.com/ZeamoxWang/pdmd), Apache-2.0), which is not included here.
 **Powered by MiniMax H3**: the model is MiniMax's and is used under the
