@@ -66,6 +66,7 @@ import gc
 import os
 import re
 import tempfile
+import time
 
 import av
 import comfy.utils
@@ -1306,6 +1307,7 @@ class MuseMinimaxDirector:
         plan = _takes.Plan(tdata, num_chunks)
         store = _takes.Store(plan, getattr(self, "_takes_models", None), candidate_count)
         self._takes_plan, self._takes_seeds = plan, [None] * 4
+        self._takes_times = [None] * 4      # seconds each candidate took (the Seeds window shows them)
 
         log.info(
             "[MuseMinimaxDirector] mode=%s, %dx%d, seed=%d, candidates=%d, %d chunk(s): %s (total %.1fs)",
@@ -2725,7 +2727,9 @@ class MuseMinimaxDirector:
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
         try:
+            started = time.perf_counter()
             images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)
+            self._takes_times[0] = time.perf_counter() - started
             # candidate_1 always mirrors the main single-pass result, at zero extra cost —
             # so "just refine my one result" keeps working with Seed Hunt left off, exactly
             # like it already does today. candidates 2-4 are the extra scouting passes,
@@ -2749,7 +2753,9 @@ class MuseMinimaxDirector:
                     if not run_candidate[i]:
                         continue
                     pass_seed = seed + i * SEED_HUNT_SEED_STRIDE
+                    started = time.perf_counter()
                     c_images, c_audio, _, c_latent = _run_pass(pass_seed, candidate_idx=i)
+                    self._takes_times[i] = time.perf_counter() - started
                     candidate_images[i] = c_images
                     candidate_audio[i] = c_audio
                     candidate_latents[i] = c_latent

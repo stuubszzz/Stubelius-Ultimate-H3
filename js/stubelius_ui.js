@@ -552,6 +552,59 @@ export function mountWindow(node, name, root, { minWidth = 1200, minHeight = 600
   return w;
 }
 
+// A node that can be a window or stay compact. A new node opens as a window; a node from a saved workflow
+// opens as one when the workflow says so (properties.sh3_window, set by the example workflow and by the
+// "Show as window" button), else it keeps its own compact widgets: older workflows aren't rearranged.
+// create() -> {root, fit?}; called once, when the node becomes a window.
+export function windowOrCompact(nodeType, { name, widgets = [], create, minWidth = 1200, minHeight = 700, extra = 46 }) {
+  const onNodeCreated = nodeType.prototype.onNodeCreated;
+  nodeType.prototype.onNodeCreated = function () {
+    const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
+    const node = this;
+    setTimeout(() => {           // a loaded workflow's properties arrive with configure, after this
+      if (node._sh3 || node._sh3Compact) return;
+      const want = node.properties?.sh3_window;
+      if (want === true || (want === undefined && !node._sh3Configured)) makeWindow(node);
+      else makeCompact(node);
+    }, 0);
+    return r;
+  };
+  const onConfigure = nodeType.prototype.onConfigure;
+  nodeType.prototype.onConfigure = function () {
+    const r = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+    this._sh3Configured = true;
+    return r;
+  };
+
+  function makeWindow(node) {
+    node.properties = node.properties || {};
+    node.properties.sh3_window = true;
+    for (const w of node.widgets || []) if (widgets.includes(w.name)) hideWidget(w);
+    const btn = (node.widgets || []).find((w) => w.name === "sh3_show_window");
+    if (btn) { btn.hidden = true; btn.computeSize = () => [0, -4]; btn.draw = () => {}; }
+    const win = create(node);
+    node._sh3 = win;
+    mountWindow(node, name, win.root, { minWidth, minHeight });
+    win.fit = autoHeight(node, win.root, { minHeight, extra, minWidth });
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => win.root.classList.toggle("narrow", win.root.offsetWidth < 1500)).observe(win.root);
+    }
+    refreshThemes();
+  }
+
+  function makeCompact(node) {
+    node._sh3Compact = true;
+    node.addWidget("button", "sh3_show_window", null, () => {
+      node._sh3Compact = false;
+      makeWindow(node);
+      node.setDirtyCanvas?.(true, true);
+    }, { serialize: false });
+    const b = node.widgets[node.widgets.length - 1];
+    b.label = "Show as window";
+    node.setSize(node.computeSize());
+  }
+}
+
 // ------------------------------------------------------------------------------------------- styles
 
 const FONTS = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap";

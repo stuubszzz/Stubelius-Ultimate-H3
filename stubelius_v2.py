@@ -213,6 +213,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             # per-chunk takes (stubelius_takes.py): every candidate's seed for each chunk it rendered, and
             # whether this is the video up to one chunk only (render_until, a chunk hunt): the Finish waits
             "chunk_seeds": list(getattr(self, "_takes_seeds", None) or [])[:n],
+            "seconds": list(getattr(self, "_takes_times", None) or [])[:n],
             "takes_id": plan.takes_id if plan is not None else None,
             "hunt_chunk": plan.hunt if plan is not None else None,
             "partial": ({"chunks": plan.last + 1, "of": plan.num_chunks, "hunt": plan.hunt}

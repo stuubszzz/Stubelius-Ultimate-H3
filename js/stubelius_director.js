@@ -417,6 +417,7 @@ export class DirectorWindow {
       this.usage = null;
     }
     this.renderFoot();
+    window.dispatchEvent(new CustomEvent("stubelius-takes", { detail: { node: this.node.id } }));
   }
 
   async fetchStats() {
@@ -434,6 +435,7 @@ export class DirectorWindow {
     if (fresh) this.edited.clear();
     this.refresh(["preview", "insp", "tl", "status"]);
     this.fetchUsage();
+    window.dispatchEvent(new CustomEvent("stubelius-takes", { detail: { node: this.node.id } }));   // the other windows
   }
 
   // Keep the chunks before k as they are (their seeds written down), so a retake or a hunt of chunk k

@@ -761,6 +761,17 @@ def announce(report):
 
 # ------------------------------------------------------------------------ server routes
 
+def open_in_file_manager(path):
+    import subprocess
+    import sys
+    if sys.platform.startswith("win"):
+        os.startfile(path)                  # a folder inside the output folder, see the route
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
 def _routes():
     try:
         import asyncio
@@ -804,6 +815,38 @@ def _routes():
     @routes.post("/stubelius_ultimate_h3/takes/clear")
     async def _clear(request):
         return web.json_response({"cleared": await off_loop(clear)})
+
+    # The Setup window's model cards: each file's size (folder = a ComfyUI model folder name)
+    @routes.post("/stubelius_ultimate_h3/model_info")
+    async def _model_info(request):
+        body = await request.json()
+
+        def sizes():
+            out = []
+            for folder, name in (body.get("items") or [])[:32]:
+                size = None
+                try:
+                    path = folder_paths.get_full_path(str(folder), str(name))
+                    size = os.path.getsize(path) if path else None
+                except Exception:
+                    pass
+                out.append({"folder": folder, "name": name, "size": size, "found": size is not None})
+            return out
+        return web.json_response({"items": await off_loop(sizes)})
+
+    # The Output window's Open folder: a folder inside ComfyUI's output folder, in the file manager of the
+    # machine ComfyUI runs on, and only for a browser on that same machine.
+    @routes.post("/stubelius_ultimate_h3/open_folder")
+    async def _open_folder(request):
+        if request.remote not in ("127.0.0.1", "::1", "localhost"):
+            return web.json_response({"opened": False, "why": "only from the machine ComfyUI runs on"}, status=403)
+        body = await request.json()
+        top = os.path.abspath(folder_paths.get_output_directory())
+        path = os.path.abspath(os.path.join(top, str(body.get("subfolder") or "")))
+        if os.path.commonpath([path, top]) != top or not os.path.isdir(path):
+            return web.json_response({"opened": False, "why": "not a folder in the output folder"}, status=400)
+        await off_loop(open_in_file_manager, path)
+        return web.json_response({"opened": True})
 
 
 _routes()
