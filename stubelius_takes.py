@@ -785,6 +785,14 @@ def _routes():
         """Disk work (reading every take, removing gigabytes) off the server's event loop."""
         return await asyncio.get_running_loop().run_in_executor(None, fn, *args)
 
+    async def body_of(request):
+        """The request's JSON object, or None for anything else (the route then answers 400)."""
+        try:
+            body = await request.json()
+        except Exception:
+            return None
+        return body if isinstance(body, dict) else None
+
     @routes.get("/stubelius_ultimate_h3/takes/report")
     async def _report(request):
         return web.json_response(await off_loop(read_report, request.query.get("id")) or {})
@@ -809,7 +817,9 @@ def _routes():
 
     @routes.post("/stubelius_ultimate_h3/takes/delete")
     async def _delete(request):
-        body = await request.json()
+        body = await body_of(request)
+        if body is None:
+            return web.Response(status=400)
         return web.json_response({"deleted": await off_loop(delete, str(body.get("base", "")), str(body.get("seed", "")))})
 
     @routes.post("/stubelius_ultimate_h3/takes/clear")
@@ -819,11 +829,16 @@ def _routes():
     # The Setup window's model cards: each file's size (folder = a ComfyUI model folder name)
     @routes.post("/stubelius_ultimate_h3/model_info")
     async def _model_info(request):
-        body = await request.json()
+        body = await body_of(request)
+        if body is None:
+            return web.Response(status=400)
 
         def sizes():
             out = []
-            for folder, name in (body.get("items") or [])[:32]:
+            for item in (body.get("items") or [])[:32]:
+                if not (isinstance(item, (list, tuple)) and len(item) == 2):
+                    continue
+                folder, name = item
                 size = None
                 try:
                     path = folder_paths.get_full_path(str(folder), str(name))
@@ -840,7 +855,9 @@ def _routes():
     async def _open_folder(request):
         if request.remote not in ("127.0.0.1", "::1", "localhost"):
             return web.json_response({"opened": False, "why": "only from the machine ComfyUI runs on"}, status=403)
-        body = await request.json()
+        body = await body_of(request)
+        if body is None:
+            return web.Response(status=400)
         top = os.path.abspath(folder_paths.get_output_directory())
         path = os.path.abspath(os.path.join(top, str(body.get("subfolder") or "")))
         if os.path.commonpath([path, top]) != top or not os.path.isdir(path):

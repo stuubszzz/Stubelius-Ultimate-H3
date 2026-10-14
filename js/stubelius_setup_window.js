@@ -36,7 +36,8 @@ const PERF = [
   ["spectrum", "Spectrum forecasting", "chart", "faster, may soften"],
   ["h3_cache", "H3 step cache", "database", "faster, may soften"],
 ];
-const TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|\d+.?step/i;
+// a few-step LoRA by its name: "8step", "4-steps"; not a training step count ("V16-step00002250")
+const TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|(^|[^0-9])([1-9]|1[0-6])[-_ ]?steps?(?![0-9])/i;
 const LORA_MAX = 9;
 
 function precision(name) {
@@ -309,8 +310,13 @@ class SetupWindow {
     const turbos = all.filter((n) => n !== "none" && TURBO_RE.test(n) && /h3/i.test(n) && !/pdmd|nfe/i.test(n));
     const shown = [current, ...turbos.filter((n) => n !== current)].filter((n) => n && n !== "none").slice(0, 4);
     const left = h("div.su-lcol", label("Turbo LoRA · Speed and Hybrid"));
-    for (const n of shown) {
-      const [name, text] = turboInfo(n);
+    const infos = shown.map(turboInfo);
+    const seen = {};
+    for (const [name] of infos) seen[name] = (seen[name] || 0) + 1;
+    for (const [i, n] of shown.entries()) {
+      const name = infos[i][0];
+      // two files of one kind: told apart by the file
+      const text = seen[name] > 1 ? n.replace(/\.safetensors$/i, "") : infos[i][1];
       const on = n === current;
       left.appendChild(h("button.su-turbo", { type: "button", class: on ? "on" : null, title: n, onclick: () => this.setM("speedup_lora", n) },
         h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", text)), on ? badge("active", "ac") : null));
@@ -503,7 +509,7 @@ function injectSetupStyles() {
 .sh3-u .su-lcol{display:flex;flex-direction:column;gap:10px;min-width:0}
 .sh3-u .su-turbo{display:flex;align-items:center;gap:14px;border-radius:16px;padding:12px 16px;background:var(--glass);border:1px solid var(--stroke);text-align:left;color:var(--text)}
 .sh3-u .su-turbo>div{flex:1;min-width:0}
-.sh3-u .su-turbo .sh3-muted{font-size:12px}
+.sh3-u .su-turbo .sh3-muted{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh3-u .su-turbo.on{background:linear-gradient(110deg,rgba(var(--ac),.2),rgba(var(--ac2),.06));border-color:rgba(var(--ac),.65)}
 .sh3-u .su-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke2);flex:none;position:relative}
 .sh3-u .su-turbo.on .su-radio{border-color:rgb(var(--ac));background:rgb(var(--ac));box-shadow:0 0 12px rgba(var(--ac),.5)}
