@@ -23,7 +23,24 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 
 ## Videos past one chunk
 
-A video longer than one chunk is rendered chunk by chunk (Extend). Three things hold across the chunks.
+A video longer than one chunk is rendered chunk by chunk (Extend). Four things hold across the chunks.
+
+**How a chunk joins the one before it.** Every chunk after the first has a **Joins the chunk before**
+setting at the top of its card. The first chunk has it too when the video continues a clip.
+
+- **Carry picture + sound** (the default): the last 1.6 s of the chunk before, picture and sound,
+  run on into this one unchanged. The smoothest join.
+- **Carry picture, fresh sound**: the picture runs on and the sound is made fresh. Use it when a
+  later chunk sounds dull or muffled: in tests the carried sound lost voices and breathing, and made
+  fresh they stayed clear.
+- **Last frame only**: nothing is carried over; the chunk starts from the last frame of the one
+  before. In PDMD this halved the drift towards a darker, more detailed, more saturated look in
+  later chunks. Motion runs on through the join less smoothly.
+- **New shot**: a cut, with nothing carried over, no last frame and no smoothing at the join. A
+  middle frame placed in the chunk's first half second opens the new shot. That is how to cut to a
+  picture from another shot, which H3 otherwise jumps to early and then holds.
+
+The Quality polish follows each chunk's setting.
 
 **Lip Sync from a recording.** Set a reference audio to **Lip Sync** and the recording is the
 video's sound. Every chunk is rendered against its own part of the recording, so the lips follow

@@ -331,6 +331,50 @@ _CHUNK_CONTINUITY_REF_FRAMES = 48
 # frame ~22 match again, while every frame in between visibly doesn't.
 _KEYFRAME_INJECTION_FRAMES = 22
 
+# Stubelius: how a chunk follows the one before it, set per chunk on the timeline (chunks[i]["carry"]):
+# - picture_sound: the last frames and their sound carried over and frozen (every chunk did this before);
+# - picture: the frames carried over, the sound made fresh. A carried sound came out muffled in the
+#   2-chunk tests (10/2026) and lost its voices; made fresh it stays open;
+# - off: nothing carried, the chunk starts from the last frame of the one before it. Halved the PDMD
+#   look drift in the same tests; motion runs on through the join less smoothly;
+# - new_shot: a cut. Nothing carried, no last-frame anchor, no seam smoothing. A middle frame in the
+#   chunk's first half second becomes its first frame.
+CARRY_MODES = ("picture_sound", "picture", "off", "new_shot")
+NEW_SHOT_OPENING_SECONDS = 0.5      # a middle frame this soon after a new shot's start opens it
+NEW_SHOT_EARLY_SECONDS = 0.25       # ...or this much before it (the chunk edge on the timeline is approximate)
+SOFT_CUT_SECONDS = 0.01             # the sound fades out and in this fast at a new shot's cut (no click)
+
+
+def _carry_mode(chunk_data) -> str:
+    """A chunk's carry setting (CARRY_MODES); "picture_sound" when it has none or one this version doesn't know."""
+    value = str((chunk_data or {}).get("carry") or "").strip().lower()
+    value = re.sub(r"[\s+\-]+", "_", value)
+    return value if value in CARRY_MODES else "picture_sound"
+
+
+def _free_carried_sound(latent):
+    """A carry-over that keeps the picture only: the audio half of its noise mask set to ones, so the
+    chunk's sound is made fresh instead of continuing from the carried, re-encoded sound."""
+    mask = latent.get("noise_mask")
+    if mask is None or not getattr(mask, "is_nested", False):
+        return latent
+    import comfy.nested_tensor
+    video_mask, audio_mask = mask.unbind()[:2]
+    out = dict(latent)
+    out["noise_mask"] = comfy.nested_tensor.NestedTensor((video_mask, torch.ones_like(audio_mask)))
+    return out
+
+
+def _soft_cut(before, after, sample_rate):
+    """Sound on both sides of a cut, each faded over SOFT_CUT_SECONDS in place (the length stays)."""
+    n = min(int(round(SOFT_CUT_SECONDS * sample_rate)), int(before.shape[-1]), int(after.shape[-1]))
+    if n <= 1:
+        return before, after
+    before, after = before.clone(), after.clone()
+    before[..., -n:] *= torch.linspace(1.0, 0.0, n, device=before.device)
+    after[..., :n] *= torch.linspace(0.0, 1.0, n, device=after.device)
+    return before, after
+
 MAX_CHARACTER_SLOTS = 9
 ASPECT_RATIO_OPTIONS = [a.value for a in AspectRatio]
 # Spacing between Seed Hunt's 4 candidate passes' base seeds — large enough to never
@@ -1414,6 +1458,23 @@ class MuseMinimaxDirector:
             claimed_middles = set()  # Stubelius: middle frames already placed in a chunk of this take
             # Stubelius: has anyone talked yet in this take? (a clip the video continues may have)
             talked = source_tail is not None
+            # Stubelius: a new shot opens on a middle frame placed at its start. Set aside before any chunk
+            # places its middle frames, or the chunk before the cut would take it (chunks come out a few
+            # frames longer than asked for, so a picture right on the edge falls inside it).
+            saved_chunk_settings = tdata.get("chunks") or []
+            shot_openers = {}       # chunk index -> the middle frame that opens it
+            for k in range(num_chunks):
+                if (k == 0 and source_tail is None) or k >= len(saved_chunk_settings):
+                    continue
+                if _carry_mode(saved_chunk_settings[k]) != "new_shot":
+                    continue
+                start = chunk_bounds[k][0]
+                for i, middle in enumerate(middle_frames):
+                    if (i not in claimed_middles
+                            and start - NEW_SHOT_EARLY_SECONDS <= middle["time"] <= start + NEW_SHOT_OPENING_SECONDS):
+                        claimed_middles.add(i)
+                        shot_openers[k] = middle
+                        break
 
             for chunk_idx, chunk_segments in enumerate(buckets):
                 chunk_len_seconds = chunk_lengths[chunk_idx]
@@ -1443,14 +1504,26 @@ class MuseMinimaxDirector:
                 # Snapped through align_frame_count rather than added raw, since
                 # two individually-valid H3 frame counts don't necessarily sum to
                 # another valid one on its 17k+5 grid.
+                # Stubelius: how this chunk follows the one before it (CARRY_MODES). `continues`: it
+                # starts from the chunk before (carry-over or last-frame anchor, the continue line, the
+                # trim and the seam); `carries`: with the carry-over. A new shot does neither.
+                carry_mode = (_carry_mode(saved_chunk_settings[chunk_idx] if chunk_idx < len(saved_chunk_settings) else {})
+                              if prev_chunk_images is not None else None)
+                continues = carry_mode is not None and carry_mode != "new_shot"
+                carries = continues and vae_reencode_carry_test and carry_mode in ("picture_sound", "picture")
+                shot_opener = shot_openers.get(chunk_idx) if carry_mode == "new_shot" else None
+                if carry_mode is not None:
+                    log.info("[MuseMinimaxDirector] chunk %d/%d: carry %s%s", chunk_idx + 1, num_chunks, carry_mode,
+                             f", opens on the middle frame at {shot_opener['time']:.2f} s" if shot_opener else "")
                 continuation_extension = 0
-                if prev_chunk_images is not None:
+                carry_estimate = 0
+                if continues:
                     # vae_reencode_carry_test uses its own requested carry length here
                     # instead of _KEYFRAME_INJECTION_FRAMES — the real amount actually
                     # protected (chunk_carry_trim_frames, set below once the masked-
                     # context node runs) is what the post-decode trim uses; this is
                     # only a pre-generation budget estimate, snapped the same way.
-                    carry_estimate = int(vae_reencode_carry_length) if vae_reencode_carry_test else _KEYFRAME_INJECTION_FRAMES
+                    carry_estimate = int(vae_reencode_carry_length) if carries else _KEYFRAME_INJECTION_FRAMES
                     continuation_extension = (
                         align_frame_count(visible_chunk_length + carry_estimate)
                         - visible_chunk_length
@@ -1461,7 +1534,7 @@ class MuseMinimaxDirector:
                 # Stubelius: the sounds and clips this chunk pins, on the same clock as its middle frames
                 chunk_clips, chunk_sounds = (_cues.in_chunk(
                     cues, frames_done, chunk_length,
-                    min(int(carry_estimate), chunk_length - 1) if prev_chunk_images is not None else 0,
+                    min(int(carry_estimate), chunk_length - 1) if continues else 0,
                     is_last_chunk) if cues else ([], []))
 
                 # Stubelius Lip Sync: this chunk on its own clock. A continuation chunk's clock starts
@@ -1520,7 +1593,7 @@ class MuseMinimaxDirector:
                 chunk_carry_trim_frames = None
                 # Only actually hybrid-switches once there's a predecessor chunk to lock
                 # onto — the first chunk always runs normal Reference (Omni), hybrid or not.
-                use_hybrid_chunk = use_hybrid and prev_chunk_images is not None
+                use_hybrid_chunk = use_hybrid and continues
 
                 # Keyframe images for this chunk (base-mode dispatch only — mode !=
                 # MODE_REFERENCE or use_hybrid_chunk), in the exact order
@@ -1578,16 +1651,19 @@ class MuseMinimaxDirector:
                             "the shot description explicitly includes spoken lines."
                         )
                 elif mode != MODE_REFERENCE:
-                    chunk_first = prev_chunk_images[-1:] if prev_chunk_images is not None else first_frame
+                    # Stubelius: a new shot starts from its own opening middle frame, or from nothing
+                    chunk_first = (prev_chunk_images[-1:] if continues
+                                   else shot_opener["picture"] if shot_opener is not None
+                                   else first_frame if prev_chunk_images is None else None)
                     chunk_last = last_frame if is_last_chunk else None
                     if middle_frames:
                         # A continuation chunk opens on the frames that are cut off again after
                         # decoding (the same estimate the Lip Sync clock uses), then its new frames.
                         lead = (min(int(carry_estimate), chunk_length - 1)
-                                if prev_chunk_images is not None else 0)
+                                if continues else 0)
                         chunk_middles = _keyframes.in_chunk(middle_frames, claimed_middles, frames_done,
                                                             visible_chunk_length, chunk_length, lead, is_last_chunk)
-                    if prev_chunk_images is not None:
+                    if continues:
                         base_continuity_extra = (
                             " Continue the ongoing action naturally from this pose and framing — "
                             "no restart, no new take."
@@ -1795,7 +1871,7 @@ class MuseMinimaxDirector:
                     # Picture entry rather than being wrapped as a Subject.
                     chunk_ref_images = dict(char_ref_images)
                     shot1_prefix = ""
-                    if prev_chunk_images is not None:
+                    if continues:
                         last_frame_still = prev_chunk_images[-1:]
                         chunk_ref_images[f"ref_image_{bg_index}"] = last_frame_still
                         anchor_n = bg_index + 1
@@ -1983,8 +2059,8 @@ class MuseMinimaxDirector:
                 compiled_prompts.append(f"--- Chunk {chunk_idx + 1}/{num_chunks} (~{chunk_len_seconds:.1f}s) ---\n{chunk_prompt}")
 
                 log.info("[MuseMinimaxDirector] chunk %d/%d, seed=%d, length=%d frames, video_carry=%s, audio_carry=%s, hybrid=%s",
-                          chunk_idx + 1, num_chunks, pass_seed, chunk_length, prev_chunk_images is not None,
-                          prev_chunk_audio is not None, use_hybrid_chunk)
+                          chunk_idx + 1, num_chunks, pass_seed, chunk_length, carries,
+                          carries and carry_mode == "picture_sound" and prev_chunk_audio is not None, use_hybrid_chunk)
 
                 if use_hybrid_chunk:
                     out = _execute_comfy_node(
@@ -2059,7 +2135,7 @@ class MuseMinimaxDirector:
                 # frozen region with the true high-res re-encode instead of leaving it as
                 # whatever the naive latent-space upscale + unprotected priming pass left
                 # behind. Both run together for two-stage; only this one for single-pass.
-                if vae_reencode_carry_test and prev_chunk_images is not None:
+                if carries:
                     carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
                     tail_pixels = prev_chunk_images[-carry_n:]
                     # prev_chunk_images is decoded from whatever resolution the previous
@@ -2098,6 +2174,8 @@ class MuseMinimaxDirector:
                     chunk_carry_trim_frames = int(carry_trim_frames)
                     log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry: %d px re-encoded tail, "
                              "trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
+                    if carry_mode == "picture":
+                        latent = _free_carried_sound(latent)    # Stubelius: the picture carried, the sound made fresh
 
                 # Stubelius: lock this chunk's part of the Lip Sync recording into its audio
                 # latent (after the carry-over, whose own audio prefix it replaces with the
@@ -2106,7 +2184,7 @@ class MuseMinimaxDirector:
                 # latent frame sits that much before frames_done on the video's clock.
                 if lip_sync_here:
                     lead_frames = 0
-                    if prev_chunk_images is not None:
+                    if continues:
                         lead_frames = chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES
                         lead_frames = min(lead_frames, chunk_length - 1)
                     lock_start = max(0, frames_done - lead_frames) / 24.0
@@ -2272,7 +2350,7 @@ class MuseMinimaxDirector:
                         # Test 17 relies on. Only the future (unprotected) region actually
                         # denoises against low_sigmas below; the copied prefix rides through
                         # unchanged.
-                        if vae_reencode_carry_test and prev_chunk_images is not None:
+                        if carries:
                             carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
                             tail_pixels = prev_chunk_images[-carry_n:]
                             tail_video_latent = _unpack_node_result(_execute_comfy_node(
@@ -2297,6 +2375,8 @@ class MuseMinimaxDirector:
                             chunk_carry_trim_frames = int(carry_trim_frames)
                             log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry (two-stage): %d px "
                                      "re-encoded tail, trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
+                            if carry_mode == "picture":
+                                recombined = _free_carried_sound(recombined)
 
                         noise2 = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
                         sampled = _unpack_node_result(_execute_comfy_node(
@@ -2326,7 +2406,7 @@ class MuseMinimaxDirector:
                 # constant's own comment for why). Drop the whole block, not just the one
                 # duplicate first frame.
                 trim_n = 0
-                if prev_chunk_images is not None and chunk_images.shape[0] > 1:
+                if continues and chunk_images.shape[0] > 1:
                     # chunk_carry_trim_frames (vae_reencode_carry_test) is the amount
                     # MiniMaxH3GeneratedAVMaskedContext actually protected, after its own
                     # H3/audio-clock snapping — authoritative over the pre-generation
@@ -2345,15 +2425,18 @@ class MuseMinimaxDirector:
                 # polish as its last chunk alone (see stubelius_polish.py).
                 if chunk_stage1_latent is not None and not two_stage_sampling:
                     keyframed = use_hybrid_chunk or mode != MODE_REFERENCE
-                    continues = prev_chunk_images is not None
                     chunk_records.append({
                         "latent": chunk_stage1_latent, "prompt": chunk_prompt,
                         "length": chunk_length, "trim": trim_n,
                         "model": "fl2va" if keyframed and shifted_model_fl2va is not None else "ref",
                         "loras": self._chunk_loras(chunk_idx),
+                        # Stubelius: how it followed the chunk before it (CARRY_MODES; None = the first chunk)
+                        "carry": carry_mode,
                         # made from keyframes: "previous" = the last frame of the chunk before it
                         "keyframes": {
-                            "first": "previous" if continues else first_frame_source,
+                            "first": ("previous" if continues
+                                      else shot_opener["source"] if shot_opener is not None
+                                      else first_frame_source if prev_chunk_images is None else None),
                             "last": last_frame_source if chunk_last is not None else None,
                             # middle frames: (frame index in the chunk, the picture as uploaded)
                             "middles": [(index, middle["source"]) for index, middle in chunk_middles],
@@ -2395,7 +2478,7 @@ class MuseMinimaxDirector:
                 # length-changing math needed at all, and the two can never drift.
                 n_interp = int(seam_interpolation_frames) if seam_interpolation_frames else 0
                 mid_frame_count = 0
-                if n_interp > 0 and new_frames.shape[0] > 1 and prev_chunk_images is not None:
+                if n_interp > 0 and new_frames.shape[0] > 1 and continues:
                     if RIFE_VFI is None:
                         log.warning("[MuseMinimaxDirector] seam_interpolation_frames=%d but the RIFE VFI "
                                     "node (ComfyUI-Frame-Interpolation) isn't installed — skipping seam "
@@ -2463,6 +2546,9 @@ class MuseMinimaxDirector:
                         waveform[..., :extra_samples] *= fade_in
                     all_waveform = torch.cat([all_waveform, waveform], dim=-1)
                 else:
+                    if carry_mode == "new_shot":
+                        # Stubelius: a cut; the sound fades out and in over 10 ms so it doesn't click
+                        all_waveform, waveform = _soft_cut(all_waveform, waveform, audio_sample_rate)
                     all_waveform = torch.cat([all_waveform, waveform], dim=-1)
 
                 prev_chunk_images = chunk_images

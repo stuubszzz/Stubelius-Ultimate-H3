@@ -45,6 +45,19 @@ const HIDDEN_WIDGET_NAMES = ["timeline_data"];
 // Per-chunk LoRA picker (V2): one shared list per page, amber above this total strength.
 const MMD_LORAS = { list: null, pending: false };
 const MMD_LORA_SUM_WARN = 2.0;
+// Stubelius: how a chunk follows the one before it (muse_minimax_director.py CARRY_MODES)
+const CARRY_CHOICES = [
+  ["picture_sound", "Carry picture + sound"],
+  ["picture", "Carry picture, fresh sound"],
+  ["off", "Last frame only (no carry)"],
+  ["new_shot", "New shot (cut)"],
+];
+const CARRY_HINTS = {
+  picture_sound: "The last 1.6 s of picture and sound run on into this chunk.",
+  picture: "The picture runs on and the sound is made fresh, so voices and breathing stay clear.",
+  off: "Starts from the last frame only: less look drift in PDMD, but motion joins less smoothly.",
+  new_shot: "A cut: nothing carried over. A middle frame in its first half second opens the shot.",
+};
 // Strength range of a chunk's LoRA: slider LoRAs run to ±9.
 const MMD_LORA_STRENGTH_MAX = 9;
 const MMD_TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe/i;
@@ -181,6 +194,9 @@ function injectStyles() {
   .mmd-box-style { border-top-color: #2DD4BF; }
   .mmd-box-soundscape { border-top-color: #E8A33D; }
   .mmd-box-timeline { border-top-color: #4FC3F7; }
+  .mmd-box-carry { border-top-color: #A78BFA; margin-bottom: 14px; }
+  .mmd-box-carry .mmd-box-row { margin-bottom: 4px; }
+  .mmd-carry-hint { font-size: 11.5px; color: #9a9aa8; line-height: 1.4; }
   /* Prompt Gen gets a full solid-colored border (not just the usual top accent
      strip) plus a tinted background, so it reads as a clearly separate zone
      rather than another same-looking settings box. */
@@ -847,6 +863,7 @@ class MinimaxTimelineEditor {
       if (typeof c.overall_soundscape !== "string") c.overall_soundscape = "";
       if (typeof c.non_diegetic_music !== "string") c.non_diegetic_music = "";
       if (!Array.isArray(c.loras)) c.loras = [];
+      if (!CARRY_HINTS[c.carry]) c.carry = "picture_sound";
     });
     if (typeof parsed.background !== "object" || parsed.background === null) parsed.background = {};
     if (!Array.isArray(parsed.refVideos)) parsed.refVideos = [];
@@ -1567,6 +1584,7 @@ class MinimaxTimelineEditor {
       overall_soundscape: "",
       non_diegetic_music: "",
       loras: [],
+      carry: "picture_sound",
     };
   }
 
@@ -1724,6 +1742,9 @@ class MinimaxTimelineEditor {
       wrap.appendChild(banner);
     }
 
+    if (chunkIdx > 0 || this.timeline.source_clip) {
+      wrap.appendChild(this._buildChunkCarryBlock(chunkIdx, chunk));
+    }
     wrap.appendChild(this._buildChunkStyleSoundBlock(chunkIdx, chunk));
     if (this.node.comfyClass === "StubeliusH3DirectorV2") {
       wrap.appendChild(this._buildChunkLoraBlock(chunkIdx, chunk));
@@ -2090,6 +2111,38 @@ class MinimaxTimelineEditor {
   // and Prompt Gen — Style previously had no box at all (just a bare textarea),
   // which is exactly why it "you can't even tell it's there" next to
   // Soundscape/Music, which already had one. All three now match.
+  // Stubelius: how this chunk follows the one before it (or the clip the video continues).
+  _buildChunkCarryBlock(chunkIdx, chunk) {
+    const box = document.createElement("div");
+    box.className = "mmd-box mmd-box-carry";
+    const row = document.createElement("div");
+    row.className = "mmd-box-row";
+    const label = document.createElement("label");
+    label.textContent = chunkIdx === 0 ? "🔗 Joins the clip" : "🔗 Joins the chunk before";
+    row.appendChild(label);
+    const select = document.createElement("select");
+    select.className = "mmd-box-select";
+    CARRY_CHOICES.forEach(([value, text]) => {
+      const o = document.createElement("option");
+      o.value = value;
+      o.textContent = text;
+      select.appendChild(o);
+    });
+    select.value = CARRY_HINTS[chunk.carry] ? chunk.carry : "picture_sound";
+    row.appendChild(select);
+    box.appendChild(row);
+    const hint = document.createElement("div");
+    hint.className = "mmd-carry-hint";
+    hint.textContent = CARRY_HINTS[select.value];
+    box.appendChild(hint);
+    select.addEventListener("change", () => {
+      chunk.carry = select.value;
+      hint.textContent = CARRY_HINTS[select.value];
+      this.commitChanges();
+    });
+    return box;
+  }
+
   _buildChunkStyleSoundBlock(chunkIdx, chunk) {
     const wrap = document.createElement("div");
     wrap.className = "mmd-chunk-style-wrap";
