@@ -119,6 +119,39 @@ _DIRECTOR_KEEP_REQUIRED = ("mode", "aspect_ratio", "duration_seconds", "chunk_du
                            "seed", "timeline_data")
 
 
+def _has_content(mode, timeline_data, prompt_override):
+    """Anything for H3 to go on: typed text (a shot, a style, sound or music line, the prompt override), a picture,
+    a clip to continue, a pinned sound or clip, a reference. Without any of it H3 makes up a video of its own."""
+    if prompt_override and str(prompt_override).strip():
+        return True
+    try:
+        t = json.loads(timeline_data or "{}")
+    except (TypeError, ValueError):
+        return True                      # a broken timeline is reported by the engine itself
+    if not isinstance(t, dict):
+        return True
+
+    def typed(s):
+        return bool(str(s or "").strip())
+
+    def filed(p):
+        return isinstance(p, dict) and bool(p.get("file") or p.get("image_b64"))
+
+    for c in t.get("chunks") or []:
+        if not isinstance(c, dict):
+            continue
+        if any(typed(s.get("prompt")) for s in c.get("segments") or [] if isinstance(s, dict)):
+            return True
+        if typed(c.get("style_line")) or typed(c.get("overall_soundscape")) or typed(c.get("non_diegetic_music")):
+            return True
+    if mode == MODE_REFERENCE:
+        return (any(filed(p) for p in t.get("characters") or []) or filed(t.get("background"))
+                or any(filed(v) for v in list(t.get("refVideos") or []) + list(t.get("refAudios") or [])))
+    return (any(filed(p) for p in (t.get("characters") or [])[:2])
+            or any(filed(m) for m in t.get("middle_frames") or [])
+            or filed(t.get("source_clip")) or any(filed(c) for c in t.get("cues") or []))
+
+
 class StubeliusH3DirectorV2(MuseMinimaxDirector):
     @classmethod
     def INPUT_TYPES(cls):
@@ -154,6 +187,10 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                    model_fl2va=None, prompt_override=None,
                    megapixels=0.98, steps=8, sampler_name="euler", scheduler="beta", seed_count=1,
                    unique_id=None):
+        if not _has_content(mode, timeline_data, prompt_override):
+            raise ValueError("[StubeliusH3DirectorV2] Nothing to render yet: every shot is empty and there is no "
+                             "picture, clip, sound or reference. Type what happens in a shot (or add a picture) "
+                             "and render again; without anything to go on H3 makes up a video of its own.")
         _release_held_models()
         if setup is not None:
             megapixels, steps = setup["megapixels"], setup["steps"]

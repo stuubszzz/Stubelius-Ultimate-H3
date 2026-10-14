@@ -517,8 +517,36 @@ export class DirectorWindow {
 
   // ----------------------------------------------------------------------------------- render
 
+  // Anything for H3 to go on: typed text (a shot, a style, sound or music line, the prompt override), a picture, a
+  // clip to continue, a pinned sound or clip, a reference. Without any of it H3 makes up a video of its own.
+  // (The node checks the same before it renders: stubelius_v2.py _has_content.)
+  hasContent() {
+    const t = this.timeline;
+    const typed = (s) => !!String(s ?? "").trim();
+    const filed = (p) => !!(p && (p.file || p.image_b64));
+    if ((t.chunks || []).some((c) => (c.segments || []).some((s) => typed(s?.prompt))
+      || typed(c.style_line) || typed(c.overall_soundscape) || typed(c.non_diegetic_music))) return true;
+    const override = sourceOf(this.node, "prompt_override");
+    if (override) {
+      const w = widget(override, "value");
+      if (!w || typed(w.value)) return true;     // a text from another node is only known when it runs
+    }
+    if (this.isReference) {
+      return (t.characters || []).some(filed) || filed(t.background)
+        || [...(t.refVideos || []), ...(t.refAudios || [])].some(filed);
+    }
+    return (t.characters || []).slice(0, 2).some(filed) || this.middleFrames().some(filed)
+      || filed(t.source_clip) || this.cues().some(filed);
+  }
+
   // Queue the workflow. `until` (a chunk index) and `hunt` go into this one prompt only.
   async queue({ until = null, hunt = null, label = null } = {}) {
+    if (!this.hasContent()) {
+      toast(this.root, "Nothing to render yet: type what happens in a shot, or add a picture", "warn");
+      this.select(0);
+      setTimeout(() => this.insp.querySelector(".i-cut-text")?.focus(), 60);
+      return;
+    }
     if (until !== null && until >= this.numChunks() - 1 && !hunt) until = null;
     if (until !== null) this.timeline.render_until = until;
     if (hunt) this.timeline.hunt_chunk = hunt;
@@ -555,7 +583,7 @@ export class DirectorWindow {
     if (has("tl")) buildTimeline(this);
     if (has("refs")) buildRefs(this);
     if (has("foot")) this.renderFoot();
-    if (has("status") || all) this.renderStatus();
+    this.renderStatus();                 // a picture or a shot can turn "nothing to render" into ready
     this.markSteps();
   }
 
@@ -692,14 +720,17 @@ export class DirectorWindow {
     if (run.state === "queued") { text = `${run.label || "Rendering"} · queued`; cls = "busy"; }
     else if (run.state === "running") { text = run.text || run.label || "Rendering"; cls = "busy"; }
     else if (run.state === "error") { text = run.label || "Stopped"; cls = "bad"; }
-    else if (this.report && run.state === "done") {
+    else if (!this.hasContent()) {
+      text = "Nothing to render yet · type a shot or add a picture";
+      cls = "warn";
+    } else if (this.edited.size) {
+      text = `Changed since the last render · ${n} chunk${n > 1 ? "s" : ""}`;
+      cls = "warn";
+    } else if (this.report && run.state === "done") {
       const reused = (this.report.chunks || []).filter((c) => c.candidates?.[0]?.reused).length;
       const rendered = (this.report.chunks || []).length;
       text = `Rendered ${rendered} of ${this.report.chunks_total} chunk${this.report.chunks_total > 1 ? "s" : ""}`
         + (reused ? ` · ${reused} kept` : "");
-    } else if (this.edited.size) {
-      text = `Changed since the last render · ${n} chunk${n > 1 ? "s" : ""}`;
-      cls = "warn";
     }
     s.className = "sh3-status" + (cls ? " " + cls : "");
     s.lastChild.textContent = text;

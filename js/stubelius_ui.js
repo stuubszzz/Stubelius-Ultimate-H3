@@ -805,6 +805,7 @@ button.sh3-chip:hover{border-color:var(--stroke2);background:var(--glass2)}
   font-weight:500;pointer-events:none;max-width:80%}
 .sh3-toast.in{opacity:1;transform:translate(-50%,0)}
 .sh3-toast.bad{border-color:rgba(var(--bad),.6)}
+.sh3-toast.warn{border-color:rgba(var(--cut),.65)}
 
 /* empty states and drop targets */
 .sh3-drop{border:1.5px dashed var(--stroke2);border-radius:14px;color:var(--text3);display:flex;align-items:center;justify-content:center;
