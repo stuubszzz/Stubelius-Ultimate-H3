@@ -258,7 +258,7 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
             _model(models, chunk, node_id, scale), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
-            made.get("ref_image_size", "match"), int(made.get("seed", 0)), int(made.get("steps", 8)),
+            made.get("ref_image_size", "match"), int(chunk.get("seed", made.get("seed", 0))), int(made.get("steps", 8)),
             int(made.get("first_pass_steps", 2)), made.get("sampler_name", "euler"), made.get("scheduler", "beta"),
             float(scale), method, refs,
             previous if carry else None, previous_audio if carry else None, carry,

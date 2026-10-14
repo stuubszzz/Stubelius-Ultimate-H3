@@ -88,6 +88,40 @@ by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The poli
 in memory uncompressed: about 11 GB for every 10 s at 2x from the Quality preset, about 6 GB at
 1.5x. Long takes need a lot of RAM.
 
+## Takes: render one chunk again
+
+Every chunk the Director renders is kept as a take. A take is found by what made it: the chunk's
+prompt, pictures, sounds, settings, models and LoRAs, its seed and, when it starts from the chunk
+before it, that chunk's take. When a chunk would come out the same, its take is loaded instead and
+nothing is sampled.
+
+- **Retake a chunk** by giving it a seed of its own. That chunk and the chunks after it render
+  again; the chunks before it come from their takes.
+- **Pick an older take back** by setting its seed again. It is loaded, and so are the chunks after it
+  that were rendered after it.
+- **Render up to a chunk** (render until) to work on the start of a long video first. The Finish
+  waits for the whole video.
+- **Hunt one chunk**: two to four candidates that differ in that chunk alone, each the video up to
+  it. The chunks before it render once. The seed of the one you pick becomes the chunk's own.
+- **A stopped render picks up where it stopped**: the chunks it finished are kept.
+- A **new shot** in First/Last Frame mode doesn't start from the chunk before it, so retaking that
+  chunk keeps the new shot. In Reference mode a new shot still hears the end of the chunk before it,
+  so it renders again.
+- Candidates share the chunks that have a seed of their own and vary the rest, as seeds always did.
+
+By default every chunk renders with the Director's seed: a different seed at a join can change the
+fine grain from one chunk to the next. If a retake shows that at its join, retake it again or pick
+the take before.
+
+Takes need the Models node (with plain model sockets nothing is kept on disk). They live in
+ComfyUI's output folder under `StubeliusH3/takes`, roughly 60-120 MB for a 10 s chunk. The folder
+holds at most 20 GB, and the takes used longest ago are removed first; set `STUBELIUS_TAKES_GB` to
+change that (0 keeps none). The frames are kept lossless at 8 bits a channel, so a loaded take
+matches the render to the last 8-bit step.
+
+For scripts, in `timeline_data`: `takes_id` (keep takes on disk and report them for this node),
+`chunks[i].seed`, `render_until` (a chunk index from 0) and `hunt_chunk` (`{"chunk": i, "count": 4}`).
+
 ## Middle frames
 
 In **First/Last Frame** mode the video can pass through up to eight **middle frames** on its way from

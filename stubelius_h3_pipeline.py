@@ -577,6 +577,14 @@ class StubeliusH3Finish:
             log.info("[StubeliusH3Finish] WINNER 0 = hold: %d seed(s) rendered, finish skipped. "
                      "Set WINNER 1-%d and re-queue.", takes["count"], takes["count"])
             return (ExecutionBlocker(None), ExecutionBlocker(None), ExecutionBlocker(None))
+        partial = takes.get("partial")
+        if partial:
+            # the video up to one chunk (render_until, or a chunk hunt): looked at in the seed previews
+            from comfy_execution.graph import ExecutionBlocker
+            log.info("[StubeliusH3Finish] the Director rendered chunk%s of %d%s: the finish waits for the whole "
+                     "video.", " 1" if partial["chunks"] == 1 else f"s 1-{partial['chunks']}", partial["of"],
+                     f" (hunting chunk {partial['hunt'] + 1})" if partial.get("hunt") is not None else "")
+            return (ExecutionBlocker(None), ExecutionBlocker(None), ExecutionBlocker(None))
         w = max(1, min(int(winner), takes["count"]))
         if w != winner:
             log.warning("[StubeliusH3Finish] WINNER %d but only %d seed(s) rendered, using %d",

@@ -88,6 +88,7 @@ from . import stubelius_lipsync as _lipsync
 from . import stubelius_keyframes as _keyframes
 from . import stubelius_clip as _clip
 from . import stubelius_cues as _cues
+from . import stubelius_takes as _takes
 
 log = logging.getLogger(__name__)
 
@@ -1299,12 +1300,22 @@ class MuseMinimaxDirector:
 
         buckets, chunk_lengths, chunk_bounds = _bucket_segments_into_chunks(tdata, duration_seconds, chunk_duration_seconds)
         num_chunks = len(buckets)
+        # Stubelius: per-chunk takes (stubelius_takes.py): each chunk's own seed, how far to render, one
+        # chunk hunted, and the takes kept (on disk with a takes_id, in memory for what the candidates share)
+        candidate_count = 1 + sum([bool(candidate_2), bool(candidate_3), bool(candidate_4)])
+        plan = _takes.Plan(tdata, num_chunks)
+        store = _takes.Store(plan, getattr(self, "_takes_models", None), candidate_count)
+        self._takes_plan, self._takes_seeds = plan, [None] * 4
 
         log.info(
             "[MuseMinimaxDirector] mode=%s, %dx%d, seed=%d, candidates=%d, %d chunk(s): %s (total %.1fs)",
-            mode, width, height, seed, 1 + sum([candidate_2, candidate_3, candidate_4]), num_chunks,
+            mode, width, height, seed, candidate_count, num_chunks,
             ", ".join(f"~{c:.1f}s" for c in chunk_lengths), sum(chunk_lengths),
         )
+        if plan.partial or plan.hunt is not None or plan.seeds:
+            log.info("[StubeliusTakes] rendering chunk%s%s%s%s", "s 1-%d" % (plan.last + 1) if plan.last else " 1",
+                     f" of {num_chunks}", f", hunting chunk {plan.hunt + 1}" if plan.hunt is not None else "",
+                     (", own seeds on chunk " + ", ".join(str(k + 1) for k in sorted(plan.seeds))) if plan.seeds else "")
 
         from nodes import NODE_CLASS_MAPPINGS
         RandomNoise = NODE_CLASS_MAPPINGS["RandomNoise"]
@@ -1458,6 +1469,15 @@ class MuseMinimaxDirector:
             claimed_middles = set()  # Stubelius: middle frames already placed in a chunk of this take
             # Stubelius: has anyone talked yet in this take? (a clip the video continues may have)
             talked = source_tail is not None
+            # Stubelius: this candidate's seed for each chunk (stubelius_takes.Plan), and the key of the take
+            # the next chunk starts from (part of that chunk's key): at first, the clip the video continues
+            chunk_seeds = plan.chunk_seeds(seed, candidate_idx)
+            self._takes_seeds[candidate_idx] = chunk_seeds[:plan.last + 1]
+            before_key = None
+            if source_clip is not None and store.active(0):
+                before_key = store.recipe().add("clip", [
+                    source_clip.info(), _takes.file_stamp(source_clip.path), width, height,
+                    int(vae_reencode_carry_length), getattr(audio_vae, "audio_sample_rate", None)]).hexdigest()
             # Stubelius: a new shot opens on a middle frame placed at its start. Set aside before any chunk
             # places its middle frames, or the chunk before the cut would take it (chunks come out a few
             # frames longer than asked for, so a picture right on the edge falls inside it).
@@ -1477,6 +1497,8 @@ class MuseMinimaxDirector:
                         break
 
             for chunk_idx, chunk_segments in enumerate(buckets):
+                if chunk_idx > plan.last:
+                    break           # Stubelius: render_until, or a chunk hunt: the video up to that chunk
                 chunk_len_seconds = chunk_lengths[chunk_idx]
                 visible_chunk_length = align_frame_count(max(5, round(chunk_len_seconds * 24)))
                 # Lip Sync runs on the finished video's own clock: this chunk's first new frame
@@ -1588,6 +1610,7 @@ class MuseMinimaxDirector:
                 style_line = (this_chunk_data.get("style_line") or "").strip()
 
                 chunk_ref_videos = None
+                chunk_ref_video_audios = None
                 chunk_ref_audios = None
                 chunk_ref_images = {}
                 chunk_carry_trim_frames = None
@@ -2059,330 +2082,392 @@ class MuseMinimaxDirector:
                 compiled_prompts.append(f"--- Chunk {chunk_idx + 1}/{num_chunks} (~{chunk_len_seconds:.1f}s) ---\n{chunk_prompt}")
 
                 log.info("[MuseMinimaxDirector] chunk %d/%d, seed=%d, length=%d frames, video_carry=%s, audio_carry=%s, hybrid=%s",
-                          chunk_idx + 1, num_chunks, pass_seed, chunk_length, carries,
+                          chunk_idx + 1, num_chunks, chunk_seeds[chunk_idx], chunk_length, carries,
                           carries and carry_mode == "picture_sound" and prev_chunk_audio is not None, use_hybrid_chunk)
 
-                if use_hybrid_chunk:
-                    out = _execute_comfy_node(
-                        MiniMaxH3ImageToVideo,
-                        clip=clip, vae=vae, prompt=chunk_prompt,
-                        width=width, height=height, length=chunk_length,
-                        first_frame=chunk_first, last_frame=chunk_last,
-                    )
-                    chunk_shifted_model = shifted_model_fl2va
-                elif mode == MODE_REFERENCE:
-                    out = _execute_comfy_node(
-                        MiniMaxH3ReferenceToVideo,
-                        clip=clip, vae=vae, audio_vae=audio_vae, prompt=chunk_prompt,
-                        width=width, height=height, length=chunk_length, ref_image_size=ref_image_size,
-                        ref_images=chunk_ref_images if chunk_ref_images else None,
-                        ref_videos=chunk_ref_videos if chunk_ref_videos else None,
-                        ref_video_audios=chunk_ref_video_audios if chunk_ref_video_audios else None,
-                        ref_audios=chunk_ref_audios if chunk_ref_audios else None,
-                    )
-                    chunk_shifted_model = shifted_model
-                elif chunk_middles:
-                    # Stubelius: first frame, middle frames, last frame (stubelius_keyframes.py)
-                    out = _keyframes.conditioning(
-                        _execute_comfy_node, _unpack_node_result,
-                        clip=clip, vae=vae, prompt=chunk_prompt,
-                        width=width, height=height, length=chunk_length,
-                        first=chunk_first, last=chunk_last,
-                        middles=[(index, middle["picture"]) for index, middle in chunk_middles],
-                        in_text=middles_in_text,
-                    )
-                    chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
-                else:
-                    out = _execute_comfy_node(
-                        MiniMaxH3ImageToVideo,
-                        clip=clip, vae=vae, prompt=chunk_prompt,
-                        width=width, height=height, length=chunk_length,
-                        first_frame=chunk_first, last_frame=chunk_last,
-                    )
-                    # Prefer the real fl2va checkpoint when connected — MiniMaxH3ImageToVideo
-                    # expects fl2va weights specifically. Falls back to the main model input
-                    # (already warned about above) only when model_fl2va isn't wired at all.
-                    chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
-                positive, latent = _unpack_node_result(out)[:2]
-                if chunk_clips or chunk_sounds:
-                    # Stubelius: the sounds and clips on the timeline, pinned at their frames (stubelius_cues.py)
-                    positive = _cues.pin(_execute_comfy_node, _unpack_node_result, positive, latent, vae, audio_vae,
-                                         chunk_clips, chunk_sounds)
-                chunk_shifted_model = self._chunk_model(chunk_idx, chunk_shifted_model)
-
-                # vae_reencode_carry_test: replace the just-built empty/noise latent's
-                # own opening prefix with a freshly VAE re-encoded copy of the previous
-                # chunk's true final frames (+ matching audio), hard-frozen (noise-mask
-                # 0) so those steps never denoise — mirrors LTX Director's own carry-
-                # frame mechanism (real VAE encode of decoded pixels, not a reused raw
-                # sampled-latent tensor) instead of the plain first-frame image anchor
-                # used everywhere else in this node. chunk_length was already extended
-                # above to cover this protected prefix; trim_frames (the amount the
-                # node actually protected, after its own H3/audio-clock snapping) is
-                # what the post-decode trim below uses, not the pre-generation estimate.
-                # Runs regardless of two_stage_sampling — tried skipping this for the
-                # two-stage path once (reasoning: the Stage-2 upscale+priming pass forces
-                # noise_mask back to all-ones on the whole latent, so anything frozen here
-                # gets touched again anyway) and it was a real, confirmed regression, not
-                # neutral: Stage 1 (high_sigmas) is exactly the EARLY, high-noise steps
-                # where a diffusion model decides broad composition — framing, camera
-                # distance, pose — and with no anchor present there at all, chunk 2 was
-                # free to invent an entirely different shot (confirmed directly: a real
-                # two-stage render with only the post-upscale injection produced a full
-                # camera-angle/framing change at the cut, worse than the plain first-frame
-                # anchor it replaced). This early injection re-constrains those early
-                # steps; the second injection below (after the upscale) then refreshes the
-                # frozen region with the true high-res re-encode instead of leaving it as
-                # whatever the naive latent-space upscale + unprotected priming pass left
-                # behind. Both run together for two-stage; only this one for single-pass.
-                if carries:
-                    carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
-                    tail_pixels = prev_chunk_images[-carry_n:]
-                    # prev_chunk_images is decoded from whatever resolution the previous
-                    # chunk actually finished at — with two_stage_sampling on, that's the
-                    # Stage-2 UPSCALED resolution, not the base width x height every fresh
-                    # chunk's own target latent starts at (confirmed directly: a real run
-                    # crashed here with source latent 44x80 vs target 30x54, the exact
-                    # ratio of that chunk's own logged 1.481x/1.467x upscale). Re-fit back
-                    # to base resolution first so the re-encoded tail's latent geometry
-                    # always matches the fresh target latent it's being injected into,
-                    # regardless of whether two-stage ran. "stretch" (not crop/pad) since
-                    # this is the same frame just resampled, not a genuine aspect mismatch —
-                    # the two-stage upscale's own H3-grid snapping can leave width/height a
-                    # fraction of a percent off from perfectly uniform, which stretch just
-                    # absorbs instead of cropping or bar-padding for.
-                    tail_pixels = _fit_image_to_target(tail_pixels, width, height, "stretch")
-                    tail_video_latent = _unpack_node_result(_execute_comfy_node(
-                        VAEEncode, pixels=tail_pixels, vae=vae,
-                    ))[0]
-                    source_latent = {"samples": tail_video_latent["samples"]}
-                    if prev_chunk_audio is not None and prev_chunk_audio["waveform"].shape[-1] > 0:
-                        carry_sr = prev_chunk_audio["sample_rate"]
-                        carry_samples = min(
-                            int(round(carry_n / 24.0 * carry_sr)), prev_chunk_audio["waveform"].shape[-1],
+                # Stubelius: this chunk's take (stubelius_takes.py). Everything the chunk is made from below goes
+                # into its key: a take with the same recipe and seed is loaded instead of rendered again.
+                chunk_seed = chunk_seeds[chunk_idx]
+                take = take_base = None
+                if store.active(chunk_idx):
+                    # does it start from the chunk before it (its last frames, the tail of its sound)?
+                    reads_before = prev_chunk_images is not None and (
+                        continues or (mode == MODE_REFERENCE and not use_hybrid_chunk and prev_chunk_audio is not None))
+                    anchor_slot = (f"ref_image_{bg_index}"
+                                   if continues and mode == MODE_REFERENCE and not use_hybrid_chunk else None)
+                    tail_slot = ("ref_audio_0" if mode == MODE_REFERENCE and not use_hybrid_chunk
+                                 and prev_chunk_audio is not None else None)
+                    recipe = store.recipe()
+                    recipe.add("how", [mode, bool(use_hybrid_chunk), shifted_model_fl2va is not None, int(steps),
+                                       sampler_name, scheduler, float(shift_video), float(shift_audio), ref_image_size,
+                                       [int(two_stage_first_pass_steps), float(two_stage_upscale_factor),
+                                        two_stage_upscale_method, bool(two_stage_seed_hunt_latent_only)]
+                                       if two_stage_sampling else None])
+                    recipe.add("loras", [[name, float(strength), _takes.file_stamp(path)]
+                                         for name, path, strength in self._chunk_loras(chunk_idx)])
+                    recipe.add("size", [int(width), int(height), int(chunk_length)])
+                    recipe.add("prompt", chunk_prompt)
+                    recipe.add("first", "before" if continues and chunk_first is not None else chunk_first)
+                    recipe.add("last", chunk_last)
+                    recipe.add("middles", [[int(index), middle["picture"]] for index, middle in chunk_middles]
+                               + [bool(middles_in_text)])
+                    recipe.add("ref_images", {slot: "before" if slot == anchor_slot else image
+                                              for slot, image in (chunk_ref_images or {}).items()})
+                    recipe.add("ref_videos", chunk_ref_videos)
+                    recipe.add("ref_video_audios", chunk_ref_video_audios)
+                    recipe.add("ref_audios", {slot: "before" if slot == tail_slot else sound
+                                              for slot, sound in (chunk_ref_audios or {}).items()})
+                    recipe.add("cues", [[int(index), pictures] for index, pictures in chunk_clips]
+                               + [[int(index), sound] for index, sound in chunk_sounds])
+                    recipe.add("carry", [carry_mode, bool(carries), int(vae_reencode_carry_length) if carries else None])
+                    recipe.add("lip_sync", [int(frames_done), bool(continues), soundtrack.waveform, bool(lip_sync_silence)]
+                               if lip_sync_here else None)
+                    recipe.add("before", before_key if reads_before else None)
+                    take_base = recipe.hexdigest()
+                    take = store.find(take_base, chunk_seed, chunk_idx)
+                chunk_lip_locked = False        # did this chunk lock in the Lip Sync recording?
+                if take is None:
+                    if use_hybrid_chunk:
+                        out = _execute_comfy_node(
+                            MiniMaxH3ImageToVideo,
+                            clip=clip, vae=vae, prompt=chunk_prompt,
+                            width=width, height=height, length=chunk_length,
+                            first_frame=chunk_first, last_frame=chunk_last,
                         )
-                        tail_waveform = prev_chunk_audio["waveform"][..., -carry_samples:]
-                        tail_audio_latent = _unpack_node_result(_execute_comfy_node(
-                            VAEEncodeAudio, audio={"waveform": tail_waveform, "sample_rate": carry_sr}, vae=audio_vae,
-                        ))[0]
-                        source_latent = {"samples": (tail_video_latent["samples"], tail_audio_latent["samples"])}
-                    latent, carry_trim_frames = _unpack_node_result(_execute_comfy_node(
-                        MiniMaxH3GeneratedAVMaskedContext,
-                        latent=latent, source_latent=source_latent,
-                        context_length=carry_n, audio_feather_ticks=8,
-                    ))[:2]
-                    chunk_carry_trim_frames = int(carry_trim_frames)
-                    log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry: %d px re-encoded tail, "
-                             "trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
-                    if carry_mode == "picture":
-                        latent = _free_carried_sound(latent)    # Stubelius: the picture carried, the sound made fresh
-
-                # Stubelius: lock this chunk's part of the Lip Sync recording into its audio
-                # latent (after the carry-over, whose own audio prefix it replaces with the
-                # recording's). A continuation chunk opens on frames that are cut off again
-                # after decoding (the same count as the trim further down), so its first
-                # latent frame sits that much before frames_done on the video's clock.
-                if lip_sync_here:
-                    lead_frames = 0
-                    if continues:
-                        lead_frames = chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES
-                        lead_frames = min(lead_frames, chunk_length - 1)
-                    lock_start = max(0, frames_done - lead_frames) / 24.0
-                    latent, lock_ticks, recording_ticks = soundtrack.lock(
-                        latent, audio_vae, lock_start, silence_after=lip_sync_silence)
-                    lip_sync_locked = lip_sync_locked or lock_ticks > 0
-                    log.info("[StubeliusLipSync] chunk %d/%d: recording from %.3f s locked into the audio latent "
-                             "(%.2f s of this chunk's %.2f s)%s", chunk_idx + 1, num_chunks, lock_start,
-                             recording_ticks / _lipsync.LATENT_HZ, chunk_length / 24.0,
-                             f", then {(lock_ticks - recording_ticks) / _lipsync.LATENT_HZ:.2f} s of silence"
-                             if lock_ticks > recording_ticks else ("" if lock_ticks else " - nothing left to lock"))
-
-                # Same seed for every chunk in a pass (not pass_seed + chunk_idx) — chunks
-                # already differ by prompt text, anchor image, and length, so a per-chunk
-                # seed bump isn't needed for variety and was the direct cause of a visible
-                # grain/exposure jump at chunk seams (confirmed via frame-by-frame inspection:
-                # identical pose/framing across the cut, but a sudden shift in fine wall-panel
-                # noise texture starting exactly on chunk 2's first frame). Reusing one seed
-                # across shots is the standard fix for texture/exposure consistency in a
-                # stitched multi-shot sequence. Seed Hunt is unaffected — it already varies
-                # pass_seed itself per whole pass (see SEED_HUNT_SEED_STRIDE), not per chunk.
-                guider = _unpack_node_result(_execute_comfy_node(BasicGuider, model=chunk_shifted_model, conditioning=positive))[0]
-                full_sigmas = _unpack_node_result(_execute_comfy_node(
-                    BasicScheduler, model=chunk_shifted_model, scheduler=scheduler, steps=steps, denoise=1.0,
-                ))[0]
-
-                if not two_stage_sampling:
-                    noise = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=pass_seed))[0]
-                    sampled = _unpack_node_result(_execute_comfy_node(
-                        SamplerCustomAdvanced, noise=noise, guider=guider, sampler=sampler,
-                        sigmas=full_sigmas, latent_image=latent,
-                    ))[0]
-                    # Stubelius: expose the COMPLETE candidate latent so the Refine node
-                    # can run a proper polish pass (learned 2x + partial re-noise) on a
-                    # fully-converged take instead of a mid-schedule estimate.
-                    chunk_stage1_latent = dict(sampled)
-                    chunk_stage1_latent["_muse_complete_candidate"] = True
-                else:
-                    # Reference workflow's exact structure, ported from the TwoStage
-                    # Combo node build (verified directly against its own node graph,
-                    # not re-derived): a few steps at this chunk's normal resolution,
-                    # a direct latent-space upscale of the video half only, one more
-                    # near-single-point-sigma pass on the upscaled video alone (reusing
-                    # pass 1's noise/seed) before recombining with audio, then the real
-                    # final pass — DisableNoise, not reused noise — finishes the
-                    # remaining steps on the recombined AV latent.
-                    split_step = max(1, min(int(two_stage_first_pass_steps), steps - 1))
-                    high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
-                        SplitSigmas, sigmas=full_sigmas, step=split_step,
-                    ))[:2]
-
-                    noise1 = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=pass_seed))[0]
-                    pass1_raw, pass1_denoised = _unpack_node_result(_execute_comfy_node(
-                        SamplerCustomAdvanced, noise=noise1, guider=guider, sampler=sampler,
-                        sigmas=high_sigmas, latent_image=latent,
-                    ))[:2]
-
-                    if two_stage_seed_hunt_latent_only:
-                        # Scouting mode: skip Stage 2 entirely. pass1_denoised is a real,
-                        # continuable joint AV latent — exactly what Muse Minimax Refine
-                        # V1.2's candidate_N_latent input expects — exposed below via
-                        # chunk_stage1_latent. images/audio still get decoded from it so
-                        # there's something to actually look at while choosing, but at
-                        # Stage 1's low resolution, not the expensive upscaled one.
-                        sampled = pass1_denoised
-                        # Refine V1.2 only ever gets this one latent — it has no access
-                        # to pass1_raw, unlike the Director's own Stage 2 above, which
-                        # always sources audio_carry from pass1_raw rather than
-                        # pass1_denoised (see that block's own comment for why: raw
-                        # preserves the unlocked chunk's natural in-progress denoising
-                        # trajectory, which the denoised estimate was never meant to
-                        # substitute for). Without this, Refine has to re-derive audio
-                        # from the denoised latent instead — confirmed via a real render
-                        # to produce wrong/missing dialogue. Stashing raw's audio half
-                        # under an extra key on the same dict (rather than a second
-                        # output socket) lets Refine use the correct source without any
-                        # rewiring on the candidate_N_latent connection.
-                        audio_carry_raw = _unpack_node_result(_execute_comfy_node(
-                            LTXVSeparateAVLatent, av_latent=pass1_raw,
-                        ))[1]
-                        chunk_stage1_latent = dict(pass1_denoised)
-                        chunk_stage1_latent["_muse_two_stage_raw_audio"] = audio_carry_raw
+                        chunk_shifted_model = shifted_model_fl2va
+                    elif mode == MODE_REFERENCE:
+                        out = _execute_comfy_node(
+                            MiniMaxH3ReferenceToVideo,
+                            clip=clip, vae=vae, audio_vae=audio_vae, prompt=chunk_prompt,
+                            width=width, height=height, length=chunk_length, ref_image_size=ref_image_size,
+                            ref_images=chunk_ref_images if chunk_ref_images else None,
+                            ref_videos=chunk_ref_videos if chunk_ref_videos else None,
+                            ref_video_audios=chunk_ref_video_audios if chunk_ref_video_audios else None,
+                            ref_audios=chunk_ref_audios if chunk_ref_audios else None,
+                        )
+                        chunk_shifted_model = shifted_model
+                    elif chunk_middles:
+                        # Stubelius: first frame, middle frames, last frame (stubelius_keyframes.py)
+                        out = _keyframes.conditioning(
+                            _execute_comfy_node, _unpack_node_result,
+                            clip=clip, vae=vae, prompt=chunk_prompt,
+                            width=width, height=height, length=chunk_length,
+                            first=chunk_first, last=chunk_last,
+                            middles=[(index, middle["picture"]) for index, middle in chunk_middles],
+                            in_text=middles_in_text,
+                        )
+                        chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
                     else:
-                        chunk_stage1_latent = None
-
-                    if not two_stage_seed_hunt_latent_only:
-                        video_for_upscale = _unpack_node_result(_execute_comfy_node(
-                            LTXVSeparateAVLatent, av_latent=pass1_denoised,
-                        ))[0]
-                        audio_carry = _unpack_node_result(_execute_comfy_node(
-                            LTXVSeparateAVLatent, av_latent=pass1_raw,
-                        ))[1]
-
-                        video_samples = video_for_upscale["samples"]
-                        cur_h_latent, cur_w_latent = video_samples.shape[-2], video_samples.shape[-1]
-                        if two_stage_upscale_method == MUSE_GOLD_LEARNED:
-                            upscaled_samples = _muse_gold_learned_upscale(video_samples)
-                            tgt_h, tgt_w = upscaled_samples.shape[-2], upscaled_samples.shape[-1]
-                            eff_x = tgt_w / cur_w_latent if cur_w_latent else 2.0
-                            eff_y = tgt_h / cur_h_latent if cur_h_latent else 2.0
-                        else:
-                            tgt_h, tgt_w, eff_x, eff_y = _two_stage_snap_upscale_target(
-                                cur_h_latent, cur_w_latent, float(two_stage_upscale_factor)
-                            )
-                            upscaled_samples = comfy.utils.common_upscale(
-                                video_samples, tgt_w, tgt_h, two_stage_upscale_method, "disabled",
-                            )
-                        upscaled_video = dict(video_for_upscale)
-                        upscaled_video["samples"] = upscaled_samples
-                        upscaled_video["noise_mask"] = torch.ones_like(upscaled_samples)
-                        log.info(
-                            "[MuseMinimaxDirectorV1_2] chunk %d two-stage upscale: "
-                            "latent %dx%d -> %dx%d (requested %.2fx, effective %.3fx/%.3fx)",
-                            chunk_idx + 1, cur_w_latent, cur_h_latent, tgt_w, tgt_h,
-                            float(two_stage_upscale_factor), eff_x, eff_y,
+                        out = _execute_comfy_node(
+                            MiniMaxH3ImageToVideo,
+                            clip=clip, vae=vae, prompt=chunk_prompt,
+                            width=width, height=height, length=chunk_length,
+                            first_frame=chunk_first, last_frame=chunk_last,
                         )
+                        # Prefer the real fl2va checkpoint when connected — MiniMaxH3ImageToVideo
+                        # expects fl2va weights specifically. Falls back to the main model input
+                        # (already warned about above) only when model_fl2va isn't wired at all.
+                        chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
+                    positive, latent = _unpack_node_result(out)[:2]
+                    if chunk_clips or chunk_sounds:
+                        # Stubelius: the sounds and clips on the timeline, pinned at their frames (stubelius_cues.py)
+                        positive = _cues.pin(_execute_comfy_node, _unpack_node_result, positive, latent, vae, audio_vae,
+                                             chunk_clips, chunk_sounds)
+                    chunk_shifted_model = self._chunk_model(chunk_idx, chunk_shifted_model)
 
-                        tiny_sigmas = _unpack_node_result(_execute_comfy_node(
-                            SplitSigmas, sigmas=low_sigmas, step=0,
+                    # vae_reencode_carry_test: replace the just-built empty/noise latent's
+                    # own opening prefix with a freshly VAE re-encoded copy of the previous
+                    # chunk's true final frames (+ matching audio), hard-frozen (noise-mask
+                    # 0) so those steps never denoise — mirrors LTX Director's own carry-
+                    # frame mechanism (real VAE encode of decoded pixels, not a reused raw
+                    # sampled-latent tensor) instead of the plain first-frame image anchor
+                    # used everywhere else in this node. chunk_length was already extended
+                    # above to cover this protected prefix; trim_frames (the amount the
+                    # node actually protected, after its own H3/audio-clock snapping) is
+                    # what the post-decode trim below uses, not the pre-generation estimate.
+                    # Runs regardless of two_stage_sampling — tried skipping this for the
+                    # two-stage path once (reasoning: the Stage-2 upscale+priming pass forces
+                    # noise_mask back to all-ones on the whole latent, so anything frozen here
+                    # gets touched again anyway) and it was a real, confirmed regression, not
+                    # neutral: Stage 1 (high_sigmas) is exactly the EARLY, high-noise steps
+                    # where a diffusion model decides broad composition — framing, camera
+                    # distance, pose — and with no anchor present there at all, chunk 2 was
+                    # free to invent an entirely different shot (confirmed directly: a real
+                    # two-stage render with only the post-upscale injection produced a full
+                    # camera-angle/framing change at the cut, worse than the plain first-frame
+                    # anchor it replaced). This early injection re-constrains those early
+                    # steps; the second injection below (after the upscale) then refreshes the
+                    # frozen region with the true high-res re-encode instead of leaving it as
+                    # whatever the naive latent-space upscale + unprotected priming pass left
+                    # behind. Both run together for two-stage; only this one for single-pass.
+                    if carries:
+                        carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
+                        tail_pixels = prev_chunk_images[-carry_n:]
+                        # prev_chunk_images is decoded from whatever resolution the previous
+                        # chunk actually finished at — with two_stage_sampling on, that's the
+                        # Stage-2 UPSCALED resolution, not the base width x height every fresh
+                        # chunk's own target latent starts at (confirmed directly: a real run
+                        # crashed here with source latent 44x80 vs target 30x54, the exact
+                        # ratio of that chunk's own logged 1.481x/1.467x upscale). Re-fit back
+                        # to base resolution first so the re-encoded tail's latent geometry
+                        # always matches the fresh target latent it's being injected into,
+                        # regardless of whether two-stage ran. "stretch" (not crop/pad) since
+                        # this is the same frame just resampled, not a genuine aspect mismatch —
+                        # the two-stage upscale's own H3-grid snapping can leave width/height a
+                        # fraction of a percent off from perfectly uniform, which stretch just
+                        # absorbs instead of cropping or bar-padding for.
+                        tail_pixels = _fit_image_to_target(tail_pixels, width, height, "stretch")
+                        tail_video_latent = _unpack_node_result(_execute_comfy_node(
+                            VAEEncode, pixels=tail_pixels, vae=vae,
                         ))[0]
-                        video_primed = _unpack_node_result(_execute_comfy_node(
-                            SamplerCustomAdvanced, noise=noise1, guider=guider, sampler=sampler,
-                            sigmas=tiny_sigmas, latent_image=upscaled_video,
-                        ))[0]
-
-                        # The chunk-end cleanup below runs too late to help the final
-                        # pass's model reload just below this — it happens after that
-                        # reload already needed the VRAM. By this point pass1_raw/
-                        # pass1_denoised (split into video_for_upscale/audio_carry
-                        # already), video_for_upscale/video_samples/upscaled_samples
-                        # (upscaled into upscaled_video already, then consumed by
-                        # video_primed already), and high_sigmas/tiny_sigmas/noise1/
-                        # full_sigmas (all consumed producing what we have) are dead
-                        # weight — freeing them here, right before the reload, is what
-                        # actually gives the allocator room. Confirmed via a real render
-                        # to still hit the same VRAM wall even with the chunk-end
-                        # cleanup and the full LoRA/attention stack in place — this was
-                        # the missing piece, not those.
-                        del pass1_raw, pass1_denoised, video_for_upscale, video_samples
-                        del upscaled_samples, upscaled_video, high_sigmas, tiny_sigmas
-                        del noise1, full_sigmas
-                        gc.collect()
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-
-                        recombined = _unpack_node_result(_execute_comfy_node(
-                            LTXVConcatAVLatent, video_latent=video_primed, audio_latent=audio_carry,
-                        ))[0]
-
-                        # vae_reencode_carry_test, two-stage path: SECOND injection, on top
-                        # of the one already applied before Stage 1 above (see that block's
-                        # comment for why both are needed, not just one). That earlier
-                        # freeze kept Stage 1 properly anchored, but the region it protected
-                        # only survived as a naive latent-space upscale of the true tail,
-                        # then went through the upscale-priming pass with noise_mask forced
-                        # back to all-ones (unprotected) — this re-freezes it with the real
-                        # high-res VAE re-encode right before the pass that matters most. No
-                        # resize is needed to get here: prev_chunk_images was decoded from
-                        # the PREVIOUS chunk's own two-stage upscale, which used this same
-                        # width/height/two_stage_upscale_factor (fixed for the whole run),
-                        # so its final resolution already matches this chunk's tgt_h/tgt_w
-                        # by construction — the same reasoning the Combo/TwoStage node's own
-                        # Test 17 relies on. Only the future (unprotected) region actually
-                        # denoises against low_sigmas below; the copied prefix rides through
-                        # unchanged.
-                        if carries:
-                            carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
-                            tail_pixels = prev_chunk_images[-carry_n:]
-                            tail_video_latent = _unpack_node_result(_execute_comfy_node(
-                                VAEEncode, pixels=tail_pixels, vae=vae,
+                        source_latent = {"samples": tail_video_latent["samples"]}
+                        if prev_chunk_audio is not None and prev_chunk_audio["waveform"].shape[-1] > 0:
+                            carry_sr = prev_chunk_audio["sample_rate"]
+                            carry_samples = min(
+                                int(round(carry_n / 24.0 * carry_sr)), prev_chunk_audio["waveform"].shape[-1],
+                            )
+                            tail_waveform = prev_chunk_audio["waveform"][..., -carry_samples:]
+                            tail_audio_latent = _unpack_node_result(_execute_comfy_node(
+                                VAEEncodeAudio, audio={"waveform": tail_waveform, "sample_rate": carry_sr}, vae=audio_vae,
                             ))[0]
-                            source_latent = {"samples": tail_video_latent["samples"]}
-                            if prev_chunk_audio is not None and prev_chunk_audio["waveform"].shape[-1] > 0:
-                                carry_sr = prev_chunk_audio["sample_rate"]
-                                carry_samples = min(
-                                    int(round(carry_n / 24.0 * carry_sr)), prev_chunk_audio["waveform"].shape[-1],
-                                )
-                                tail_waveform = prev_chunk_audio["waveform"][..., -carry_samples:]
-                                tail_audio_latent = _unpack_node_result(_execute_comfy_node(
-                                    VAEEncodeAudio, audio={"waveform": tail_waveform, "sample_rate": carry_sr}, vae=audio_vae,
-                                ))[0]
-                                source_latent = {"samples": (tail_video_latent["samples"], tail_audio_latent["samples"])}
-                            recombined, carry_trim_frames = _unpack_node_result(_execute_comfy_node(
-                                MiniMaxH3GeneratedAVMaskedContext,
-                                latent=recombined, source_latent=source_latent,
-                                context_length=carry_n, audio_feather_ticks=8,
-                            ))[:2]
-                            chunk_carry_trim_frames = int(carry_trim_frames)
-                            log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry (two-stage): %d px "
-                                     "re-encoded tail, trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
-                            if carry_mode == "picture":
-                                recombined = _free_carried_sound(recombined)
+                            source_latent = {"samples": (tail_video_latent["samples"], tail_audio_latent["samples"])}
+                        latent, carry_trim_frames = _unpack_node_result(_execute_comfy_node(
+                            MiniMaxH3GeneratedAVMaskedContext,
+                            latent=latent, source_latent=source_latent,
+                            context_length=carry_n, audio_feather_ticks=8,
+                        ))[:2]
+                        chunk_carry_trim_frames = int(carry_trim_frames)
+                        log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry: %d px re-encoded tail, "
+                                 "trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
+                        if carry_mode == "picture":
+                            latent = _free_carried_sound(latent)    # Stubelius: the picture carried, the sound made fresh
 
-                        noise2 = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
+                    # Stubelius: lock this chunk's part of the Lip Sync recording into its audio
+                    # latent (after the carry-over, whose own audio prefix it replaces with the
+                    # recording's). A continuation chunk opens on frames that are cut off again
+                    # after decoding (the same count as the trim further down), so its first
+                    # latent frame sits that much before frames_done on the video's clock.
+                    if lip_sync_here:
+                        lead_frames = 0
+                        if continues:
+                            lead_frames = chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES
+                            lead_frames = min(lead_frames, chunk_length - 1)
+                        lock_start = max(0, frames_done - lead_frames) / 24.0
+                        latent, lock_ticks, recording_ticks = soundtrack.lock(
+                            latent, audio_vae, lock_start, silence_after=lip_sync_silence)
+                        chunk_lip_locked = lock_ticks > 0
+                        log.info("[StubeliusLipSync] chunk %d/%d: recording from %.3f s locked into the audio latent "
+                                 "(%.2f s of this chunk's %.2f s)%s", chunk_idx + 1, num_chunks, lock_start,
+                                 recording_ticks / _lipsync.LATENT_HZ, chunk_length / 24.0,
+                                 f", then {(lock_ticks - recording_ticks) / _lipsync.LATENT_HZ:.2f} s of silence"
+                                 if lock_ticks > recording_ticks else ("" if lock_ticks else " - nothing left to lock"))
+
+                    # Same seed for every chunk in a pass (not pass_seed + chunk_idx) — chunks
+                    # already differ by prompt text, anchor image, and length, so a per-chunk
+                    # seed bump isn't needed for variety and was the direct cause of a visible
+                    # grain/exposure jump at chunk seams (confirmed via frame-by-frame inspection:
+                    # identical pose/framing across the cut, but a sudden shift in fine wall-panel
+                    # noise texture starting exactly on chunk 2's first frame). Reusing one seed
+                    # across shots is the standard fix for texture/exposure consistency in a
+                    # stitched multi-shot sequence. Seed Hunt is unaffected — it already varies
+                    # pass_seed itself per whole pass (see SEED_HUNT_SEED_STRIDE), not per chunk.
+                    guider = _unpack_node_result(_execute_comfy_node(BasicGuider, model=chunk_shifted_model, conditioning=positive))[0]
+                    full_sigmas = _unpack_node_result(_execute_comfy_node(
+                        BasicScheduler, model=chunk_shifted_model, scheduler=scheduler, steps=steps, denoise=1.0,
+                    ))[0]
+
+                    if not two_stage_sampling:
+                        noise = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=chunk_seed))[0]
                         sampled = _unpack_node_result(_execute_comfy_node(
-                            SamplerCustomAdvanced, noise=noise2, guider=guider, sampler=sampler,
-                            sigmas=low_sigmas, latent_image=recombined,
+                            SamplerCustomAdvanced, noise=noise, guider=guider, sampler=sampler,
+                            sigmas=full_sigmas, latent_image=latent,
                         ))[0]
+                        # Stubelius: expose the COMPLETE candidate latent so the Refine node
+                        # can run a proper polish pass (learned 2x + partial re-noise) on a
+                        # fully-converged take instead of a mid-schedule estimate.
+                        chunk_stage1_latent = dict(sampled)
+                        chunk_stage1_latent["_muse_complete_candidate"] = True
+                    else:
+                        # Reference workflow's exact structure, ported from the TwoStage
+                        # Combo node build (verified directly against its own node graph,
+                        # not re-derived): a few steps at this chunk's normal resolution,
+                        # a direct latent-space upscale of the video half only, one more
+                        # near-single-point-sigma pass on the upscaled video alone (reusing
+                        # pass 1's noise/seed) before recombining with audio, then the real
+                        # final pass — DisableNoise, not reused noise — finishes the
+                        # remaining steps on the recombined AV latent.
+                        split_step = max(1, min(int(two_stage_first_pass_steps), steps - 1))
+                        high_sigmas, low_sigmas = _unpack_node_result(_execute_comfy_node(
+                            SplitSigmas, sigmas=full_sigmas, step=split_step,
+                        ))[:2]
+
+                        noise1 = _unpack_node_result(_execute_comfy_node(RandomNoise, noise_seed=chunk_seed))[0]
+                        pass1_raw, pass1_denoised = _unpack_node_result(_execute_comfy_node(
+                            SamplerCustomAdvanced, noise=noise1, guider=guider, sampler=sampler,
+                            sigmas=high_sigmas, latent_image=latent,
+                        ))[:2]
+
+                        if two_stage_seed_hunt_latent_only:
+                            # Scouting mode: skip Stage 2 entirely. pass1_denoised is a real,
+                            # continuable joint AV latent — exactly what Muse Minimax Refine
+                            # V1.2's candidate_N_latent input expects — exposed below via
+                            # chunk_stage1_latent. images/audio still get decoded from it so
+                            # there's something to actually look at while choosing, but at
+                            # Stage 1's low resolution, not the expensive upscaled one.
+                            sampled = pass1_denoised
+                            # Refine V1.2 only ever gets this one latent — it has no access
+                            # to pass1_raw, unlike the Director's own Stage 2 above, which
+                            # always sources audio_carry from pass1_raw rather than
+                            # pass1_denoised (see that block's own comment for why: raw
+                            # preserves the unlocked chunk's natural in-progress denoising
+                            # trajectory, which the denoised estimate was never meant to
+                            # substitute for). Without this, Refine has to re-derive audio
+                            # from the denoised latent instead — confirmed via a real render
+                            # to produce wrong/missing dialogue. Stashing raw's audio half
+                            # under an extra key on the same dict (rather than a second
+                            # output socket) lets Refine use the correct source without any
+                            # rewiring on the candidate_N_latent connection.
+                            audio_carry_raw = _unpack_node_result(_execute_comfy_node(
+                                LTXVSeparateAVLatent, av_latent=pass1_raw,
+                            ))[1]
+                            chunk_stage1_latent = dict(pass1_denoised)
+                            chunk_stage1_latent["_muse_two_stage_raw_audio"] = audio_carry_raw
+                        else:
+                            chunk_stage1_latent = None
+
+                        if not two_stage_seed_hunt_latent_only:
+                            video_for_upscale = _unpack_node_result(_execute_comfy_node(
+                                LTXVSeparateAVLatent, av_latent=pass1_denoised,
+                            ))[0]
+                            audio_carry = _unpack_node_result(_execute_comfy_node(
+                                LTXVSeparateAVLatent, av_latent=pass1_raw,
+                            ))[1]
+
+                            video_samples = video_for_upscale["samples"]
+                            cur_h_latent, cur_w_latent = video_samples.shape[-2], video_samples.shape[-1]
+                            if two_stage_upscale_method == MUSE_GOLD_LEARNED:
+                                upscaled_samples = _muse_gold_learned_upscale(video_samples)
+                                tgt_h, tgt_w = upscaled_samples.shape[-2], upscaled_samples.shape[-1]
+                                eff_x = tgt_w / cur_w_latent if cur_w_latent else 2.0
+                                eff_y = tgt_h / cur_h_latent if cur_h_latent else 2.0
+                            else:
+                                tgt_h, tgt_w, eff_x, eff_y = _two_stage_snap_upscale_target(
+                                    cur_h_latent, cur_w_latent, float(two_stage_upscale_factor)
+                                )
+                                upscaled_samples = comfy.utils.common_upscale(
+                                    video_samples, tgt_w, tgt_h, two_stage_upscale_method, "disabled",
+                                )
+                            upscaled_video = dict(video_for_upscale)
+                            upscaled_video["samples"] = upscaled_samples
+                            upscaled_video["noise_mask"] = torch.ones_like(upscaled_samples)
+                            log.info(
+                                "[MuseMinimaxDirectorV1_2] chunk %d two-stage upscale: "
+                                "latent %dx%d -> %dx%d (requested %.2fx, effective %.3fx/%.3fx)",
+                                chunk_idx + 1, cur_w_latent, cur_h_latent, tgt_w, tgt_h,
+                                float(two_stage_upscale_factor), eff_x, eff_y,
+                            )
+
+                            tiny_sigmas = _unpack_node_result(_execute_comfy_node(
+                                SplitSigmas, sigmas=low_sigmas, step=0,
+                            ))[0]
+                            video_primed = _unpack_node_result(_execute_comfy_node(
+                                SamplerCustomAdvanced, noise=noise1, guider=guider, sampler=sampler,
+                                sigmas=tiny_sigmas, latent_image=upscaled_video,
+                            ))[0]
+
+                            # The chunk-end cleanup below runs too late to help the final
+                            # pass's model reload just below this — it happens after that
+                            # reload already needed the VRAM. By this point pass1_raw/
+                            # pass1_denoised (split into video_for_upscale/audio_carry
+                            # already), video_for_upscale/video_samples/upscaled_samples
+                            # (upscaled into upscaled_video already, then consumed by
+                            # video_primed already), and high_sigmas/tiny_sigmas/noise1/
+                            # full_sigmas (all consumed producing what we have) are dead
+                            # weight — freeing them here, right before the reload, is what
+                            # actually gives the allocator room. Confirmed via a real render
+                            # to still hit the same VRAM wall even with the chunk-end
+                            # cleanup and the full LoRA/attention stack in place — this was
+                            # the missing piece, not those.
+                            del pass1_raw, pass1_denoised, video_for_upscale, video_samples
+                            del upscaled_samples, upscaled_video, high_sigmas, tiny_sigmas
+                            del noise1, full_sigmas
+                            gc.collect()
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+
+                            recombined = _unpack_node_result(_execute_comfy_node(
+                                LTXVConcatAVLatent, video_latent=video_primed, audio_latent=audio_carry,
+                            ))[0]
+
+                            # vae_reencode_carry_test, two-stage path: SECOND injection, on top
+                            # of the one already applied before Stage 1 above (see that block's
+                            # comment for why both are needed, not just one). That earlier
+                            # freeze kept Stage 1 properly anchored, but the region it protected
+                            # only survived as a naive latent-space upscale of the true tail,
+                            # then went through the upscale-priming pass with noise_mask forced
+                            # back to all-ones (unprotected) — this re-freezes it with the real
+                            # high-res VAE re-encode right before the pass that matters most. No
+                            # resize is needed to get here: prev_chunk_images was decoded from
+                            # the PREVIOUS chunk's own two-stage upscale, which used this same
+                            # width/height/two_stage_upscale_factor (fixed for the whole run),
+                            # so its final resolution already matches this chunk's tgt_h/tgt_w
+                            # by construction — the same reasoning the Combo/TwoStage node's own
+                            # Test 17 relies on. Only the future (unprotected) region actually
+                            # denoises against low_sigmas below; the copied prefix rides through
+                            # unchanged.
+                            if carries:
+                                carry_n = align_frame_count(min(int(vae_reencode_carry_length), int(prev_chunk_images.shape[0])))
+                                tail_pixels = prev_chunk_images[-carry_n:]
+                                tail_video_latent = _unpack_node_result(_execute_comfy_node(
+                                    VAEEncode, pixels=tail_pixels, vae=vae,
+                                ))[0]
+                                source_latent = {"samples": tail_video_latent["samples"]}
+                                if prev_chunk_audio is not None and prev_chunk_audio["waveform"].shape[-1] > 0:
+                                    carry_sr = prev_chunk_audio["sample_rate"]
+                                    carry_samples = min(
+                                        int(round(carry_n / 24.0 * carry_sr)), prev_chunk_audio["waveform"].shape[-1],
+                                    )
+                                    tail_waveform = prev_chunk_audio["waveform"][..., -carry_samples:]
+                                    tail_audio_latent = _unpack_node_result(_execute_comfy_node(
+                                        VAEEncodeAudio, audio={"waveform": tail_waveform, "sample_rate": carry_sr}, vae=audio_vae,
+                                    ))[0]
+                                    source_latent = {"samples": (tail_video_latent["samples"], tail_audio_latent["samples"])}
+                                recombined, carry_trim_frames = _unpack_node_result(_execute_comfy_node(
+                                    MiniMaxH3GeneratedAVMaskedContext,
+                                    latent=recombined, source_latent=source_latent,
+                                    context_length=carry_n, audio_feather_ticks=8,
+                                ))[:2]
+                                chunk_carry_trim_frames = int(carry_trim_frames)
+                                log.info("[MuseMinimaxDirector] chunk %d vae_reencode_carry (two-stage): %d px "
+                                         "re-encoded tail, trim=%d frames", chunk_idx + 1, carry_n, chunk_carry_trim_frames)
+                                if carry_mode == "picture":
+                                    recombined = _free_carried_sound(recombined)
+
+                            noise2 = _unpack_node_result(_execute_comfy_node(DisableNoise))[0]
+                            sampled = _unpack_node_result(_execute_comfy_node(
+                                SamplerCustomAdvanced, noise=noise2, guider=guider, sampler=sampler,
+                                sigmas=low_sigmas, latent_image=recombined,
+                            ))[0]
+
+                    chunk_images = _unpack_node_result(_execute_comfy_node(VAEDecode, samples=sampled, vae=vae))[0]
+                    chunk_audio = _unpack_node_result(_execute_comfy_node(VAEDecodeAudio, samples=sampled, vae=audio_vae))[0]
+                    if take_base is not None:
+                        # Stubelius: kept as a take, with the opening frames the trim below cuts (for its preview)
+                        store.keep(take_base, chunk_seed, _takes.Take(
+                            chunk_images, chunk_audio, chunk_stage1_latent, chunk_carry_trim_frames, chunk_lip_locked),
+                            chunk_idx, {"carry": carry_mode, "trim": min(
+                                chunk_carry_trim_frames if chunk_carry_trim_frames is not None else _KEYFRAME_INJECTION_FRAMES,
+                                int(chunk_images.shape[0]) - 1) if continues and chunk_images.shape[0] > 1 else 0})
+                else:
+                    chunk_images, chunk_audio = take.images, take.audio
+                    chunk_stage1_latent, chunk_carry_trim_frames = take.latent, take.carry_trim
+                    chunk_lip_locked = take.lip_sync_locked
+                    log.info("[StubeliusTakes] chunk %d/%d: the take with seed %d is kept, reused (nothing rendered)",
+                             chunk_idx + 1, num_chunks, chunk_seed)
+                if take_base is not None:
+                    store.note(candidate_idx, chunk_idx, take_base, chunk_seed, take is not None)
+                    before_key = _takes.take_key(take_base, chunk_seed)
+                lip_sync_locked = lip_sync_locked or chunk_lip_locked
 
                 if chunk_stage1_latent is not None:
                     last_chunk_stage1_latent = chunk_stage1_latent
@@ -2393,9 +2478,6 @@ class MuseMinimaxDirector:
                             {"latent": chunk_stage1_latent, "prompt": chunk_prompt},
                             os.path.join(candidate_dir, f"chunk_{chunk_idx + 1:04d}.pt"),
                         )
-
-                chunk_images = _unpack_node_result(_execute_comfy_node(VAEDecode, samples=sampled, vae=vae))[0]
-                chunk_audio = _unpack_node_result(_execute_comfy_node(VAEDecodeAudio, samples=sampled, vae=audio_vae))[0]
 
                 # Every continuation chunk (chunk 2 on, and chunk 1 of a video that continues a
                 # clip: prev_chunk_images is then the clip's last frames) is keyframe-anchored to start
@@ -2432,6 +2514,8 @@ class MuseMinimaxDirector:
                         "loras": self._chunk_loras(chunk_idx),
                         # Stubelius: how it followed the chunk before it (CARRY_MODES; None = the first chunk)
                         "carry": carry_mode,
+                        # Stubelius: its own seed (stubelius_takes.py); the polish re-noises it with this one
+                        "seed": int(chunk_seed),
                         # made from keyframes: "previous" = the last frame of the chunk before it
                         "keyframes": {
                             "first": ("previous" if continues
@@ -2562,20 +2646,21 @@ class MuseMinimaxDirector:
                 # to sit at 99% VRAM with Stage 2 thrashing (aimdo "resident page above
                 # watermark" warnings, ~3x slower per-step) — this is the same fix that
                 # keeps the Combo node's equivalent run stable.
-                del out, positive, guider, sampled, latent
-                if not two_stage_sampling:
-                    del noise, full_sigmas
-                elif two_stage_seed_hunt_latent_only:
-                    del noise1, full_sigmas, high_sigmas, low_sigmas
-                    del pass1_raw, pass1_denoised, audio_carry_raw
-                else:
-                    # noise1/full_sigmas/high_sigmas/tiny_sigmas/pass1_raw/
-                    # pass1_denoised/video_for_upscale/video_samples/upscaled_samples/
-                    # upscaled_video were already freed mid-sampling, right before the
-                    # final pass's model reload (see the comment there for why that
-                    # timing matters) — only what survived to the final pass is left
-                    # to release here.
-                    del noise2, low_sigmas, audio_carry, video_primed, recombined
+                if take is None:        # a reused take made none of these
+                    del out, positive, guider, sampled, latent
+                    if not two_stage_sampling:
+                        del noise, full_sigmas
+                    elif two_stage_seed_hunt_latent_only:
+                        del noise1, full_sigmas, high_sigmas, low_sigmas
+                        del pass1_raw, pass1_denoised, audio_carry_raw
+                    else:
+                        # noise1/full_sigmas/high_sigmas/tiny_sigmas/pass1_raw/
+                        # pass1_denoised/video_for_upscale/video_samples/upscaled_samples/
+                        # upscaled_video were already freed mid-sampling, right before the
+                        # final pass's model reload (see the comment there for why that
+                        # timing matters) — only what survived to the final pass is left
+                        # to release here.
+                        del noise2, low_sigmas, audio_carry, video_primed, recombined
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -2634,34 +2719,43 @@ class MuseMinimaxDirector:
                     }
             return final_images, final_audio, "\n\n".join(compiled_prompts), last_chunk_stage1_latent
 
-        images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)
-        # candidate_1 always mirrors the main single-pass result, at zero extra cost —
-        # so "just refine my one result" keeps working with Seed Hunt left off, exactly
-        # like it already does today. candidates 2-4 are the extra scouting passes,
-        # only computed (3 more full runs, same settings, different seed) when Seed
-        # Hunt is actually on.
-        candidate_images = [images, None, None, None]
-        candidate_audio = [audio, None, None, None]
-        candidate_latents = [stage1_latent, None, None, None]
+        try:
+            images, audio, compiled_prompt_text, stage1_latent = _run_pass(seed, candidate_idx=0)
+            # candidate_1 always mirrors the main single-pass result, at zero extra cost —
+            # so "just refine my one result" keeps working with Seed Hunt left off, exactly
+            # like it already does today. candidates 2-4 are the extra scouting passes,
+            # only computed (3 more full runs, same settings, different seed) when Seed
+            # Hunt is actually on.
+            candidate_images = [images, None, None, None]
+            candidate_audio = [audio, None, None, None]
+            candidate_latents = [stage1_latent, None, None, None]
 
-        # seed_hunt is legacy and hidden from the panel. It is intentionally NOT
-        # consulted here (even though it's still a real widget, kept only so old saved
-        # workflows don't misalign) — if its stored value were ever left on with no
-        # visible control to see or undo it, it would silently force every candidate on.
-        # candidate_2/3/4 are the only things that decide this now.
-        run_candidate = [False, candidate_2, candidate_3, candidate_4]
-        any_candidate = any(run_candidate[1:])
-        if any_candidate:
-            log.warning("[MuseMinimaxDirector] Running %d additional full pass(es) at identical "
-                        "settings, different seeds only.", sum(run_candidate[1:]))
-            for i in range(1, 4):
-                if not run_candidate[i]:
-                    continue
-                pass_seed = seed + i * SEED_HUNT_SEED_STRIDE
-                c_images, c_audio, _, c_latent = _run_pass(pass_seed, candidate_idx=i)
-                candidate_images[i] = c_images
-                candidate_audio[i] = c_audio
-                candidate_latents[i] = c_latent
+            # seed_hunt is legacy and hidden from the panel. It is intentionally NOT
+            # consulted here (even though it's still a real widget, kept only so old saved
+            # workflows don't misalign) — if its stored value were ever left on with no
+            # visible control to see or undo it, it would silently force every candidate on.
+            # candidate_2/3/4 are the only things that decide this now.
+            run_candidate = [False, candidate_2, candidate_3, candidate_4]
+            any_candidate = any(run_candidate[1:])
+            if any_candidate:
+                log.warning("[MuseMinimaxDirector] Running %d additional full pass(es) at identical "
+                            "settings, different seeds only.", sum(run_candidate[1:]))
+                for i in range(1, 4):
+                    if not run_candidate[i]:
+                        continue
+                    pass_seed = seed + i * SEED_HUNT_SEED_STRIDE
+                    c_images, c_audio, _, c_latent = _run_pass(pass_seed, candidate_idx=i)
+                    candidate_images[i] = c_images
+                    candidate_audio[i] = c_audio
+                    candidate_latents[i] = c_latent
+        finally:
+            # Stubelius: what this run rendered and kept, for the Director's takes panel. Also after a stop:
+            # the chunks finished before it are kept, and the next run picks up from them.
+            try:
+                _takes.announce(store.report(seed, candidate_count))
+            except Exception as e:
+                log.warning("[StubeliusTakes] no takes report: %s", e)
+            store.close()
 
         empty_images = torch.zeros((0, height, width, 3))
         empty_audio = {"waveform": torch.zeros((1, 1, 0)), "sample_rate": 44100}

@@ -23,6 +23,7 @@ from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
 from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
+from . import stubelius_takes as _takes
 
 log = logging.getLogger(__name__)
 
@@ -173,6 +174,12 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
         if scheduler not in comfy.samplers.KSampler.SCHEDULERS:
             raise ValueError(f"[StubeliusH3DirectorV2] unknown scheduler '{scheduler}'")
         n = max(1, min(4, int(seed_count)))
+        try:
+            hunt = _takes.hunt_request(json.loads(timeline_data or "{}"))
+        except (TypeError, ValueError):
+            hunt = None
+        if hunt is not None:
+            n = hunt[1]         # a chunk hunt (stubelius_takes.py) brings its own count
         use_override = bool(prompt_override and str(prompt_override).strip())
         hybrid = (model_fl2va is not None and mode == MODE_REFERENCE
                   and duration_seconds > chunk_duration_seconds)
@@ -183,6 +190,8 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
 
         self._lora_plan = _build_lora_plan(timeline_data)
         self._lora_models = {}
+        # the Models node's settings are part of every take's key (stubelius_takes.py)
+        self._takes_models = _takes.bundle_key(models)
         try:
             out = self._execute_v1(mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,
@@ -192,13 +201,21 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             _hold_run_models(model, model_fl2va)
             raise
         finally:
-            self._lora_plan, self._lora_models = {}, {}
+            self._lora_plan, self._lora_models, self._takes_models = {}, {}, None
         out[0], out[1] = out[4], out[5]
+        plan = getattr(self, "_takes_plan", None)
         takes = {
             "count": n, "prompt": out[2], "ref_images": out[3],
             "images": [out[4], out[6], out[8], out[10]], "audio": [out[5], out[7], out[9], out[11]],
             "latents": [out[12], out[13], out[14], out[15]],
             "kind": "ref" if (mode == MODE_REFERENCE and model is not None) else "fl2va",
+            # per-chunk takes (stubelius_takes.py): every candidate's seed for each chunk it rendered, and
+            # whether this is the video up to one chunk only (render_until, a chunk hunt): the Finish waits
+            "chunk_seeds": list(getattr(self, "_takes_seeds", None) or [])[:n],
+            "takes_id": plan.takes_id if plan is not None else None,
+            "hunt_chunk": plan.hunt if plan is not None else None,
+            "partial": ({"chunks": plan.last + 1, "of": plan.num_chunks, "hunt": plan.hunt}
+                        if plan is not None and plan.partial else None),
         }
         return tuple(out) + (takes,)
 
