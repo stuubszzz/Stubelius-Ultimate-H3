@@ -308,6 +308,13 @@ class OutputWindow {
       card("RTX VSR", "RTX VSR", "bolt", "Fast and clean, a little softer"))));
     panel.appendChild(h("div.o-sec", label("De-stutter"),
       seg([["auto", "Auto"], ["on", "On"], ["off", "Off"]], w("de_stutter")?.value || "auto", (v) => set("de_stutter", v))));
+    // the Director's Render waits for a pick in Seeds; with one seed it can go straight on to the finish
+    panel.appendChild(h("div.o-sec", label("After a render with one seed"),
+      seg([[false, "Wait for my pick"], [true, "Finish it right away"]], !!this.node.properties?.sh3_autofinish, (v) => {
+        this.node.properties = this.node.properties || {};
+        this.node.properties.sh3_autofinish = v;
+        this.render();
+      })));
     const mode = this.setupMode();
     const polishOn = mode === "Quality";
     const pol = h("div.o-polish", h("span.sh3-ico.k", icon("diamond", 16)),
@@ -321,7 +328,8 @@ class OutputWindow {
       panel.appendChild(h("div.o-polish-ed",
         h("div.o-row", h("span.sh3-muted", "Scale"), seg([["1.5x", "1.5×"], ["2x", "2×"]], w("quality_polish_scale")?.value || "1.5x", (v) => set("quality_polish_scale", v))),
         h("div.o-row", h("span.sh3-muted", "Strength"), strength, h("b", Number(w("quality_polish_strength")?.value ?? 0.3).toFixed(2))),
-        h("div.o-row", h("span.sh3-muted", "Steps"), select(Array.from({ length: 24 }, (_, i) => [String(i + 1), String(i + 1)]),
+        h("div.o-row", h("span.sh3-muted", "Steps"), select(
+          Array.from({ length: Math.max(24, Number(w("quality_polish_steps")?.value) || 0) }, (_, i) => [String(i + 1), String(i + 1)]),
           String(w("quality_polish_steps")?.value ?? 12), (v) => set("quality_polish_steps", Number(v))))));
     }
     if (this.director()?._sh3?.timeline?.source_clip) {

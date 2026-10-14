@@ -165,8 +165,10 @@ export class DirectorWindow {
 
   // a chunk the user changed since the takes report (its takes there are from before the change)
   touched(k) {
+    const first = !this.edited.size;
     this.edited.add(k);
     this.commit();
+    if (first) this.renderStatus();
   }
 
   saveUi() {
@@ -446,6 +448,19 @@ export class DirectorWindow {
     }
   }
 
+  // A render brings new takes, so an older pick doesn't hold: the Finish waits for one in Seeds (winner 0).
+  // One seed with "Finish it right away" on (the Output window) finishes it straight away. A Finish shown as
+  // a plain node keeps the winner it was given, as before the windows.
+  holdFinish(whole) {
+    const fin = this.finishNode();
+    if (!fin?._sh3) return;
+    const seeds = Number(widgetValue(this.setupNode(), "seeds", 1)) || 1;
+    const want = whole && seeds === 1 && fin.properties?.sh3_autofinish ? 1 : 0;
+    if (Number(widgetValue(fin, "winner", 0)) === want) return;
+    setWidget(fin, "winner", want);
+    window.dispatchEvent(new CustomEvent("stubelius-winner"));
+  }
+
   pickTake(k, seed) {
     this.timeline.chunks[k].seed = Number(seed);
     this.keepBefore(k);
@@ -508,6 +523,7 @@ export class DirectorWindow {
     if (until !== null) this.timeline.render_until = until;
     if (hunt) this.timeline.hunt_chunk = hunt;
     this.commit();
+    this.holdFinish(until === null && !hunt);
     this.run = { state: "queued", label: label || (until !== null ? `Rendering to chunk ${until + 1}` : "Rendering") };
     this.renderStatus();
     try {
@@ -740,9 +756,9 @@ export class DirectorWindow {
   }
 
   listen() {
-    const on = (type, fn) => {
-      api.addEventListener(type, fn);
-      (this._off ||= []).push(() => api.removeEventListener(type, fn));
+    const on = (type, fn, target = api) => {
+      target.addEventListener(type, fn);
+      (this._off ||= []).push(() => target.removeEventListener(type, fn));
     };
     on("stubelius_ultimate_h3.takes", (e) => {
       if (e.detail?.takes_id === this.timeline.takes_id) this.onReport(e.detail);
@@ -805,6 +821,7 @@ export class DirectorWindow {
       this.live = { image: d.image, mime: typeof d.mime === "string" ? d.mime : "image/jpeg", step: d.step, total: d.total };
       this.preview.showLive(this.live);
     });
+    on("stubelius-winner", () => { this.preview.render(); this.markSteps(); }, window);
     on("executed", (e) => {
       const d = e.detail || {};
       const seeds = this.seedsNode();

@@ -85,15 +85,29 @@ class SeedsWindow {
     return k == null ? null : (v.chunk_seeds || [])[k] ?? null;
   }
 
-  // Pick a seed: the winner for the Finish; in a chunk hunt also that chunk's seed in the Director
+  // A hunt's tile is picked when its seed is the hunted chunk's own seed; any other tile when it is the winner
+  isPicked(v) {
+    if (v.hunt != null) {
+      const dw = this.dw();
+      return !!dw && dw.hasOwnSeed(v.hunt) && dw.seedOf(v.hunt) === Number(v.chunk_seeds?.[v.hunt]);
+    }
+    return v.candidate === this.winner();
+  }
+
+  picked() {
+    return this.videos.find((v) => this.isPicked(v))?.candidate || 0;
+  }
+
+  // Pick a seed: the winner for the Finish; in a chunk hunt that chunk's seed in the Director (the hunt is
+  // only the video up to that chunk, so there is no winner to finish yet)
   pick(v) {
-    const f = this.finish();
-    if (f) setWidget(f, "winner", v.candidate);
     const dw = this.dw();
     if (dw && v.hunt != null && v.chunk_seeds?.[v.hunt] != null) {
       dw.pickTake(v.hunt, v.chunk_seeds[v.hunt]);
       toast(this.root, `Chunk ${v.hunt + 1}: seed ${v.chunk_seeds[v.hunt]} kept. Hunt the next chunk or render the rest.`);
     } else {
+      const f = this.finish();
+      if (f) setWidget(f, "winner", v.candidate);
       toast(this.root, `Seed ${v.candidate} is the winner`);
     }
     window.dispatchEvent(new CustomEvent("stubelius-winner"));
@@ -161,9 +175,8 @@ class SeedsWindow {
         h("div.sh3-muted", "Set Seeds to compare on the Setup (or Hunt ×4 on a chunk in the Director) and render. Every seed plays here, in sync.")));
       return;
     }
-    const win = this.winner();
     if (this.ab && vids.length > 1) {
-      const a = vids.find((v) => v.candidate === win) || vids[0];
+      const a = vids.find((v) => this.isPicked(v)) || vids[0];
       const b = vids.find((v) => v.candidate === this.abOther && v !== a) || vids.find((v) => v !== a);
       const viewer = splitViewer({ labelA: `Seed ${a.candidate}`, labelB: `Seed ${b.candidate}` });
       viewer.setSources(viewUrl(a), viewUrl(b));
@@ -176,7 +189,7 @@ class SeedsWindow {
       this.viewer = null;
       const shown = this.focus ? vids.filter((v) => v.candidate === this.focus) : vids;
       const grid = h("div.s-grid", { class: shown.length === 1 ? "one" : null });
-      for (const v of shown) grid.appendChild(this.tile(v, win));
+      for (const v of shown) grid.appendChild(this.tile(v));
       box.appendChild(grid);
       this.master = this.tiles[0]?.video || null;
     }
@@ -184,10 +197,10 @@ class SeedsWindow {
     this.applySound();
   }
 
-  tile(v, win) {
+  tile(v) {
     const video = h("video.s-video", { src: viewUrl(v), muted: true, loop: true, playsInline: true, preload: "auto" });
     video.muted = true;
-    const isWin = v.candidate === win;
+    const isWin = this.isPicked(v);
     const flags = v.flags || [];
     const flagChip = flags.length
       ? h("div.sh3-gchip.s-flag.warn", icon("alert", 15), flags.map((f) => f.text).join(" · "))
@@ -207,7 +220,7 @@ class SeedsWindow {
       v.hunt != null ? `Keep this seed for chunk ${v.hunt + 1}` : "Finish this seed");
     const el = h("div.s-tile", { class: isWin ? "win" : null },
       h("div.s-vwrap", video,
-        h("div.s-tchips", isWin ? h("div.sh3-gchip.brand.s-winchip", icon("crown", 15), "Winner") : null,
+        h("div.s-tchips", isWin ? h("div.sh3-gchip.brand.s-winchip", icon(v.hunt != null ? "lock" : "crown", 15), v.hunt != null ? "Kept" : "Winner") : null,
           h("div.sh3-gchip", icon("dice", 15), `Seed ${v.candidate}${seed != null ? " · " + seed : ""}`)),
         h("div.s-tchips-r", flagChip),
         scrub),
@@ -228,12 +241,12 @@ class SeedsWindow {
   soundLabel() {
     if (this.ab) return "Sound: seed B";
     if (this.solo) return `Sound: seed ${this.solo}`;
-    return this.winner() ? "Sound: winner" : "Sound: seed 1";
+    return this.picked() ? `Sound: seed ${this.picked()}` : "Sound: seed 1";
   }
 
-  // one seed's sound at a time: the solo one, else the winner's, else the first
+  // one seed's sound at a time: the solo one, else the picked one's, else the first
   applySound() {
-    const want = this.solo || this.winner() || this.tiles[0]?.v.candidate;
+    const want = this.solo || this.picked() || this.tiles[0]?.v.candidate;
     for (const t of this.tiles || []) t.video.muted = t.v.candidate !== want;
   }
 
@@ -298,7 +311,7 @@ class SeedsWindow {
         vids.length > 1 ? toggleBtn("A/B split", "columns", this.ab, () => { this.ab = !this.ab; this.focus = null; this.renderLeft(); },
           "The winner (or seed 1) against another seed, a divider between them") : null,
         toggleBtn("Full size", "maximize", !!this.focus, () => {
-          this.focus = this.focus ? null : (this.solo || this.winner() || vids[0].candidate);
+          this.focus = this.focus ? null : (this.solo || this.picked() || vids[0].candidate);
           this.ab = false;
           this.renderLeft();
         }, "One seed, as big as it goes (double-click a seed too)"),
@@ -379,11 +392,15 @@ class SeedsWindow {
   winnerPanel() {
     const panel = h("div.sh3-panel.s-win");
     const vids = this.videos;
-    const w = this.winner();
-    const v = vids.find((x) => x.candidate === w);
-    panel.appendChild(h("div.s-ph", h("div.sh3-h2", "Winner"), h("span.sh3-muted", v ? `seed ${w} of ${vids.length}` : "not picked yet")));
+    const hunt = vids[0]?.hunt;
+    const v = vids.find((x) => this.isPicked(x));
+    const sub = hunt != null ? (v ? `seed ${v.chunk_seeds[hunt]} kept` : "pick one to keep")
+      : v ? `seed ${v.candidate} of ${vids.length}` : "not picked yet";
+    panel.appendChild(h("div.s-ph", h("div.sh3-h2", hunt != null ? `Chunk ${hunt + 1}` : "Winner"), h("span.sh3-muted", sub)));
     if (!v) {
-      panel.appendChild(h("div.sh3-muted.s-psub", vids.length ? "Pick a seed on the left. The Finish renders only the winner." : "Render first."));
+      panel.appendChild(h("div.sh3-muted.s-psub", !vids.length ? "Render first." : hunt != null
+        ? "Pick the seed to keep for this chunk, then hunt the next one or render the rest."
+        : "Pick a seed on the left. The Finish renders only the winner."));
       return panel;
     }
     const dw = this.dw();

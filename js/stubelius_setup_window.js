@@ -37,6 +37,7 @@ const PERF = [
   ["h3_cache", "H3 step cache", "database", "faster, may soften"],
 ];
 const TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|\d+.?step/i;
+const LORA_MAX = 9;
 
 function precision(name) {
   const n = String(name || "").toLowerCase();
@@ -248,6 +249,9 @@ class SetupWindow {
     // fine-tuning
     const sv = (name) => Number(widgetValue(this.node, name, 0));
     const tune = (lab, name, min, max, step, fmt) => {
+      const o = widget(this.node, name)?.options || {};     // the node's own range
+      if (Number.isFinite(o.min)) min = o.min;
+      if (Number.isFinite(o.max)) max = o.max;
       const val = h("b", fmt(sv(name)));
       return h("div.su-tune", h("div.su-tune-h", label(lab), val),
         slider({ min, max, step, value: sv(name), onInput: (v) => { val.textContent = fmt(v); }, onChange: (v) => this.setS(name, v) }));
@@ -301,7 +305,8 @@ class SetupWindow {
     if (!m) return panel;
     const all = widget(m, "speedup_lora")?.options?.values || [];
     const current = widgetValue(m, "speedup_lora", "none");
-    const turbos = all.filter((n) => n !== "none" && TURBO_RE.test(n) && !/pdmd|nfe/i.test(n));
+    // H3 turbo LoRAs only (an H3 folder or "h3" in the name): other models' turbo LoRAs don't fit H3
+    const turbos = all.filter((n) => n !== "none" && TURBO_RE.test(n) && /h3/i.test(n) && !/pdmd|nfe/i.test(n));
     const shown = [current, ...turbos.filter((n) => n !== current)].filter((n) => n && n !== "none").slice(0, 4);
     const left = h("div.su-lcol", label("Turbo LoRA · Speed and Hybrid"));
     for (const n of shown) {
@@ -328,12 +333,18 @@ class SetupWindow {
         } }, icon("plus", 14), "Add a global LoRA"));
         continue;
       }
-      const val = h("b.su-gval", (Number(strW?.value ?? 1) >= 0 ? "+" : "") + Number(strW?.value ?? 1).toFixed(2));
+      // the slider covers ±2; the box takes slider LoRAs up to ±9, as the node does
+      const strength = Number(strW?.value ?? 1);
+      const num = h("input.sh3-input.su-gval", { type: "number", step: 0.05, min: -LORA_MAX, max: LORA_MAX, value: strength, title: "Strength (slider LoRAs run to ±9)" });
+      num.addEventListener("change", () => {
+        const v = parseFloat(num.value);
+        this.setM(`extra_lora_${i}_strength`, Number.isFinite(v) ? Math.max(-LORA_MAX, Math.min(LORA_MAX, v)) : 1.0);
+      });
       right.appendChild(h("div.su-glora",
         h("div.su-glora-h", icon("sliders", 16), select(nameW.options?.values || [], nameW.value, (x) => this.setM(`extra_lora_${i}`, x), "su-file"),
           iconButton("x", "Take it out", () => this.setM(`extra_lora_${i}`, "none"))),
-        h("div.su-glora-s", slider({ min: -2, max: 2, step: 0.05, value: Math.max(-2, Math.min(2, Number(strW?.value ?? 1))),
-          onInput: (v) => { val.textContent = (v >= 0 ? "+" : "") + Number(v).toFixed(2); }, onChange: (v) => this.setM(`extra_lora_${i}_strength`, v) }), val)));
+        h("div.su-glora-s", slider({ min: -2, max: 2, step: 0.05, value: Math.max(-2, Math.min(2, strength)),
+          onInput: (v) => { num.value = v; }, onChange: (v) => this.setM(`extra_lora_${i}_strength`, v) }), num)));
     }
     if (right.childNodes.length === 1) right.appendChild(h("div.sh3-muted", "None"));
     panel.appendChild(h("div.su-lgrid", left, right));
@@ -458,6 +469,8 @@ function injectSetupStyles() {
 .sh3-u .su-card.on{border:2px solid rgb(var(--ac));box-shadow:0 0 0 5px rgba(var(--ac),.15),0 18px 50px rgba(var(--ac),.28)}
 .sh3-u .su-art{position:relative;height:150px;background:radial-gradient(120% 90% at 20% 0%,rgba(var(--ac),.20),transparent 60%),
   radial-gradient(90% 80% at 100% 100%,rgba(var(--ac2),.16),transparent 60%),var(--in-b);overflow:hidden}
+.sh3-u[data-theme="paper"] .su-art{background:radial-gradient(120% 90% at 20% 0%,rgba(var(--ac),.45),transparent 60%),
+  radial-gradient(90% 80% at 100% 100%,rgba(var(--ac2),.4),transparent 60%),#1c1f33}
 .sh3-u .su-art-svg{position:absolute;inset:0;width:100%;height:100%}
 .sh3-u .su-art-name{position:absolute;left:16px;bottom:12px;font-family:var(--fh);font-weight:700;font-size:26px;color:#fff;text-shadow:0 4px 20px rgba(0,0,0,.6)}
 .sh3-u .su-check{position:absolute;right:12px;top:12px;width:28px;height:28px;border-radius:50%;background:var(--brand);color:var(--on);display:grid;place-items:center}
@@ -504,7 +517,7 @@ function injectSetupStyles() {
 .sh3-u .su-glora-h .su-file{font-family:var(--ff);font-size:13.5px;font-weight:600;color:var(--text)}
 .sh3-u .su-glora-h .sh3-ibtn{width:28px;height:28px;border-radius:9px}
 .sh3-u .su-glora-s{display:flex;align-items:center;gap:12px}
-.sh3-u .su-gval{font-family:var(--fh);min-width:52px;text-align:right}
+.sh3-u .su-gval{font-family:var(--fh);width:78px;flex:none;text-align:right}
 .sh3-u .su-addl{display:flex;align-items:center;justify-content:center;gap:8px;height:46px;border-radius:14px;border:1px dashed var(--stroke2);background:none;color:var(--text2)}
 .sh3-u .su-addl:hover{color:var(--text);border-color:rgba(var(--ac),.5)}
 .sh3-u .su-mem-row{display:flex;align-items:center;gap:24px}

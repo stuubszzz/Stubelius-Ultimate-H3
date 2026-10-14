@@ -51,9 +51,35 @@ export function buildTimeline(d) {
   });
   row(null, ruler, "ruler");
 
-  if (!d.isReference) row(trackHead("photo", "k", "Keyframes"), keyframeLane(d, dur, bounds, pct), "kf");
+  // a middle frame, a sound or a clip lands at the playhead (or drop them on the lane at a second)
+  const at = () => Math.max(0, Math.min(dur, Number(d.preview?.time) || 0));
+  const plus = (title, fn) => {
+    const b = iconButton("plus", title, fn);
+    b.classList.add("t-add");
+    return b;
+  };
+  if (!d.isReference) {
+    const addMiddle = plus("Add a middle frame at the playhead (or drop pictures on the lane)", async () => {
+      if (d.middleFrames().length >= MAX_MIDDLE_FRAMES) {
+        toast(d.root, `Up to ${MAX_MIDDLE_FRAMES} middle frames: remove one first.`);
+        return;
+      }
+      const f = await pickFile("image/*");
+      const t = at();
+      if (f) setMiddle(d, null, f, t > MIDDLE_GAP && t < dur - MIDDLE_GAP ? Math.round(t * 10) / 10 : null);
+    });
+    row(h("div.t-headin", trackHead("photo", "k", "Keyframes"), addMiddle), keyframeLane(d, dur, bounds, pct), "kf");
+  }
   row(trackHead("lines", "ac", "Shots"), shotLane(d, dur, bounds, pct), "shots");
-  row(trackHead("wave", "snd", "Sound"), soundLane(d, dur, bounds, pct), "snd");
+  if (!d.isReference) {
+    const addSound = plus("Pin a sound or a short clip at the playhead (or drop it on the lane)", async () => {
+      const f = await pickFile("audio/*,video/*");
+      if (f && isCueFile(f)) addCue(d, f, at());
+    });
+    row(h("div.t-headin", trackHead("wave", "snd", "Sound"), addSound), soundLane(d, dur, bounds, pct), "snd");
+  } else {
+    row(trackHead("wave", "snd", "Sound"), soundLane(d, dur, bounds, pct), "snd");
+  }
   const addChunk = iconButton("plus", "Add a chunk at the end (the length grows by one chunk size)", () => d.addChunk());
   addChunk.classList.add("t-add");
   row(h("div.t-headin", trackHead("columns", "cut", "Chunks"), addChunk), chunkLane(d, dur, bounds, pct), "chunks");
@@ -141,7 +167,7 @@ function keyframeLane(d, dur, bounds, pct) {
       const r = lane.getBoundingClientRect();
       const x0 = e.clientX;
       moved = false;
-      m.setPointerCapture?.(e.pointerId);
+      try { m.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event */ }
       const onMove = (ev) => {
         if (Math.abs(ev.clientX - x0) > 3) moved = true;
         if (!moved) return;
@@ -319,7 +345,7 @@ function startResize(d, e, lane, k, i, dur) {
   const snaps = d.isReference ? [] : d.middleFrames().map((m) => m.time - cs).filter((t) => t > 0 && t < span);
   const r = lane.getBoundingClientRect();
   const target = e.currentTarget;
-  target.setPointerCapture?.(e.pointerId);
+  try { target.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event */ }
   const onMove = (ev) => {
     let edge = ((ev.clientX - r.left) / r.width) * dur - cs;
     if (snaps.length) edge = snapToNearest(edge, snaps, (8 / r.width) * dur);
@@ -418,7 +444,7 @@ function soundLane(d, dur, bounds, pct) {
       e.preventDefault();
       const r = lane.getBoundingClientRect();
       const grab = ((e.clientX - r.left) / r.width) * dur - cue.time;
-      blk.setPointerCapture?.(e.pointerId);
+      try { blk.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event */ }
       const onMove = (ev) => {
         const t = ((ev.clientX - r.left) / r.width) * dur - grab;
         cue.time = clampCueTime(cue, Math.max(0, Math.min(dur - 0.1, t)), d.bounds(), dur, gridOffset(d));

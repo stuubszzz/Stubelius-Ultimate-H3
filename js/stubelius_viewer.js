@@ -50,7 +50,7 @@ export function splitViewer({ labelA = "A", labelB = "B" } = {}) {
   handle.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handle.setPointerCapture?.(e.pointerId);
+    try { handle.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event */ }
     const r = el.getBoundingClientRect();
     const move = (ev) => setX(((ev.clientX - r.left) / r.width) * 100);
     const up = () => { handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", up); };
