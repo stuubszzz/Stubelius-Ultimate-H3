@@ -134,6 +134,9 @@ class Plan:
         if self.hunt is not None:
             last = max(self.hunt, last if until is not None else self.hunt)
         self.last = last
+        # Every chunk it renders keeps its own seed (no hunt): the other candidates vary the last of them, so a second
+        # seed is a second video (it was the first one again) and the picked chunks before it stay as they are
+        self.vary_last = self.hunt is None and all(k in self.seeds for k in range(self.last + 1))
 
     @property
     def partial(self):
@@ -142,12 +145,12 @@ class Plan:
     def chunk_seeds(self, seed, candidate):
         """Every chunk's seed in candidate `candidate` (0 = the main one). A chunk with its own seed keeps
         it in every candidate, and candidates vary the others, as whole-video seeds always did; a hunt
-        varies the hunted chunk alone."""
+        varies the hunted chunk alone; when every rendered chunk has its own seed, they vary the last one."""
         out = []
         for k in range(self.num_chunks):
             own = self.seeds.get(k)
             base = int(seed) if own is None else own
-            varies = (k == self.hunt) if self.hunt is not None else own is None
+            varies = (k == self.hunt) if self.hunt is not None else (own is None or (self.vary_last and k == self.last))
             out.append((base + candidate * SEED_STRIDE) & SEED_MASK if varies and candidate else base & SEED_MASK)
         return out
 

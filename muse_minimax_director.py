@@ -1320,9 +1320,11 @@ class MuseMinimaxDirector:
             ", ".join(f"~{c:.1f}s" for c in chunk_lengths), sum(chunk_lengths),
         )
         if plan.partial or plan.hunt is not None or plan.seeds:
-            log.info("[StubeliusTakes] rendering chunk%s%s%s%s", "s 1-%d" % (plan.last + 1) if plan.last else " 1",
+            log.info("[StubeliusTakes] rendering chunk%s%s%s%s%s", "s 1-%d" % (plan.last + 1) if plan.last else " 1",
                      f" of {num_chunks}", f", hunting chunk {plan.hunt + 1}" if plan.hunt is not None else "",
-                     (", own seeds on chunk " + ", ".join(str(k + 1) for k in sorted(plan.seeds))) if plan.seeds else "")
+                     (", own seeds on chunk " + ", ".join(str(k + 1) for k in sorted(plan.seeds))) if plan.seeds else "",
+                     f" (every one has its own seed: the other seeds vary chunk {plan.last + 1})"
+                     if plan.vary_last and candidate_count > 1 else "")
 
         from nodes import NODE_CLASS_MAPPINGS
         RandomNoise = NODE_CLASS_MAPPINGS["RandomNoise"]
