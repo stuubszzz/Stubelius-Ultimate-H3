@@ -224,8 +224,9 @@ A character can be made from many pictures of it, saved once and given to every 
 - **+ → Make a character from pictures**: drop 8 to 16 pictures of one character (the face from
   different angles and in different light, nothing else in focus), name it and say in words how it
   looks. **Make** encodes the pictures with H3's video VAE (a few seconds, after a render in progress)
-  and saves the character in `models/refmods` (next to your `loras` folder), with a contact sheet of its
-  pictures. **+ → Add a saved character** picks one from that folder.
+  and saves the character in the `refmods` folder (ComfyUI-MiniMaxH3Mod's, when that pack is installed, else
+  `models/refmods` next to your `loras` folder), with a contact sheet of its pictures. **+ → Add a saved
+  character** picks one from that folder; the library shows where it is.
 - Click a character for its **strength** (below 100% its pictures are blurred, not hidden: a looser
   likeness), to switch it off, or to remove it. **Add it to chunk N's first shot** types its
   description into that shot: H3's text side never sees the pictures, so say who it is in words too.
