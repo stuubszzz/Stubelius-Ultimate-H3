@@ -119,6 +119,7 @@ class SeedsWindow {
     const vids = this.videos;
     if (!vids.length) { toast(this.root, "Render the video first (Director)"); return; }
     if (vids[0]?.partial) { toast(this.root, "This is the video up to one chunk: render the rest first"); return; }
+    if (this.dw() && !(await this.dw().checkFinish(this.root))) return;     // settings changed since these seeds?
     if (!this.winner()) this.pick(vids[0]);
     try {
       await app.queuePrompt(0, 1);

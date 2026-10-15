@@ -105,6 +105,8 @@ class OutputWindow {
       setWidget(this.node, "winner", vids[0].candidate);
       window.dispatchEvent(new CustomEvent("stubelius-winner"));
     }
+    const dw = this.director()?._sh3;
+    if (dw && !(await dw.checkFinish(this.root))) return;          // settings changed since these seeds?
     this.stage = { stage: "queued" };
     this.renderStatus();
     try {

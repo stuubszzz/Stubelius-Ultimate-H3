@@ -12,7 +12,7 @@
 import {
   h, icon, clear, seg, button, iconButton, badge, label, menu, closeMenus, toast, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, hideWidget, mountWindow,
-  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn,
+  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn,
 } from "./stubelius_ui.js";
 import { normalizeMiddleFrames } from "./stubelius_middle_frames.js";
 import { normalizeCues } from "./stubelius_cues.js";
@@ -480,9 +480,80 @@ export class DirectorWindow {
   onReport(report, fresh = true) {
     this.report = report;
     if (fresh) this.edited.clear();
+    // the seeds now in Seeds were made with the settings of the render that brought them
+    if (fresh && this.pendingRecipe) {
+      this.node.properties = this.node.properties || {};
+      this.node.properties.sh3_seeds_recipe = this.pendingRecipe;
+      this.pendingRecipe = null;
+    }
     this.refresh(["preview", "insp", "tl", "status"]);
     this.fetchUsage();
     window.dispatchEvent(new CustomEvent("stubelius-takes", { detail: { node: this.node.id } }));   // the other windows
+  }
+
+  // The render settings (the Setup and Models nodes' values): the seeds in Seeds were made with the ones of their render
+  recipeNow() {
+    const out = {};
+    for (const [part, node] of [["Setup", this.setupNode()], ["Models", this.modelsNode()]]) {
+      for (const w of node?.widgets || []) {
+        if (w.serialize === false || w.type === "button" || /^sh3_|^control_after/.test(w.name || "")) continue;
+        if (w.value === undefined || (w.value && typeof w.value === "object")) continue;
+        out[`${part}:${w.name}`] = w.value;
+      }
+    }
+    return out;
+  }
+
+  // What changed since the seeds were rendered: [[part:name, then, now], ...] ([] when nothing did or it isn't known)
+  changedSinceSeeds() {
+    const was = this.node.properties?.sh3_seeds_recipe;
+    if (!was) return [];
+    const now = this.recipeNow();
+    return Object.keys({ ...was, ...now }).filter((k) => String(was[k]) !== String(now[k])).map((k) => [k, was[k], now[k]]);
+  }
+
+  // Before a Finish (Seeds or Output): Setup and Models feed the Director, so with other settings than the seeds had,
+  // a Finish renders the seeds again. Ask: put the settings back (their takes are on disk: quick) and finish the
+  // seeds as they are, render them again with the new settings, or not now. True = go on.
+  async checkFinish(root) {
+    const changed = this.changedSinceSeeds();
+    if (!changed.length) {
+      this.pendingRecipe = this.recipeNow();
+      return true;
+    }
+    const NAMES = { speedup_lora_strength: "Turbo strength", speedup_lora: "Speed-up LoRA", megapixels: "Size", steps: "Steps",
+      sampler: "Sampler", scheduler: "Scheduler", mode: "Mode", seeds: "Seeds to compare", extra_lora_1: "Global LoRA 1",
+      extra_lora_2: "Global LoRA 2", extra_lora_1_strength: "Global LoRA 1 strength", extra_lora_2_strength: "Global LoRA 2 strength",
+      fl2va_model: "First/Last model", ref2va_model: "Reference model", text_encoder: "Text encoder", pdmd_lora: "PDMD LoRA" };
+    const name = (k) => { const n = k.split(":")[1]; return NAMES[n] || n.replace(/_/g, " "); };
+    const val = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(2)) : String(v).split(/[\\/]/).pop().replace(/\.safetensors$/i, ""));
+    // two numbers side by side with the same decimals (0.75 → 1.00, not 0.75 → 1)
+    const pair = (a, b) => (typeof a === "number" && typeof b === "number" && !(Number.isInteger(a) && Number.isInteger(b))
+      ? [a.toFixed(2), b.toFixed(2)] : [val(a), val(b)]);
+    const list = changed.slice(0, 4).map(([k, a, b]) => `${name(k)} ${pair(a, b).join(" → ")}`).join(", ")
+      + (changed.length > 4 ? ` and ${changed.length - 4} more` : "");
+    const choice = await chooseIn(root || this.root, {
+      title: "The settings changed since these seeds",
+      text: `${list}. Finishing now renders the seeds again with the new settings. Put them back to finish the seeds you picked from.`,
+      choices: [{ label: "Put them back and finish", value: "back", icon: "history" },
+        { label: "Render again", value: "again", icon: "refresh" }, { label: "Cancel", value: null }],
+    });
+    if (choice === "again") {
+      this.pendingRecipe = this.recipeNow();
+      return true;
+    }
+    if (choice !== "back") return false;
+    const nodes = { Setup: this.setupNode(), Models: this.modelsNode() };
+    // the mode first: its preset fills the other Setup values, which then go back to theirs
+    for (const [k, then] of changed.sort(([a], [b]) => (a === "Setup:mode" ? -1 : b === "Setup:mode" ? 1 : 0))) {
+      const [part, wname] = k.split(":");
+      if (nodes[part] && then !== undefined) setWidget(nodes[part], wname, then);
+    }
+    this.pendingRecipe = this.recipeNow();
+    this.setupNode()?._sh3?.render?.();
+    this.renderCmd();
+    toast(this.root, "Settings put back as they were for these seeds");
+    return true;
   }
 
   // Keep the chunks before k as they are (their seeds written down), so a retake or a hunt of chunk k
@@ -598,9 +669,11 @@ export class DirectorWindow {
     if (until !== null) this.timeline.render_until = until;
     if (hunt) this.timeline.hunt_chunk = hunt;
     this.commit();
+    this.pendingRecipe = this.recipeNow();
     this.holdFinish(until === null && !hunt);
     this.run = { state: "queued", label: label || (until !== null ? `Rendering to chunk ${until + 1}` : "Rendering") };
     this.renderStatus();
+    this.preview.render();                   // the old video stops: the new one is on its way
     try {
       await app.queuePrompt(0, 1);
     } catch (e) {
@@ -856,14 +929,17 @@ export class DirectorWindow {
         text: `${d.reused ? "Kept" : "Rendering"} chunk ${d.chunk + 1} of ${d.of}${cand}` };
       this.renderStatus();
       this.preview.onChunk?.(d);
+      if (!this.live) this.preview.render();
     });
     on("executing", (e) => {
       const d = e.detail;
       const id = typeof d === "object" && d !== null ? d.node : d;
       if (this.isMe(id)) {
-        if (this.run.state !== "running") this.run = { state: "running", label: this.run.label, text: this.run.label || "Rendering" };
+        const started = this.run.state !== "running";
+        if (started) this.run = { state: "running", label: this.run.label, text: this.run.label || "Rendering" };
         this.renderStatus();
         this.renderCmd();
+        if (started) this.preview.render();       // a render queued from elsewhere (ComfyUI's Queue button) too
       } else if (this.run.state === "running" && id !== undefined) {
         this.run = { state: "done" };
         this.live = null;

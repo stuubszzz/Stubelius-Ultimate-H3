@@ -436,6 +436,37 @@ export function toast(root, text, kind = "") {
   setTimeout(() => { el.classList.remove("in"); setTimeout(() => el.remove(), 400); }, 2600);
 }
 
+// A question with several answers inside the window: resolves with the chosen value (Enter = the first), null for
+// Escape or a click beside it. choices = [{ label, value, icon, kind }], the first one the main answer.
+export function chooseIn(root, { title = "", text = "", choices = [] } = {}) {
+  const host = root?.closest?.(".sh3") || root || document.body;
+  host.querySelector(":scope > .sh3-modal-wrap")?.remove();
+  closeMenus();
+  return new Promise((resolve) => {
+    let wrap = null;
+    const done = (v) => {
+      document.removeEventListener("keydown", onKey, true);
+      wrap?.remove();
+      resolve(v);
+    };
+    const onKey = (e) => {
+      if (!wrap?.isConnected) return;
+      if (e.key === "Escape" || e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        done(e.key === "Enter" && choices.length ? choices[0].value : null);
+      }
+    };
+    const btns = choices.map((c, i) => button(c.label, c.icon || null, c.kind ?? (i === 0 ? "primary" : ""), () => done(c.value)));
+    wrap = h("div.sh3-modal-wrap", { onclick: (e) => { if (e.target === wrap) done(null); } },
+      h("div.sh3-modal", { role: "dialog" }, h("div.sh3-h2", title), text ? h("div.sh3-modal-text", text) : null,
+        h("div.sh3-modal-foot.wrap", h("div.sh3-spacer"), ...btns.slice().reverse())));
+    host.appendChild(wrap);
+    document.addEventListener("keydown", onKey, true);
+    setTimeout(() => btns[0]?.focus(), 30);
+  });
+}
+
 // A question inside the window, never the browser's own dialog: true for OK (or Enter), false for Cancel, Escape or
 // a click beside it
 export function confirmIn(root, { title = "Are you sure?", text = "", ok = "OK", cancel = "Cancel", danger = false } = {}) {
@@ -803,6 +834,7 @@ button.sh3-chip:hover{border-color:var(--stroke2);background:var(--glass2)}
   background:var(--menu);border:1px solid var(--stroke2);box-shadow:0 24px 60px rgba(0,0,0,.5)}
 .sh3 .sh3-modal-text{color:var(--text2);font-size:14px;line-height:1.5}
 .sh3 .sh3-modal-foot{display:flex;align-items:center;gap:10px;margin-top:4px}
+.sh3 .sh3-modal-foot.wrap{flex-wrap:wrap}
 
 /* segmented switch, toggle, slider, fields */
 .sh3-seg{display:flex;border-radius:13px;background:var(--well);border:1px solid var(--stroke);padding:4px;gap:4px}
