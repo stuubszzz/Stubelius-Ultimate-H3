@@ -20,6 +20,7 @@ import { buildPreview } from "./stubelius_director_preview.js";
 import { buildInspector } from "./stubelius_director_inspector.js";
 import { buildTimeline } from "./stubelius_director_timeline.js";
 import { buildRefs } from "./stubelius_director_refs.js";
+import { characterTokens, fmtTokens } from "./stubelius_director_characters.js";
 import { openSettings, openFileMenu } from "./stubelius_director_settings.js";
 import {
   MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed,
@@ -128,6 +129,10 @@ export class DirectorWindow {
     if (typeof parsed.prompt_gen_model !== "string") parsed.prompt_gen_model = "";
     if (!Array.isArray(parsed.middle_frames)) parsed.middle_frames = [];
     if (!Array.isArray(parsed.cues)) parsed.cues = [];
+    // characters made from many pictures (RefMods, stubelius_refmods.py), for the whole video
+    parsed.refmods = (Array.isArray(parsed.refmods) ? parsed.refmods : [])
+      .filter((e) => e && typeof e.file === "string" && e.file)
+      .map((e) => ({ ...e, strength: Math.max(0, Math.min(1, Number(e.strength ?? 1) || 0)) }));
     if (parsed.source_clip && (typeof parsed.source_clip !== "object" || !parsed.source_clip.file)) delete parsed.source_clip;
     // a render-until or a hunt is asked for one queue at a time (see queue()); never left on
     delete parsed.render_until;
@@ -339,6 +344,40 @@ export class DirectorWindow {
     return list;
   }
 
+  // Characters made from many pictures (RefMods): [{file, strength, enabled}], every chunk carries them
+  refmods() {
+    if (!Array.isArray(this.timeline.refmods)) this.timeline.refmods = [];
+    return this.timeline.refmods;
+  }
+
+  // a character goes into every chunk, so every chunk's takes are from before the change
+  touchAll() {
+    for (let k = 0; k < this.numChunks(); k++) this.touched(k);
+  }
+
+  addRefmod(name) {
+    const list = this.refmods();
+    if (!name || list.some((e) => e.file === name)) return;
+    list.push({ file: name, strength: 1 });
+    this.touchAll();
+    this.refresh(["tl", "foot"]);
+  }
+
+  setRefmod(i, patch) {
+    const e = this.refmods()[i];
+    if (!e) return;
+    Object.assign(e, patch);
+    if (e.enabled !== false) delete e.enabled;
+    this.touchAll();
+    this.refresh(["tl", "foot"]);
+  }
+
+  removeRefmod(i) {
+    this.refmods().splice(i, 1);
+    this.touchAll();
+    this.refresh(["tl", "foot"]);
+  }
+
   formatTime(seconds) {
     return this.timeline.display_mode === "frames" ? `${Math.round(seconds * 24)}f` : `${seconds.toFixed(1)} s`;
   }
@@ -526,6 +565,7 @@ export class DirectorWindow {
     const filed = (p) => !!(p && (p.file || p.image_b64));
     if ((t.chunks || []).some((c) => (c.segments || []).some((s) => typed(s?.prompt))
       || typed(c.style_line) || typed(c.overall_soundscape) || typed(c.non_diegetic_music))) return true;
+    if ((t.refmods || []).some((e) => e?.file && e.enabled !== false)) return true;
     const override = sourceOf(this.node, "prompt_override");
     if (override) {
       const w = widget(override, "value");
@@ -758,6 +798,12 @@ export class DirectorWindow {
       const mids = this.middleFrames().length, cues = this.cues().length;
       f.appendChild(h("span.sh3-fi", icon("photo", 14), "Middle frames ", h("b", String(mids))));
       f.appendChild(h("span.sh3-fi", icon("wave", 14), "Sounds and clips ", h("b", String(cues))));
+    }
+    const chars = this.refmods().filter((e) => e.enabled !== false).length;
+    if (chars) {
+      const tokens = characterTokens(this);
+      f.appendChild(h("span.sh3-fi", { title: "Characters made from many pictures: the reference tokens they add to every step" },
+        icon("user", 14), "Characters ", h("b", tokens ? `${chars} · ${fmtTokens(tokens)}` : String(chars))));
     }
     f.appendChild(h("div.sh3-spacer"));
     const dev = this.stats?.devices?.[0];

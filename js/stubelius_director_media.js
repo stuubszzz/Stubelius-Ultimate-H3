@@ -126,6 +126,38 @@ export function pickFile(accept) {
   });
 }
 
+// Several files at once (the pictures a character is made from)
+export function pickFiles(accept) {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = true;
+    input.onchange = () => resolve(Array.from(input.files || []));
+    input.click();
+  });
+}
+
+// A drop target that takes every dropped file: onDrop(files, event)
+export function dropTargetMany(el, onDrop, overClass = "over") {
+  const isFile = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");
+  el.addEventListener("dragover", (e) => {
+    if (!isFile(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.add(overClass);
+  });
+  el.addEventListener("dragleave", () => el.classList.remove(overClass));
+  el.addEventListener("drop", (e) => {
+    el.classList.remove(overClass);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onDrop(files, e);
+  });
+}
+
 // Make an element a drop target for files from the desktop: onDrop(file, event)
 export function dropTarget(el, onDrop, overClass = "over") {
   const isFile = (e) => Array.from(e.dataTransfer?.types || []).includes("Files");

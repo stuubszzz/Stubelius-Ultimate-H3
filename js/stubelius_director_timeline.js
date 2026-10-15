@@ -13,6 +13,7 @@ import { CARRY } from "./stubelius_director_shared.js";
 import {
   uploadFile, isVideoFile, isImageFile, pictureUrl, clipStill, extractAudioPeaks, videoSeconds, drawPeaks, pickFile, dropTarget,
 } from "./stubelius_director_media.js";
+import { characterHead, buildCharacterLane } from "./stubelius_director_characters.js";
 
 let styled = false;
 function injectStyles() {
@@ -83,6 +84,10 @@ export function buildTimeline(d) {
   const addChunk = iconButton("plus", "Add a chunk at the end (the length grows by one chunk size)", () => d.addChunk());
   addChunk.classList.add("t-add");
   row(h("div.t-headin", trackHead("columns", "cut", "Chunks"), addChunk), chunkLane(d, dur, bounds, pct), "chunks");
+  // characters for the whole video, under the timed lanes (the second lines and the playhead stop above them)
+  const chars = h("div.t-in");
+  buildCharacterLane(d, chars);
+  row(characterHead(d), chars, "chars");
 
   // the lines behind every lane, one per ruler step
   const lines = h("div.t-lines", { style: { backgroundSize: `calc(100% / ${Math.max(1, dur / step)}) 100%` } });
@@ -574,9 +579,9 @@ const CSS = `
 .sh3-d .t-tick{position:absolute;top:0;transform:translateX(-50%);color:var(--text3);font-family:var(--fh);font-size:12px;white-space:nowrap}
 .sh3-d .t-tick.first{transform:none}
 .sh3-d .t-tick.last{transform:translateX(-100%)}
-.sh3-d .t-lines{position:absolute;left:172px;right:24px;top:40px;bottom:10px;z-index:0;pointer-events:none;
+.sh3-d .t-lines{position:absolute;left:172px;right:24px;top:40px;bottom:70px;z-index:0;pointer-events:none;
   background-image:linear-gradient(90deg,var(--stroke) 1px,transparent 1px)}
-.sh3-d .t-playhead{position:absolute;top:36px;bottom:12px;width:2px;margin-left:-1px;z-index:3;pointer-events:none;display:none;
+.sh3-d .t-playhead{position:absolute;top:36px;bottom:72px;width:2px;margin-left:-1px;z-index:3;pointer-events:none;display:none;
   background:linear-gradient(180deg,#fff,rgb(var(--ac)));box-shadow:0 0 14px rgb(var(--ac))}
 .sh3-d .t-playhead:before{content:"";position:absolute;top:-8px;left:-6px;width:14px;height:14px;border-radius:4px;background:#fff;transform:rotate(45deg);
   box-shadow:0 0 16px rgb(var(--ac))}
