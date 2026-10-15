@@ -192,14 +192,16 @@ function drawStage(group, canvas, ctx) {
   ctx.restore();
 }
 
+// A panel holds a window when the window's top-left corner is inside it (a window that grew past its panel, as a
+// long one does before the panel follows it, still belongs to it)
+function holds(group, node) {
+  const x = node.pos[0] + 10, y = node.pos[1] + 10;
+  return x > group.pos[0] && x < group.pos[0] + group.size[0] && y > group.pos[1] && y < group.pos[1] + group.size[1];
+}
+
 // The window inside a step panel
 function windowIn(group) {
-  const [gx, gy] = group.pos, [gw, gh] = group.size;
-  return graphNodes(group.graph || app.graph).find((n) => {
-    if (!n._sh3) return false;
-    const cx = n.pos[0] + n.size[0] / 2, cy = n.pos[1] + n.size[1] / 2;
-    return cx > gx && cx < gx + gw && cy > gy && cy < gy + gh;
-  }) || null;
+  return graphNodes(group.graph || app.graph).find((n) => n._sh3 && holds(group, n)) || null;
 }
 
 // "OUTPUT — the winner, finished (Finish node)" -> "the winner, finished"
@@ -214,9 +216,7 @@ function subtitleOf(group) {
 export function onStage(node) {
   if (!node?._sh3) return false;
   const graph = node.graph || app.graph;
-  const cx = node.pos[0] + node.size[0] / 2, cy = node.pos[1] + node.size[1] / 2;
-  return (graph?._groups || graph?.groups || []).some((g) => isStage(g, graph)
-    && cx > g.pos[0] && cx < g.pos[0] + g.size[0] && cy > g.pos[1] && cy < g.pos[1] + g.size[1]);
+  return (graph?._groups || graph?.groups || []).some((g) => isStage(g, graph) && holds(g, node));
 }
 
 // The rail between the step panels, 1 -> 2 -> 3 -> 4, where they stand in a row
@@ -395,11 +395,7 @@ export function tidy(graph = app.graph) {
   }
   for (const g of graph?._groups || graph?.groups || []) {
     if (!isStage(g, graph)) continue;
-    const inside = Object.values(windows).find((w) => {
-      const [gx, gy, gw, gh] = [g.pos[0], g.pos[1], g.size[0], g.size[1]];
-      const cx = w.pos[0] + w.size[0] / 2, cy = w.pos[1] + w.size[1] / 2;
-      return cx > gx && cx < gx + gw && cy > gy && cy < gy + gh;
-    });
+    const inside = Object.values(windows).find((w) => holds(g, w));
     g.flags = g.flags || {};
     g.flags.sh3_stage = true;
     if (inside) {
@@ -419,8 +415,7 @@ function fitStageTo(win) {
   for (const g of graph?._groups || graph?.groups || []) {
     if (!g.flags?.sh3_stage) continue;
     const [gx, gy, gw, gh] = [g.pos[0], g.pos[1], g.size[0], g.size[1]];
-    const cx = win.pos[0] + win.size[0] / 2, cy = win.pos[1] + win.size[1] / 2;
-    if (!(cx > gx && cx < gx + gw && cy > gy && cy < gy + gh)) continue;
+    if (!holds(g, win)) continue;
     if (Math.abs(gx - (win.pos[0] - 30)) > 4 || Math.abs(gw - (win.size[0] + 60)) > 4) continue;   // arranged by hand
     const want = Math.round(win.pos[1] + win.size[1] + 36 - gy);
     if (Math.abs(gh - want) > 2) g.size = [gw, want];

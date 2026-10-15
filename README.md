@@ -11,7 +11,9 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 ## The four windows
 
 The example lays them out left to right, each in its group. The step bar at the top of every window
-jumps to the others.
+jumps to the others. On the left, the **How to use** window (Stubelius H3 Guide, in the windows' look)
+walks through all four; its text ships with the pack (`js/how_to_use.md`), so it updates with the nodes.
+A workflow with the older How to use note gets the window in its place once, when it opens.
 
 | Window | Node | What it holds |
 |---|---|---|
