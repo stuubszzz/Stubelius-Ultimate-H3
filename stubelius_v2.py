@@ -144,6 +144,8 @@ def _has_content(mode, timeline_data, prompt_override):
             return True
         if typed(c.get("style_line")) or typed(c.get("overall_soundscape")) or typed(c.get("non_diegetic_music")):
             return True
+    if any(isinstance(e, dict) and e.get("file") and e.get("enabled") is not False for e in t.get("refmods") or []):
+        return True                      # a saved reference (RefMod, stubelius_refmods.py)
     if mode == MODE_REFERENCE:
         return (any(filed(p) for p in t.get("characters") or []) or filed(t.get("background"))
                 or any(filed(v) for v in list(t.get("refVideos") or []) + list(t.get("refAudios") or [])))

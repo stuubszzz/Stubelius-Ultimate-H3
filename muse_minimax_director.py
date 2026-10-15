@@ -90,6 +90,7 @@ from . import stubelius_keyframes as _keyframes
 from . import stubelius_clip as _clip
 from . import stubelius_cues as _cues
 from . import stubelius_takes as _takes
+from . import stubelius_refmods as _refmods
 
 log = logging.getLogger(__name__)
 
@@ -1305,6 +1306,10 @@ class MuseMinimaxDirector:
         # chunk hunted, and the takes kept (on disk with a takes_id, in memory for what the candidates share)
         candidate_count = 1 + sum([bool(candidate_2), bool(candidate_3), bool(candidate_4)])
         plan = _takes.Plan(tdata, num_chunks)
+        # Stubelius: saved H3 references (RefMods) on every chunk (stubelius_refmods.py)
+        refmod_entries = tdata.get("refmods") if isinstance(tdata.get("refmods"), list) else []
+        refmod_blocks = _refmods.blocks(refmod_entries)
+        refmod_stamp = _refmods.stamp(refmod_entries) if refmod_blocks else None
         store = _takes.Store(plan, getattr(self, "_takes_models", None), candidate_count)
         self._takes_plan, self._takes_seeds = plan, [None] * 4
         self._takes_times = [None] * 4      # seconds each candidate took (the Seeds window shows them)
@@ -2125,6 +2130,8 @@ class MuseMinimaxDirector:
                     recipe.add("lip_sync", [int(frames_done), bool(continues), soundtrack.waveform, bool(lip_sync_silence)]
                                if lip_sync_here else None)
                     recipe.add("before", before_key if reads_before else None)
+                    if refmod_stamp:
+                        recipe.add("refmods", refmod_stamp)
                     take_base = recipe.hexdigest()
                     take = store.find(take_base, chunk_seed, chunk_idx)
                 # Stubelius: where the render is, for the Director window's status
@@ -2176,6 +2183,8 @@ class MuseMinimaxDirector:
                         # (already warned about above) only when model_fl2va isn't wired at all.
                         chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
                     positive, latent = _unpack_node_result(out)[:2]
+                    if refmod_blocks:
+                        positive = _refmods.attach(positive, refmod_blocks)
                     if chunk_clips or chunk_sounds:
                         # Stubelius: the sounds and clips on the timeline, pinned at their frames (stubelius_cues.py)
                         positive = _cues.pin(_execute_comfy_node, _unpack_node_result, positive, latent, vae, audio_vae,
