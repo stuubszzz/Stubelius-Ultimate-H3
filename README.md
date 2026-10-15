@@ -30,8 +30,8 @@ colours after DLSS5.
 
 Each window sits on its step's panel, drawn in the workflow theme's colours and fitted to the window
 as it grows; the panel's title row moves the step around. A workflow laid out before (the helper
-nodes under the windows): **Tidy the canvas** under Look in the Setup window puts them behind the
-windows and fits the panels.
+nodes under the windows) is tidied once when it opens: the helpers go behind the windows and the
+panels fit them. **Tidy the canvas** under Look in the Setup window does it again any time.
 
 **Render, pick, finish.** **Render** in the Director renders the seeds and stops: pick one in Seeds,
 then **Finish the winner** (or **Finish** in Output). A new Render drops the old pick, since the
@@ -129,9 +129,12 @@ In the Director, pick a chunk (on the timeline, or with the arrows in its inspec
 - **Takes**, under it, are that chunk's kept takes. Point at one to play it in the preview; click it
   to pick it back (its seed again). It is loaded, and so are the chunks after it that were rendered
   after it. **back to the Director's seed** drops the chunk's own seed.
-- **Hunt ×4**: four candidates that differ in that chunk alone, each the video up to it. The chunks
-  before it render once. Pick one in Seeds (**Pick by chunk**): its seed becomes the chunk's own.
-  Then hunt the next chunk on top of it, or **Render the rest**.
+- **Hunt**: 2, 3 or 4 candidates (the arrow beside the button picks how many, the button repeats it)
+  that differ in that chunk alone, each the video up to it. The chunks before it render once. Pick one
+  in Seeds (**Pick by chunk**): its seed becomes the chunk's own. Then hunt the next chunk on top of
+  it, or **Render the rest**.
+- **Seeds to compare** in Setup with every chunk on its own seed (after picks): the first seed is the
+  video as picked and the others try new seeds for the last chunk, so each seed is a different video.
 - **Render to chunk N** (next to Render, with a chunk before the last picked) works on the start of
   a long video first. The Finish waits for the whole video.
 - **Stop** keeps the chunks it finished: the next Render picks up where it stopped.

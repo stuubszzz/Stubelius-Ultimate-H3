@@ -3,9 +3,10 @@
 // The step groups (1 SETUP, 2 DIRECTOR, 3 SEEDS, 4 OUTPUT) are drawn as panels in the workflow theme's colours
 // instead of ComfyUI's tinted boxes. The small helper nodes the windows edit (models, theme, output settings, the
 // prompt override, the final save) sit behind their window, and the wires of a node that lies behind a window are
-// not drawn: move the window and the node shows again, wires and all. tidy() puts a workflow's helpers there.
+// not drawn: move the window and the node shows again, wires and all. tidy() puts a workflow's helpers there: the
+// Setup window's "Tidy the canvas", and once by itself when a workflow laid out before the step panels opens.
 import { app } from "../../scripts/app.js";
-import { themeKey, injectStyles, graphNodes } from "./stubelius_ui.js";
+import { themeKey, injectStyles, graphNodes, toast } from "./stubelius_ui.js";
 
 const STEP_TITLE = /^\s*([1-4])\s+(SETUP|DIRECTOR|SEEDS|OUTPUT)\s*$/i;
 const WINDOWS = ["StubeliusH3Setup", "StubeliusH3DirectorV2", "StubeliusSeedPreviews", "StubeliusH3Finish"];
@@ -386,8 +387,10 @@ export function tidy(graph = app.graph) {
     if (!home) continue;
     const i = slots.get(home) || 0;
     slots.set(home, i + 1);
+    const to = [home.pos[0] + 48, home.pos[1] + 140 + i * 56];
+    if (n.flags?.collapsed && Math.abs(n.pos[0] - to[0]) < 1 && Math.abs(n.pos[1] - to[1]) < 1) continue;   // there already
     if (!n.flags?.collapsed) n.collapse?.(true);
-    n.pos = [home.pos[0] + 48, home.pos[1] + 140 + i * 56];
+    n.pos = to;
     moved += 1;
   }
   for (const g of graph?._groups || graph?.groups || []) {
@@ -424,8 +427,30 @@ function fitStageTo(win) {
   }
 }
 
+// A workflow laid out before the step panels (step groups, none of them marked as panels yet) is tidied once, when it
+// opens. Marked panels mean it was tidied before: whatever was moved out from behind a window since stays out.
+async function autoTidy(graph) {
+  for (let i = 0; i < 40; i++) {                     // the windows mount just after the graph is configured
+    if (graph !== app.graph) return;
+    if (graphNodes(graph).some((n) => n.comfyClass === "StubeliusH3DirectorV2" && n._sh3)) break;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  await new Promise((r) => setTimeout(r, 300));     // and size themselves
+  if (graph !== app.graph) return;
+  const steps = (graph?._groups || graph?.groups || []).filter((g) => isStage(g, graph));
+  if (!steps.length || steps.some((g) => g.flags?.sh3_stage)) return;
+  const n = tidy(graph);
+  if (!n) return;
+  for (const node of graphNodes(graph)) {
+    if (node._sh3?.root) toast(node._sh3.root, `Tidied: ${n} helper node${n === 1 ? " is" : "s are"} behind the windows now (move a window to reach them)`);
+  }
+}
+
 app.registerExtension({
   name: "Stubelius.Stage",
+  afterConfigureGraph() {
+    autoTidy(app.graph).catch((e) => console.warn("[Stubelius] tidy:", e));
+  },
   setup() {
     patch();
     const canvas = app.canvas;
