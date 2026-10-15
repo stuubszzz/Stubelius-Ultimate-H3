@@ -359,8 +359,8 @@ function loraEditor(d, k, chunk, row, i) {
         d.refresh(["insp"]);
       }, "This LoRA, at this strength, on every chunk"),
       button("Remove", "trash", "small flat danger", () => { chunk.loras.splice(i, 1); d.fold.lora = null; d.touched(k); d.refresh(["insp"]); })),
-    missing ? h("div.i-note.bad", icon("alert", 14), "Not found in models/loras on this machine") : null,
   );
+  if (missing) ed.append(h("div.i-note.bad", icon("alert", 14), "Not found in models/loras on this machine"));   // (append() prints a null)
   return ed;
 }
 

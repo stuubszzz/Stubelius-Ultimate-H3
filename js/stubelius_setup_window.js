@@ -509,10 +509,11 @@ class SetupWindow {
   renderFoot() {
     const f = clear(this.foot);
     const s = this.stats?.system || {};
-    f.append(h("span.sh3-fi", icon("folder", 14), "Models ", h("b", "ComfyUI/models + extra paths")),
+    f.append(...[h("span.sh3-fi", icon("folder", 14), "Models ", h("b", "ComfyUI/models + extra paths")),
       s.pytorch_version ? h("span.sh3-fi", icon("cpu", 14), "PyTorch ", h("b", String(s.pytorch_version).split("+")[0])) : null,
       h("div.sh3-spacer"),
-      h("button.sh3-link.sh3-fi", { type: "button", onclick: () => goToStep(2) }, icon("arrowRight", 14), "Next: build the video in the ", h("b", "Director")));
+      h("button.sh3-link.sh3-fi", { type: "button", onclick: () => goToStep(2) }, icon("arrowRight", 14), "Next: build the video in the ", h("b", "Director"))]
+      .filter(Boolean));          // append() would print a null
   }
 
   markSteps() {
