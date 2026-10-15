@@ -3,9 +3,9 @@
 // Every seed the Director rendered, side by side and in sync (with the Output node's de-stutter, as the
 // finished video will move), with hints worth a look (held frames redrawn, a silent take) and never a
 // ranking: your eye picks. Pick one as the winner; or pick chunk by chunk: keep a chunk, hunt the next one
-// with four seeds on top of it, then render the rest. Finish the winner goes on to the Output window.
+// with 2, 3 or 4 seeds on top of it, then render the rest. Finish the winner goes on to the Output window.
 import {
-  h, icon, clear, button, iconButton, label, badge, toast, windowFrame, markSteps, goToStep, glideTo, injectStyles,
+  h, icon, clear, button, iconButton, label, badge, menu, toast, windowFrame, markSteps, goToStep, glideTo, injectStyles,
   widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtClock, fmtBytes, refreshThemes, windowOrCompact,
 } from "./stubelius_ui.js";
 import { viewUrl } from "./stubelius_director_media.js";
@@ -173,7 +173,7 @@ class SeedsWindow {
     this.tiles = [];
     if (!vids.length) {
       box.appendChild(h("div.s-empty.sh3-panel", h("div.s-empty-ic", icon("grid", 34)), h("div.sh3-h3", "The seeds show up here"),
-        h("div.sh3-muted", "Set Seeds to compare on the Setup (or Hunt ×4 on a chunk in the Director) and render. Every seed plays here, in sync.")));
+        h("div.sh3-muted", "Set Seeds to compare on the Setup (or Hunt on a chunk in the Director) and render. Every seed plays here, in sync.")));
       return;
     }
     if (this.ab && vids.length > 1) {
@@ -353,7 +353,7 @@ class SeedsWindow {
       const waits = hunt != null && k > hunt;
       const head = h("div.s-ch-head", h("span.s-ch-n", String(k + 1)), h("b", `Chunk ${k + 1}`), h("span.sh3-muted", `${s.toFixed(0)} – ${e.toFixed(0)} s`),
         h("div.sh3-spacer"),
-        isHunt ? badge(`hunting · ${this.videos.length} of 4`, "ac") : own ? h("span.sh3-badge.ok", icon("lock", 11), "kept")
+        isHunt ? badge(`hunting · ${this.videos.length} seeds`, "ac") : own ? h("span.sh3-badge.ok", icon("lock", 11), "kept")
           : dw.timeline.chunks[k]?.carry === "new_shot" && k > 0 ? h("span.sh3-badge.cut", icon("cut", 11), "new shot") : null);
       const row = h("div.s-ch", { class: [isHunt ? "hunt" : "", waits ? "waits" : "", k === dw.sel ? "sel" : ""].join(" ").trim() || null,
         onclick: () => { dw.select(k); this.renderRight(); } }, head);
@@ -369,9 +369,7 @@ class SeedsWindow {
           h("span", String(seed ?? "")));
           thumbs.appendChild(th);
         }
-        for (let i = this.videos.length; i < 4; i++) thumbs.appendChild(h("div.s-th.empty", h("div.sh3-spin")));
         row.appendChild(thumbs);
-        row.appendChild(h("div.sh3-progress", h("span", { style: { width: `${(this.videos.length / 4) * 100}%` } })));
       } else if (waits) {
         row.appendChild(h("div.sh3-muted.s-ch-note", `Renders once chunk ${hunt + 1} is picked.`));
       } else if (t.current && t.base) {
@@ -384,8 +382,16 @@ class SeedsWindow {
     }
     panel.appendChild(list);
     const k = dw.sel;
+    // Hunt with 2, 3 or 4 seeds: the button repeats the last count, the arrow picks another (the Director's count)
+    const huntN = dw.huntCount();
+    const huntMore = iconButton("chevronDown", "How many seeds to hunt with: 2, 3 or 4", (e) => menu(e.currentTarget, [2, 3, 4].map((n) => ({
+      label: `Hunt with ${n} seeds`, icon: n === huntN ? "check" : null,
+      onClick: () => { dw.setHuntCount(n); dw.hunt(k, n); },
+    }))));
+    huntMore.classList.add("s-hunt-n");
     panel.appendChild(h("div.s-pbtns",
-      button(`Hunt chunk ${k + 1} ×4`, "dice", "brand", () => dw.hunt(k, 4), "Four seeds for this chunk, the chunks before it kept"),
+      h("div.s-hunt", button(`Hunt chunk ${k + 1} ×${huntN}`, "dice", "brand", () => dw.hunt(k, huntN),
+        `${huntN} seeds for this chunk, the chunks before it kept (the arrow: 2, 3 or 4 seeds)`), huntMore),
       button("Render the rest", "next", "", () => dw.queue({ label: "Rendering the rest" }), "Render the whole video: kept chunks come from their takes")));
     return panel;
   }
@@ -523,12 +529,15 @@ function injectSeedStyles() {
 .sh3-s .s-th img{width:100%;height:100%;object-fit:cover;display:block}
 .sh3-s .s-th span{position:absolute;left:6px;bottom:5px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;background:rgba(8,6,12,.6);color:#fff}
 .sh3-s .s-th.on{border:2px solid rgb(var(--ac));box-shadow:0 0 18px rgba(var(--ac),.4)}
-.sh3-s .s-th.empty{display:grid;place-items:center;background:var(--glass);border-style:dashed}
 .sh3-s .s-ch-take{display:flex;align-items:center;gap:14px}
 .sh3-s .s-ch-take img{width:124px;height:70px;border-radius:11px;object-fit:cover;border:1.5px solid rgba(var(--ok),.6)}
 .sh3-s .s-ch-note{font-size:12.5px}
 .sh3-s .s-pbtns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .sh3-s .s-pbtns .sh3-btn{height:46px}
+.sh3-s .s-hunt{display:flex;min-width:0}
+.sh3-s .s-hunt .sh3-btn{flex:1;min-width:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.sh3-s .s-hunt .s-hunt-n{height:46px;width:40px;flex:none;border-radius:0 12px 12px 0;border:1px solid rgba(var(--ac),.5);border-left:0;
+  background:linear-gradient(100deg,rgba(var(--ac),.16),rgba(var(--ac2),.1))}
 .sh3-s .s-win-row{display:flex;gap:16px;align-items:center}
 .sh3-s .s-win-thumb{width:168px;height:94px;border-radius:14px;object-fit:cover;border:2px solid rgb(var(--ac));background:#000;flex:none}
 .sh3-s .s-win-badges{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}

@@ -597,7 +597,20 @@ export class DirectorWindow {
     this.queue({ until: k, label: `Retake of chunk ${k + 1}` });
   }
 
-  hunt(k, count = 4) {
+  // How many seeds a hunt renders (2, 3 or 4): the Director's and the Seeds window's Hunt buttons share it
+  huntCount() {
+    const n = Number(this.fold?.hunt);
+    return [2, 3, 4].includes(n) ? n : 4;
+  }
+
+  setHuntCount(n) {
+    this.fold.hunt = n;
+    this.saveUi();
+    this.refresh(["insp"]);
+    window.dispatchEvent(new CustomEvent("stubelius-takes", { detail: { node: this.node.id } }));   // the Seeds window's button
+  }
+
+  hunt(k, count = this.huntCount()) {
     this.keepBefore(k);
     if (!this.hasOwnSeed(k)) this.timeline.chunks[k].seed = this.seedOf(k);
     this.commit();

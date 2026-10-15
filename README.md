@@ -134,7 +134,7 @@ In the Director, pick a chunk (on the timeline, or with the arrows in its inspec
 - **Hunt**: 2, 3 or 4 candidates (the arrow beside the button picks how many, the button repeats it)
   that differ in that chunk alone, each the video up to it. The chunks before it render once. Pick one
   in Seeds (**Pick by chunk**): its seed becomes the chunk's own. Then hunt the next chunk on top of
-  it, or **Render the rest**.
+  it (the Hunt there has the same arrow and the same count), or **Render the rest**.
 - **Seeds to compare** in Setup with every chunk on its own seed (after picks): the first seed is the
   video as picked and the others try new seeds for the last chunk, so each seed is a different video.
 - **Render to chunk N** (next to Render, with a chunk before the last picked) works on the start of

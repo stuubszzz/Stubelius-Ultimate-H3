@@ -31,7 +31,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 - Text in the **PROMPT OVERRIDE** node (behind the Director) replaces the timeline.
 
 ## 3 · SEEDS — pick the winner
-All the seeds side by side, in sync, with the Output's de-stutter, as the finished video will move. **Solo** a seed's sound, **A/B split**, **Loop** a chunk, **Full size**. The hints (held frames redrawn, a nearly silent take) are hints: your eye picks. **Pick** the winner, then **Finish the winner**. In a long video, **Pick by chunk**: keep a chunk's seed, hunt the next chunk on top of it, then **Render the rest**.
+All the seeds side by side, in sync, with the Output's de-stutter, as the finished video will move. **Solo** a seed's sound, **A/B split**, **Loop** a chunk, **Full size**. The hints (held frames redrawn, a nearly silent take) are hints: your eye picks. **Pick** the winner, then **Finish the winner**. In a long video, **Pick by chunk**: keep a chunk's seed, hunt the next chunk on top of it (2, 3 or 4 seeds, the same count as the Director's Hunt), then **Render the rest**.
 
 ## 4 · OUTPUT — what comes out
 - The winner against the finished video: drag the divider, **Loupe** for the detail; the finish step by step.

@@ -393,11 +393,12 @@ function takesSection(d, k) {
   sec.appendChild(row);
   if (t.stale && t.list.length) sec.appendChild(h("div.i-note", icon("info", 14), "You changed this chunk since: these takes are from before. Render it to get one with the change."));
   else if (t.list.length && !t.current) sec.appendChild(h("div.i-note", icon("info", 14), `Seed ${d.seedOf(k)} isn't rendered with these settings yet.`));
-  // Hunt with 2, 3 or 4 seeds: the button repeats the last count, the arrow picks another (remembered with the workflow)
-  const huntN = [2, 3, 4].includes(Number(d.fold?.hunt)) ? Number(d.fold.hunt) : 4;
+  // Hunt with 2, 3 or 4 seeds: the button repeats the last count, the arrow picks another (remembered with the workflow,
+  // the same count as the Seeds window's Hunt)
+  const huntN = d.huntCount();
   const huntMore = iconButton("chevronDown", "How many seeds to hunt with: 2, 3 or 4", (e) => menu(e.currentTarget, [2, 3, 4].map((n) => ({
     label: `Hunt with ${n} seeds`, icon: n === huntN ? "check" : null,
-    onClick: () => { d.fold.hunt = n; d.saveUi(); d.refresh(["insp"]); d.hunt(k, n); },
+    onClick: () => { d.setHuntCount(n); d.hunt(k, n); },
   }))));
   huntMore.classList.add("i-hunt-n");
   sec.appendChild(h("div.i-tbtns",
