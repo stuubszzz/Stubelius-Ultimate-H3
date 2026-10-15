@@ -39,8 +39,9 @@ export function libItem(d, name) {
   return (d.refmodLib?.items || []).find((x) => x.name === name) || null;
 }
 
-export function thumbUrl(name) {
-  return api.apiURL(`/stubelius_ultimate_h3/refmods/thumb?name=${encodeURIComponent(name)}`);
+// the contact sheet; its file time keeps a replaced character from showing the old one
+export function thumbUrl(name, item = null) {
+  return api.apiURL(`/stubelius_ultimate_h3/refmods/thumb?name=${encodeURIComponent(name)}${item?.mtime ? `&v=${Math.round(item.mtime)}` : ""}`);
 }
 
 // The total reference tokens the characters add to every sampling step
@@ -96,7 +97,7 @@ export function buildCharacterLane(d, lane) {
       title: `${entry.file}: click for strength, description, remove`,
       onclick: (e) => characterPopover(d, i, e.currentTarget),
     },
-    item?.thumb ? h("img", { src: thumbUrl(entry.file), draggable: false }) : h("span.t-char-ic", icon("user", 18)),
+    item?.thumb ? h("img", { src: thumbUrl(entry.file, item), draggable: false }) : h("span.t-char-ic", icon("user", 18)),
     h("div.t-char-t", h("b", shortName(entry.file)),
       h("small", item ? `${item.pictures} picture${item.pictures === 1 ? "" : "s"} · ${fmtTokens(item.tokens)}`
         : d.refmodLib ? "not in the refmods folder" : "…")),
@@ -111,7 +112,7 @@ function characterPopover(d, i, anchor) {
   const item = libItem(d, entry.file);
   const val = h("b", `${Math.round(Number(entry.strength ?? 1) * 100)}%`);
   const box = h("div.t-charpop",
-    h("div.t-charpop-h", item?.thumb ? h("img", { src: thumbUrl(entry.file) }) : h("span.t-char-ic", icon("user", 22)),
+    h("div.t-charpop-h", item?.thumb ? h("img", { src: thumbUrl(entry.file, item) }) : h("span.t-char-ic", icon("user", 22)),
       h("div", h("b", shortName(entry.file)), h("div.sh3-muted", item
         ? `${item.pictures} pictures at ${item.width}×${item.height} · ${fmtTokens(item.tokens)} in every step${item.tuned ? " · tuned" : ""}`
         : "not in the refmods folder"))),
@@ -160,7 +161,7 @@ export async function openLibrary(d, anchor) {
       const used = d.refmods().some((e) => e.file === x.name);
       list.appendChild(h("button.t-lib-item", { type: "button", class: used ? "used" : null, disabled: used || null,
         onclick: () => { closeMenus(); d.addRefmod(x.name); } },
-      x.thumb ? h("img", { src: thumbUrl(x.name), draggable: false }) : h("span.t-char-ic", icon("user", 20)),
+      x.thumb ? h("img", { src: thumbUrl(x.name, x), draggable: false }) : h("span.t-char-ic", icon("user", 20)),
       h("div.t-lib-t", h("b", x.name), h("small", `${x.pictures} pictures · ${fmtTokens(x.tokens)}${x.tuned ? " · tuned" : ""}${used ? " · in this video" : ""}`),
         x.description ? h("small.t-lib-d", x.description) : null)));
     }
@@ -195,6 +196,10 @@ export function openMaker(d) {
     est.textContent = files.length
       ? `${files.length} picture${files.length === 1 ? "" : "s"} × ~${per} = ~${fmtTokens(files.length * per)} in every sampling step`
       : "8 to 16 pictures of one character: face and shoulders, different angles and light, nothing else in focus.";
+    const taken = !!libItem(d, safeName(name.value));
+    status.className = taken ? "t-maker-status warn" : "t-maker-status";
+    status.textContent = taken ? `A character called ${safeName(name.value)} is saved already: this replaces it` : "";
+    make.querySelector("span").textContent = taken ? "Replace" : "Make";
     make.disabled = !files.length || !name.value.trim();
   };
   const drawThumbs = () => {
@@ -247,7 +252,12 @@ export function openMaker(d) {
       if (!res.ok || !body.prompt_id) throw new Error(body?.error?.message || `the queue said ${res.status}`);
       const info = await waitFor(body.prompt_id);
       await fetchLibrary(d, true);
-      d.addRefmod(info.name);
+      if (d.refmods().some((e) => e.file === info.name)) {      // replaced one the video has: its chunks change
+        d.touchAll();
+        d.refresh(["tl", "foot"]);
+      } else {
+        d.addRefmod(info.name);
+      }
       close();
       toast(d.root, `${info.name}: ${info.pictures} pictures, ${fmtTokens(info.tokens)}. Added to the Characters lane`);
     } catch (e) {
@@ -256,6 +266,13 @@ export function openMaker(d) {
       make.disabled = false;
     }
   }
+}
+
+// the name the node saves it under (stubelius_refmods.py _safe_name)
+function safeName(name) {
+  const parts = String(name || "").replace(/\\/g, "/").split("/")
+    .map((p) => p.replace(/[^A-Za-z0-9 _.()-]/g, "").replace(/^[ .]+|[ .]+$/g, "")).filter(Boolean);
+  return parts.join("/") || "character";
 }
 
 function waitFor(promptId) {
@@ -330,5 +347,6 @@ function injectStyles() {
 .sh3 .t-maker-foot{display:flex;align-items:center;gap:10px}
 .sh3 .t-maker-status{font-size:12.5px;color:var(--text2)}
 .sh3 .t-maker-status.bad{color:rgb(var(--bad))}
+.sh3 .t-maker-status.warn{color:rgb(var(--k))}
 ` }));
 }

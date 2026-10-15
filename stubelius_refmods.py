@@ -241,13 +241,11 @@ def canvas(width, height, megapixels):
 
 
 def _cover(image, w, h):
-    """[1,H,W,C] -> [1,h,w,C]: scaled to cover, centre-cropped (pictures of other shapes keep their middle)."""
-    _, ih, iw, _ = image.shape
-    scale = max(w / iw, h / ih)
-    nw, nh = max(w, round(iw * scale)), max(h, round(ih * scale))
-    x = F.interpolate(image.permute(0, 3, 1, 2).float(), size=(nh, nw), mode="bicubic", align_corners=False, antialias=True)
-    top, left = (nh - h) // 2, (nw - w) // 2
-    return x[:, :, top:top + h, left:left + w].clamp(0, 1).permute(0, 2, 3, 1)
+    """[1,H,W,C] -> [1,h,w,C]: centre-cropped to the shape (pictures of other shapes keep their middle) and resized
+    with Lanczos, as ComfyUI-MiniMaxH3Mod does, so a character made here encodes like one made there."""
+    import comfy.utils
+    x = comfy.utils.common_upscale(image.movedim(-1, 1).float(), w, h, "lanczos", "center")
+    return x.clamp(0, 1).movedim(1, -1)
 
 
 def _safe_name(name):
@@ -325,6 +323,10 @@ class StubeliusH3RefModMaker:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
     OUTPUT_NODE = True
+
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")         # always make it (the file may have been moved, deleted or replaced since)
 
     def run(self, video_vae, pictures, name, megapixels, description, images=None):
         import comfy.sd
