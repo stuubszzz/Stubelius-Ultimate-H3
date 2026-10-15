@@ -119,6 +119,7 @@ export function splitViewer({ labelA = "A", labelB = "B" } = {}) {
       el.style.cursor = on ? "crosshair" : "";
     },
     setMuted(muted) { b.muted = muted; },
+    setSound(which) { a.muted = which !== "a"; b.muted = which !== "b"; },     // whose sound plays: "a", "b" or null
     play() { b.play().catch(() => {}); },
     pause() { b.pause(); },
     toggle() { if (b.paused) b.play().catch(() => {}); else b.pause(); },

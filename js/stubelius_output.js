@@ -1,6 +1,7 @@
 // Stubelius Ultimate H3: the Output window (step 4 of 4), on the Finish node.
 //
-// What comes out: the winner against the finished picture (a divider to drag, a 2x loupe), the finish
+// What comes out: the winner against the finished picture (a divider to drag, a 2x loupe, the finished video's
+// sound), the finish
 // step by step (polish in Quality mode, de-stutter, the frame rate, the upscale, the encode), the Output
 // node's settings (size, frame rate, upscaler, de-stutter, the Quality polish), the file it is saved as
 // with its loudness, and the latest results. A setting changed here re-runs only the finish.
@@ -208,6 +209,9 @@ class OutputWindow {
       win ? `Render · ${win.width}×${win.height}` : "Render");
     v.setMode(fin && win ? this.mode : "single");
     v.setLoupe(this.loupe);
+    // the sound: the finished video's (A beside the render, else B on its own), the render's before a finish
+    const muted = !!this.node.properties?.sh3_muted;
+    v.setSound(muted ? null : fin && win ? "a" : "b");
     const stage = h("div.o-stage.sh3-panel", v.el);
     if (!fin && !win) {
       stage.appendChild(h("div.o-empty", h("div.o-empty-ic", icon("sparkles", 34)), h("div.sh3-h3", "The finished video shows up here"),
@@ -241,7 +245,13 @@ class OutputWindow {
     const loupeBtn = button("Loupe", "zoom", "small o-mbtn", () => { this.loupe = !this.loupe; v.setLoupe(this.loupe); this.renderLeft(); },
       "Twice as big under the pointer");
     if (this.loupe) loupeBtn.classList.add("on");
-    stage.appendChild(h("div.o-controls", play, time, bar, modeBtn("Split", "columns", "split"), modeBtn("Side by side", "columns", "side"), loupeBtn));
+    const soundBtn = button("Sound", muted ? "volumeOff" : "volume", "small o-mbtn", () => {
+      this.node.properties = this.node.properties || {};
+      this.node.properties.sh3_muted = !muted;
+      this.renderLeft();
+    }, fin ? "Sound on/off: the finished video's sound" : "Sound on/off");
+    if (!muted) soundBtn.classList.add("on");
+    stage.appendChild(h("div.o-controls", play, time, bar, soundBtn, modeBtn("Split", "columns", "split"), modeBtn("Side by side", "columns", "side"), loupeBtn));
     box.appendChild(stage);
     box.appendChild(this.pipeline());
   }
