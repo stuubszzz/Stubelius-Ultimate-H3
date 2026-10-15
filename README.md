@@ -143,7 +143,11 @@ Takes need the Models node (with plain model sockets nothing is kept on disk). T
 ComfyUI's output folder under `StubeliusH3/takes`, roughly 60-120 MB for a 10 s chunk. The folder
 holds at most 20 GB, and the takes used longest ago are removed first; set `STUBELIUS_TAKES_GB` to
 change that (0 keeps none). The frames are kept lossless at 8 bits a channel, so a loaded take
-matches the render to the last 8-bit step.
+matches the render to the last 8-bit step, and its sound is the same to the sample. Only the two frames
+blended at a join are drawn again from the stored frames, a few levels off at most.
+
+Measured on an RTX 5090: a 12 s video in two Speed chunks took 121 s to render and 6.5 s from its
+takes; retaking its second chunk took 54 s.
 
 For scripts, in `timeline_data`: `takes_id` (keep takes on disk and report them for this node),
 `chunks[i].seed`, `render_until` (a chunk index from 0) and `hunt_chunk` (`{"chunk": i, "count": 4}`).
