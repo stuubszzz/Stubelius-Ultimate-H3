@@ -128,7 +128,8 @@ function characterPopover(d, i, anchor) {
         if (!seg0) return;
         const text = String(seg0.prompt || "");
         if (!text.toLowerCase().includes(desc.toLowerCase().slice(0, 24))) {
-          seg0.prompt = text ? `${desc}. ${text}` : `${desc}. `;
+          const words = desc.replace(/[.\s]+$/, "");
+          seg0.prompt = text ? `${words}. ${text}` : `${words}. `;
           d.touched(k);
           d.refresh(["insp", "tl"]);
           toast(d.root, `Added to chunk ${k + 1}'s first shot`);
@@ -185,7 +186,7 @@ export function openMaker(d) {
   d.root.querySelector(".t-maker-wrap")?.remove();
   const files = [];
   let mp = 0.5;
-  const name = h("input.sh3-input", { type: "text", placeholder: "e.g. liquidator, or characters/liquidator" });
+  const name = h("input.sh3-input", { type: "text", placeholder: "e.g. mara, or heroes/mara" });
   const desc = h("textarea.sh3-text.t-maker-desc", { rows: 2, placeholder: "How the character looks, in words (H3's text side can't see the pictures)" });
   const thumbs = h("div.t-maker-thumbs");
   const est = h("div.sh3-muted.t-maker-est");
@@ -231,6 +232,7 @@ export function openMaker(d) {
   const wrap = h("div.t-maker-wrap", { onclick: (e) => { if (e.target === wrap) close(); } }, panel);
   d.root.appendChild(wrap);
   updateEst();
+  fetchLibrary(d).then(updateEst);          // for the "saved already" warning
 
   async function run() {
     if (!files.length || !name.value.trim()) return;
