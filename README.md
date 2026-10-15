@@ -20,12 +20,18 @@ jumps to the others.
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
 | **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
-Collapsed under the windows: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
+Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
 while they sample; the Director's preview shows it too), the prompt override (any text there
-replaces the timeline's prompts), the compiled prompt and the final save. **Stubelius RIFE to FPS**
-and **Stubelius Color Lock** convert the frame rate (keeping hard cuts clean) and restore the
-original colours after DLSS5.
+replaces the timeline's prompts), the compiled prompt and the final save. Their wires aren't drawn
+while they're behind a window: move a window to reach them. **Stubelius RIFE to FPS** and
+**Stubelius Color Lock** convert the frame rate (keeping hard cuts clean) and restore the original
+colours after DLSS5.
+
+Each window sits on its step's panel, drawn in the workflow theme's colours and fitted to the window
+as it grows; the panel's title row moves the step around. A workflow laid out before (the helper
+nodes under the windows): **Tidy the canvas** under Look in the Setup window puts them behind the
+windows and fits the panels.
 
 **Render, pick, finish.** **Render** in the Director renders the seeds and stops: pick one in Seeds,
 then **Finish the winner** (or **Finish** in Output). A new Render drops the old pick, since the

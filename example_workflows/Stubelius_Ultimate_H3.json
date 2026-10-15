@@ -5,122 +5,45 @@
  "last_link_id": 28,
  "nodes": [
   {
-   "id": 1,
-   "type": "StubeliusH3Setup",
+   "id": 16,
+   "type": "StubeliusTheme",
    "pos": [
-    0,
-    0
+    48,
+    140
    ],
    "size": [
-    1780,
-    1320
+    360,
+    80
    ],
-   "flags": {},
-   "order": 0,
+   "flags": {
+    "collapsed": true
+   },
+   "order": 4,
    "mode": 0,
    "inputs": [
     {
-     "localized_name": "mode",
-     "name": "mode",
+     "localized_name": "theme",
+     "name": "theme",
      "type": "COMBO",
      "widget": {
-      "name": "mode"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "seeds",
-     "name": "seeds",
-     "type": "INT",
-     "widget": {
-      "name": "seeds"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "steps",
-     "name": "steps",
-     "type": "INT",
-     "widget": {
-      "name": "steps"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "sampler",
-     "name": "sampler",
-     "type": "COMBO",
-     "widget": {
-      "name": "sampler"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "scheduler",
-     "name": "scheduler",
-     "type": "COMBO",
-     "widget": {
-      "name": "scheduler"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "megapixels",
-     "name": "megapixels",
-     "type": "FLOAT",
-     "widget": {
-      "name": "megapixels"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "speedup_lora_strength",
-     "name": "speedup_lora_strength",
-     "type": "FLOAT",
-     "widget": {
-      "name": "speedup_lora_strength"
+      "name": "theme"
      },
      "link": null
     }
    ],
-   "outputs": [
-    {
-     "localized_name": "setup",
-     "name": "setup",
-     "type": "H3_SETUP",
-     "links": [
-      1,
-      3
-     ]
-    },
-    {
-     "localized_name": "mode",
-     "name": "mode",
-     "type": "INT",
-     "links": [
-      16
-     ]
-    }
-   ],
-   "title": "SETUP — how the video is made",
+   "outputs": [],
+   "title": "THEME (the Setup window's Look)",
    "properties": {
     "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
-    "Node name for S&R": "StubeliusH3Setup",
+    "Node name for S&R": "StubeliusTheme",
     "ue_properties": {
      "widget_ue_connectable": {},
      "version": "7.8",
      "input_ue_unconnectable": {}
-    },
-    "sh3_window": true
+    }
    },
    "widgets_values": [
-    "Hybrid",
-    1,
-    10,
-    "euler",
-    "beta",
-    0.5,
-    0.75
+    "Stuubzzz neon"
    ],
    "color": "#241e2a",
    "bgcolor": "#1b1720"
@@ -129,8 +52,8 @@
    "id": 2,
    "type": "StubeliusH3Models",
    "pos": [
-    330,
-    1380
+    48,
+    196
    ],
    "size": [
     360,
@@ -349,8 +272,8 @@
    "id": 3,
    "type": "PrimitiveStringMultiline",
    "pos": [
-    1920,
-    1540
+    1968,
+    140
    ],
    "size": [
     469.5728515625,
@@ -395,6 +318,547 @@
    },
    "widgets_values": [
     ""
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 5,
+   "type": "StubeliusLivePreview",
+   "pos": [
+    1968,
+    196
+   ],
+   "size": [
+    620,
+    440
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 2,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "title": "LIVE PREVIEW (the Director window shows it too)",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusLivePreview",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    ""
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 6,
+   "type": "PreviewAny",
+   "pos": [
+    1968,
+    252
+   ],
+   "size": [
+    620,
+    200
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "source",
+     "name": "source",
+     "type": "*",
+     "link": 5
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "STRING",
+     "name": "STRING",
+     "type": "STRING",
+     "links": []
+    }
+   ],
+   "title": "Compiled prompt",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "PreviewAny",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 17,
+   "type": "StubeliusH3Output",
+   "title": "OUTPUT SETTINGS (edited in the Output window)",
+   "pos": [
+    5868,
+    140
+   ],
+   "size": [
+    469.5728515625,
+    230
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 0,
+   "mode": 0,
+   "properties": {
+    "Node name for S&R": "StubeliusH3Output"
+   },
+   "inputs": [
+    {
+     "name": "mode",
+     "type": "INT",
+     "link": 16
+    }
+   ],
+   "outputs": [
+    {
+     "name": "output",
+     "type": "H3_OUTPUT",
+     "links": [
+      22,
+      24
+     ]
+    }
+   ],
+   "widgets_values": [
+    "1080p",
+    24,
+    "RTX VSR",
+    0.3,
+    12,
+    "learned model (2x)"
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 12,
+   "type": "VHS_VideoCombine",
+   "pos": [
+    5868,
+    196
+   ],
+   "size": [
+    300,
+    334
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 14,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 17
+    },
+    {
+     "localized_name": "audio",
+     "name": "audio",
+     "shape": 7,
+     "type": "AUDIO",
+     "link": 18
+    },
+    {
+     "localized_name": "meta_batch",
+     "name": "meta_batch",
+     "shape": 7,
+     "type": "VHS_BatchManager",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "shape": 7,
+     "type": "VAE",
+     "link": null
+    },
+    {
+     "localized_name": "frame_rate",
+     "name": "frame_rate",
+     "type": "FLOAT",
+     "widget": {
+      "name": "frame_rate"
+     },
+     "link": 19
+    },
+    {
+     "localized_name": "loop_count",
+     "name": "loop_count",
+     "type": "INT",
+     "widget": {
+      "name": "loop_count"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "format",
+     "name": "format",
+     "type": "COMBO",
+     "widget": {
+      "name": "format"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "pingpong",
+     "name": "pingpong",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "pingpong"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "save_output",
+     "name": "save_output",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_output"
+     },
+     "link": null
+    },
+    {
+     "name": "pix_fmt",
+     "type": [
+      "yuv420p",
+      "yuv420p10le"
+     ],
+     "widget": {
+      "name": "pix_fmt"
+     },
+     "link": null
+    },
+    {
+     "name": "crf",
+     "type": "INT",
+     "widget": {
+      "name": "crf"
+     },
+     "link": null
+    },
+    {
+     "name": "save_metadata",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "save_metadata"
+     },
+     "link": null
+    },
+    {
+     "name": "trim_to_audio",
+     "type": "BOOLEAN",
+     "widget": {
+      "name": "trim_to_audio"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "Filenames",
+     "name": "Filenames",
+     "type": "VHS_FILENAMES",
+     "links": []
+    }
+   ],
+   "title": "FINAL VIDEO (the saved file)",
+   "properties": {
+    "cnr_id": "comfyui-videohelpersuite",
+    "ver": "1.7.9",
+    "Node name for S&R": "VHS_VideoCombine",
+    "ue_properties": {
+     "widget_ue_connectable": {
+      "frame_rate": true
+     },
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": {
+    "frame_rate": 24,
+    "loop_count": 0,
+    "filename_prefix": "UH3/final",
+    "format": "video/h264-mp4",
+    "pix_fmt": "yuv420p",
+    "crf": 19,
+    "save_metadata": true,
+    "trim_to_audio": false,
+    "pingpong": false,
+    "save_output": true,
+    "videopreview": {
+     "hidden": false,
+     "paused": false,
+     "params": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 13,
+   "type": "ImageFromBatch",
+   "pos": [
+    5868,
+    252
+   ],
+   "size": [
+    360,
+    100
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 13,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 20
+    },
+    {
+     "localized_name": "batch_index",
+     "name": "batch_index",
+     "type": "INT",
+     "widget": {
+      "name": "batch_index"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "length",
+     "name": "length",
+     "type": "INT",
+     "widget": {
+      "name": "length"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      21
+     ]
+    }
+   ],
+   "title": "Last frame (for Extend / First-Last Frame)",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "ImageFromBatch",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "widgets_values": [
+    -1,
+    1
+   ],
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 14,
+   "type": "PreviewImage",
+   "pos": [
+    5868,
+    308
+   ],
+   "size": [
+    360,
+    300
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "order": 15,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 21
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": null
+    }
+   ],
+   "title": "Last frame",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.37.0",
+    "Node name for S&R": "PreviewImage",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    }
+   },
+   "color": "#241e2a",
+   "bgcolor": "#1b1720"
+  },
+  {
+   "id": 1,
+   "type": "StubeliusH3Setup",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    1780,
+    1320
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "COMBO",
+     "widget": {
+      "name": "mode"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "seeds",
+     "name": "seeds",
+     "type": "INT",
+     "widget": {
+      "name": "seeds"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "steps",
+     "name": "steps",
+     "type": "INT",
+     "widget": {
+      "name": "steps"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "sampler",
+     "name": "sampler",
+     "type": "COMBO",
+     "widget": {
+      "name": "sampler"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "scheduler",
+     "name": "scheduler",
+     "type": "COMBO",
+     "widget": {
+      "name": "scheduler"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "megapixels",
+     "name": "megapixels",
+     "type": "FLOAT",
+     "widget": {
+      "name": "megapixels"
+     },
+     "link": null
+    },
+    {
+     "localized_name": "speedup_lora_strength",
+     "name": "speedup_lora_strength",
+     "type": "FLOAT",
+     "widget": {
+      "name": "speedup_lora_strength"
+     },
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "setup",
+     "name": "setup",
+     "type": "H3_SETUP",
+     "links": [
+      1,
+      3
+     ]
+    },
+    {
+     "localized_name": "mode",
+     "name": "mode",
+     "type": "INT",
+     "links": [
+      16
+     ]
+    }
+   ],
+   "title": "SETUP — how the video is made",
+   "properties": {
+    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
+    "Node name for S&R": "StubeliusH3Setup",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "version": "7.8",
+     "input_ue_unconnectable": {}
+    },
+    "sh3_window": true
+   },
+   "widgets_values": [
+    "Hybrid",
+    1,
+    10,
+    "euler",
+    "beta",
+    0.5,
+    0.75
    ],
    "color": "#241e2a",
    "bgcolor": "#1b1720"
@@ -693,87 +1157,6 @@
    "bgcolor": "#1b1720"
   },
   {
-   "id": 5,
-   "type": "StubeliusLivePreview",
-   "pos": [
-    2480,
-    1540
-   ],
-   "size": [
-    620,
-    440
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 2,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [],
-   "title": "LIVE PREVIEW (the Director window shows it too)",
-   "properties": {
-    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
-    "Node name for S&R": "StubeliusLivePreview",
-    "ue_properties": {
-     "widget_ue_connectable": {},
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "widgets_values": [
-    ""
-   ],
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
-   "id": 6,
-   "type": "PreviewAny",
-   "pos": [
-    2900,
-    1540
-   ],
-   "size": [
-    620,
-    200
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 7,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "source",
-     "name": "source",
-     "type": "*",
-     "link": 5
-    }
-   ],
-   "outputs": [
-    {
-     "localized_name": "STRING",
-     "name": "STRING",
-     "type": "STRING",
-     "links": []
-    }
-   ],
-   "title": "Compiled prompt",
-   "properties": {
-    "cnr_id": "comfy-core",
-    "ver": "0.37.0",
-    "Node name for S&R": "PreviewAny",
-    "ue_properties": {
-     "widget_ue_connectable": {},
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "widgets_values": [],
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
    "id": 11,
    "type": "StubeliusH3Finish",
    "pos": [
@@ -859,297 +1242,6 @@
    "bgcolor": "#1b1720"
   },
   {
-   "id": 12,
-   "type": "VHS_VideoCombine",
-   "pos": [
-    5820,
-    1220
-   ],
-   "size": [
-    300,
-    334
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 14,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "images",
-     "name": "images",
-     "type": "IMAGE",
-     "link": 17
-    },
-    {
-     "localized_name": "audio",
-     "name": "audio",
-     "shape": 7,
-     "type": "AUDIO",
-     "link": 18
-    },
-    {
-     "localized_name": "meta_batch",
-     "name": "meta_batch",
-     "shape": 7,
-     "type": "VHS_BatchManager",
-     "link": null
-    },
-    {
-     "localized_name": "vae",
-     "name": "vae",
-     "shape": 7,
-     "type": "VAE",
-     "link": null
-    },
-    {
-     "localized_name": "frame_rate",
-     "name": "frame_rate",
-     "type": "FLOAT",
-     "widget": {
-      "name": "frame_rate"
-     },
-     "link": 19
-    },
-    {
-     "localized_name": "loop_count",
-     "name": "loop_count",
-     "type": "INT",
-     "widget": {
-      "name": "loop_count"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "filename_prefix",
-     "name": "filename_prefix",
-     "type": "STRING",
-     "widget": {
-      "name": "filename_prefix"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "format",
-     "name": "format",
-     "type": "COMBO",
-     "widget": {
-      "name": "format"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "pingpong",
-     "name": "pingpong",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "pingpong"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "save_output",
-     "name": "save_output",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "save_output"
-     },
-     "link": null
-    },
-    {
-     "name": "pix_fmt",
-     "type": [
-      "yuv420p",
-      "yuv420p10le"
-     ],
-     "widget": {
-      "name": "pix_fmt"
-     },
-     "link": null
-    },
-    {
-     "name": "crf",
-     "type": "INT",
-     "widget": {
-      "name": "crf"
-     },
-     "link": null
-    },
-    {
-     "name": "save_metadata",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "save_metadata"
-     },
-     "link": null
-    },
-    {
-     "name": "trim_to_audio",
-     "type": "BOOLEAN",
-     "widget": {
-      "name": "trim_to_audio"
-     },
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "localized_name": "Filenames",
-     "name": "Filenames",
-     "type": "VHS_FILENAMES",
-     "links": []
-    }
-   ],
-   "title": "FINAL VIDEO (the saved file)",
-   "properties": {
-    "cnr_id": "comfyui-videohelpersuite",
-    "ver": "1.7.9",
-    "Node name for S&R": "VHS_VideoCombine",
-    "ue_properties": {
-     "widget_ue_connectable": {
-      "frame_rate": true
-     },
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "widgets_values": {
-    "frame_rate": 24,
-    "loop_count": 0,
-    "filename_prefix": "UH3/final",
-    "format": "video/h264-mp4",
-    "pix_fmt": "yuv420p",
-    "crf": 19,
-    "save_metadata": true,
-    "trim_to_audio": false,
-    "pingpong": false,
-    "save_output": true,
-    "videopreview": {
-     "hidden": false,
-     "paused": false,
-     "params": {}
-    }
-   },
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
-   "id": 13,
-   "type": "ImageFromBatch",
-   "pos": [
-    6220,
-    1220
-   ],
-   "size": [
-    360,
-    100
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 13,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "image",
-     "name": "image",
-     "type": "IMAGE",
-     "link": 20
-    },
-    {
-     "localized_name": "batch_index",
-     "name": "batch_index",
-     "type": "INT",
-     "widget": {
-      "name": "batch_index"
-     },
-     "link": null
-    },
-    {
-     "localized_name": "length",
-     "name": "length",
-     "type": "INT",
-     "widget": {
-      "name": "length"
-     },
-     "link": null
-    }
-   ],
-   "outputs": [
-    {
-     "localized_name": "IMAGE",
-     "name": "IMAGE",
-     "type": "IMAGE",
-     "links": [
-      21
-     ]
-    }
-   ],
-   "title": "Last frame (for Extend / First-Last Frame)",
-   "properties": {
-    "cnr_id": "comfy-core",
-    "ver": "0.37.0",
-    "Node name for S&R": "ImageFromBatch",
-    "ue_properties": {
-     "widget_ue_connectable": {},
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "widgets_values": [
-    -1,
-    1
-   ],
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
-   "id": 14,
-   "type": "PreviewImage",
-   "pos": [
-    6600,
-    1220
-   ],
-   "size": [
-    360,
-    300
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 15,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "images",
-     "name": "images",
-     "type": "IMAGE",
-     "link": 21
-    }
-   ],
-   "outputs": [
-    {
-     "localized_name": "images",
-     "name": "images",
-     "type": "IMAGE",
-     "links": null
-    }
-   ],
-   "title": "Last frame",
-   "properties": {
-    "cnr_id": "comfy-core",
-    "ver": "0.37.0",
-    "Node name for S&R": "PreviewImage",
-    "ue_properties": {
-     "widget_ue_connectable": {},
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
    "id": 15,
    "type": "MarkdownNote",
    "pos": [
@@ -1175,99 +1267,7 @@
     }
    },
    "widgets_values": [
-    "# Ultimate H3 — how to use\n\n**Updates:** nodes and workflow live at [github.com/stuubszzz/Stubelius-Ultimate-H3](https://github.com/stuubszzz/Stubelius-Ultimate-H3). ComfyUI Manager → Update All (or `git pull` in custom_nodes/Stubelius-Ultimate-H3) keeps the nodes current. Live preview: put `taeh3.safetensors` in models/vae_approx and pick it under Models in the Setup window.\n\nFour windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**. The step bar at the top of every window jumps to the others. The small collapsed nodes under the windows are what the windows edit: you don't need to open them.\n\n## 1 · SETUP — how it's rendered\n- **Mode** — PDMD / Speed / Hybrid / Quality: *how* the video is made. A card fills steps, size and turbo strength with its preset; fine-tune them under the cards. The size that comes out is picked in Output: Speed goes up to 2K, the others up to 4K.\n\n| | MP | steps | sampler | speedup LoRA | how it reaches your Output size |\n|---|---|---|---|---|---|\n| Speed | 0.4 | 8 | res_multistep / simple | 1.0 | renders ≈480p, upscales up to 2K |\n| Hybrid | 0.5 | 10 | euler / beta | 0.75 | renders ≈540p, upscales up to 4K |\n| Quality | 0.98 | 20 | euler / beta | 0 (off) | native ≈768p; from 1080p a polish (1.5× by default) re-renders it bigger, up to 4K |\n| PDMD | 0.98 | 4 | euler / simple | PDMD LoRA 1.0 | native ≈768p in 4 steps, upscales up to 4K (no polish) |\n\n- **Seeds to compare** — how many full videos (with sound) to render, 1–4.\n- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF; only the one the Director needs is loaded), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk; a missing one turns red.\n- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid; the **PDMD 4-step LoRA**: `lora_model_0.safetensors` from huggingface.co/pdmd2026/pdmd_4NFE_lora, as published (converted on load); two **global LoRAs** for every chunk (the box takes slider LoRAs up to ±9). LoRAs for one chunk go in the Director.\n- **Video memory** — what the chosen weights take on your card. **Performance** — attention, Sage, low-VRAM attention and chunked feed-forward (less VRAM, same picture), Spectrum / H3 step cache (faster, may soften).\n- **Look** — six themes; every window follows it.\n- Changing anything here **re-renders**.\n\n## 2 · DIRECTOR — what the video is\n- **Top:** First/Last Frame or Reference (Omni) mode, shape, length (longer than one chunk = Extend), chunk size, seed, the Setup mode, and **Render**.\n- **Timeline:** **Keyframes** — the first frame (a video there is a clip the video continues), up to eight **middle frames** and the last frame: drop pictures at a second or click **+** to add one at the playhead, drag them along, click one for more. **Shots** — drag the edge between two. **Sound** — sounds and short clips pinned at their seconds (drop them, or **+**). **Chunks** — the badge between two sets how they join. **Characters** — characters made from many pictures, for the whole video: **+** adds a saved one or makes one from 8–16 pictures (saved in `models/refmods`); click one for its strength.\n- **Inspector** (the chunk you picked): how it joins the chunk before it, its shots (a spoken line goes in quotes), style, soundscape, music, **LoRAs for this chunk**, and its **takes**.\n- **Reference mode:** the cast (nine characters and a location), reference videos and sounds, **Lip Sync** with **Transcribe → Insert as timed shots**.\n- Text in the collapsed **PROMPT OVERRIDE** node replaces the timeline.\n\n**Takes:** every chunk is kept. **Retake** renders the chunk again with a new seed, up to that chunk; the chunks before it come from their takes. Click an older take to pick it back. **Hunt ×4** renders four seeds of that one chunk: pick one in Seeds. **Render to chunk N** works on the start of a long video first. **Stop** keeps the chunks it finished.\n\n## 3 · SEEDS — pick the winner\nAll the seeds side by side, in sync, with the Output's de-stutter (as the finished video will move). **Solo** a seed's sound, **A/B split**, **Loop** a chunk, **Full size**. The hints (held frames redrawn, a nearly silent take) are hints: your eye picks. **Pick** → the winner → **Finish the winner**. In a long video, **Pick by chunk**: keep a chunk's seed, hunt the next chunk on top of it, then **Render the rest**.\n\n## 4 · OUTPUT — what comes out\n- The winner against the finished video: drag the divider, **Loupe** for the detail; the finish step by step.\n- **Final size** — Speed: native (≈480p), 720p, 1080p, 2K. Hybrid: native (≈540p) up to 4K. Quality and PDMD: native (≈768p), 1080p, 2K, 4K. Switching mode keeps your size when the new mode has it. The short side lands exactly on the number, portrait too. 4K holds ≈100 MB of RAM per frame: keep 4K clips short, especially at high frame rates.\n- **Frame rate** — a slider from 24 (untouched) up to 120; above 24 RIFE draws the frames in between, length and sync kept.\n- **Upscaler** — RTX VSR, or DLSS5 + Color Lock (more detail, original colours).\n- **De-stutter** — auto / on / off. Some takes judder (move, move, hold), most of all in Speed. De-stutter finds the held frames and RIFE draws them again; every other frame, the length and the sound stay. auto = only takes that judder.\n- **Quality polish** — scale, strength, steps: Quality mode at 1080p and up.\n- **The clip it continues** — the clip in front of the new part, or the new part alone.\n- **After a render with one seed** — wait for your pick, or finish it right away.\n- **Export** — the file, its size and loudness, **Open folder**.\n- Changing anything here **never re-renders** the seeds: only the finish runs again.\n\n**Render** in the Director always stops after the seeds (a new render drops the old pick): pick in Seeds, then **Finish the winner**.\n\n## 5 · GOOD TO KNOW\n- **A recorded line on the Sound lane:** type the same words in that shot, in quotes. The recording gives the words; the shot tells H3 someone is talking (without them the lips may not follow). A sound doesn't move the picture: for a reaction right on it, pin a middle frame of the reaction just after.\n- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it (later chunks continue on the First/Last checkpoint, which takes no audio).\n- **The voice has to match closely:** make the line first with a voice-clone TTS (LongCat AudioDiT, Fish S2, VoxCPM2), then pin it on the Sound lane or set it as **Lip Sync** (Lip Sync plays the file itself as the video's sound, in every chunk; **Transcribe → Insert as timed shots** types its words for you).\n- **A later chunk sounds dull:** set its join to **Picture, fresh sound**.\n- **The face changes from chunk to chunk, or isn't the character's:** make the character from 8–16 pictures (**+** on the Characters lane) and keep it on: in tests it held the face through the join in First/Last Frame mode, where words alone didn't. H3 reads the words, not the pictures: describe the character in the shots too.\n- **Judder** (the picture holds every second or third frame, most of all in Speed): **de-stutter** fixes it, and PDMD renders much smoother. A higher frame rate alone doesn't.\n- **Fast, small motion smears** (fingers): use PDMD instead of Speed.\n- **Jerky after pinning a line:** check the shot has its exact words, the line stays inside one chunk, the recording has no hard cuts or clipping, and try another seed (any pin changes the whole take).\n- **Middle frames:** up to eight, half a second apart; each adds a little render time (eight add about a tenth). Don't pin fast action in the first half second of a chunk that continues the video (it can snap into place for a frame): pin the moments around it.\n\nTurbo modes can mumble dialogue (measured −31…−39 dB vs −14 dB) — for talking shots use Quality."
-   ],
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
-   "id": 16,
-   "type": "StubeliusTheme",
-   "pos": [
-    0,
-    1380
-   ],
-   "size": [
-    360,
-    80
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 4,
-   "mode": 0,
-   "inputs": [
-    {
-     "localized_name": "theme",
-     "name": "theme",
-     "type": "COMBO",
-     "widget": {
-      "name": "theme"
-     },
-     "link": null
-    }
-   ],
-   "outputs": [],
-   "title": "THEME (the Setup window's Look)",
-   "properties": {
-    "aux_id": "stuubszzz/Stubelius-Ultimate-H3",
-    "Node name for S&R": "StubeliusTheme",
-    "ue_properties": {
-     "widget_ue_connectable": {},
-     "version": "7.8",
-     "input_ue_unconnectable": {}
-    }
-   },
-   "widgets_values": [
-    "Stuubzzz neon"
-   ],
-   "color": "#241e2a",
-   "bgcolor": "#1b1720"
-  },
-  {
-   "id": 17,
-   "type": "StubeliusH3Output",
-   "title": "OUTPUT SETTINGS (edited in the Output window)",
-   "pos": [
-    700,
-    1380
-   ],
-   "size": [
-    469.5728515625,
-    230
-   ],
-   "flags": {
-    "collapsed": true
-   },
-   "order": 0,
-   "mode": 0,
-   "properties": {
-    "Node name for S&R": "StubeliusH3Output"
-   },
-   "inputs": [
-    {
-     "name": "mode",
-     "type": "INT",
-     "link": 16
-    }
-   ],
-   "outputs": [
-    {
-     "name": "output",
-     "type": "H3_OUTPUT",
-     "links": [
-      22,
-      24
-     ]
-    }
-   ],
-   "widgets_values": [
-    "1080p",
-    24,
-    "RTX VSR",
-    0.3,
-    12,
-    "learned model (2x)"
+    "# Ultimate H3 — how to use\n\n**Updates:** nodes and workflow live at [github.com/stuubszzz/Stubelius-Ultimate-H3](https://github.com/stuubszzz/Stubelius-Ultimate-H3). ComfyUI Manager → Update All (or `git pull` in custom_nodes/Stubelius-Ultimate-H3) keeps the nodes current. Live preview: put `taeh3.safetensors` in models/vae_approx and pick it under Models in the Setup window.\n\nFour windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**. The step bar at the top of every window jumps to the others. The small nodes the windows edit sit behind them (move a window to reach one); **Tidy the canvas** under Look in Setup tucks them away in a workflow laid out before.\n\n## 1 · SETUP — how it's rendered\n- **Mode** — PDMD / Speed / Hybrid / Quality: *how* the video is made. A card fills steps, size and turbo strength with its preset; fine-tune them under the cards. The size that comes out is picked in Output: Speed goes up to 2K, the others up to 4K.\n\n| | MP | steps | sampler | speedup LoRA | how it reaches your Output size |\n|---|---|---|---|---|---|\n| Speed | 0.4 | 8 | res_multistep / simple | 1.0 | renders ≈480p, upscales up to 2K |\n| Hybrid | 0.5 | 10 | euler / beta | 0.75 | renders ≈540p, upscales up to 4K |\n| Quality | 0.98 | 20 | euler / beta | 0 (off) | native ≈768p; from 1080p a polish (1.5× by default) re-renders it bigger, up to 4K |\n| PDMD | 0.98 | 4 | euler / simple | PDMD LoRA 1.0 | native ≈768p in 4 steps, upscales up to 4K (no polish) |\n\n- **Seeds to compare** — how many full videos (with sound) to render, 1–4.\n- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF; only the one the Director needs is loaded), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk; a missing one turns red.\n- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid; the **PDMD 4-step LoRA**: `lora_model_0.safetensors` from huggingface.co/pdmd2026/pdmd_4NFE_lora, as published (converted on load); two **global LoRAs** for every chunk (the box takes slider LoRAs up to ±9). LoRAs for one chunk go in the Director.\n- **Video memory** — what the chosen weights take on your card. **Performance** — attention, Sage, low-VRAM attention and chunked feed-forward (less VRAM, same picture), Spectrum / H3 step cache (faster, may soften).\n- **Look** — six themes; every window follows it.\n- Changing anything here **re-renders**.\n\n## 2 · DIRECTOR — what the video is\n- **Top:** First/Last Frame or Reference (Omni) mode, shape, length (longer than one chunk = Extend), chunk size, seed, the Setup mode, and **Render**.\n- **Timeline:** **Keyframes** — the first frame (a video there is a clip the video continues), up to eight **middle frames** and the last frame: drop pictures at a second or click **+** to add one at the playhead, drag them along, click one for more. **Shots** — drag the edge between two. **Sound** — sounds and short clips pinned at their seconds (drop them, or **+**). **Chunks** — the badge between two sets how they join. **Characters** — characters made from many pictures, for the whole video: **+** adds a saved one or makes one from 8–16 pictures (saved in `models/refmods`); click one for its strength.\n- **Inspector** (the chunk you picked): how it joins the chunk before it, its shots (a spoken line goes in quotes), style, soundscape, music, **LoRAs for this chunk**, and its **takes**.\n- **Reference mode:** the cast (nine characters and a location), reference videos and sounds, **Lip Sync** with **Transcribe → Insert as timed shots**.\n- Text in the **PROMPT OVERRIDE** node (behind the Director) replaces the timeline.\n\n**Takes:** every chunk is kept. **Retake** renders the chunk again with a new seed, up to that chunk; the chunks before it come from their takes. Click an older take to pick it back. **Hunt ×4** renders four seeds of that one chunk: pick one in Seeds. **Render to chunk N** works on the start of a long video first. **Stop** keeps the chunks it finished.\n\n## 3 · SEEDS — pick the winner\nAll the seeds side by side, in sync, with the Output's de-stutter (as the finished video will move). **Solo** a seed's sound, **A/B split**, **Loop** a chunk, **Full size**. The hints (held frames redrawn, a nearly silent take) are hints: your eye picks. **Pick** → the winner → **Finish the winner**. In a long video, **Pick by chunk**: keep a chunk's seed, hunt the next chunk on top of it, then **Render the rest**.\n\n## 4 · OUTPUT — what comes out\n- The winner against the finished video: drag the divider, **Loupe** for the detail; the finish step by step.\n- **Final size** — Speed: native (≈480p), 720p, 1080p, 2K. Hybrid: native (≈540p) up to 4K. Quality and PDMD: native (≈768p), 1080p, 2K, 4K. Switching mode keeps your size when the new mode has it. The short side lands exactly on the number, portrait too. 4K holds ≈100 MB of RAM per frame: keep 4K clips short, especially at high frame rates.\n- **Frame rate** — a slider from 24 (untouched) up to 120; above 24 RIFE draws the frames in between, length and sync kept.\n- **Upscaler** — RTX VSR, or DLSS5 + Color Lock (more detail, original colours).\n- **De-stutter** — auto / on / off. Some takes judder (move, move, hold), most of all in Speed. De-stutter finds the held frames and RIFE draws them again; every other frame, the length and the sound stay. auto = only takes that judder.\n- **Quality polish** — scale, strength, steps: Quality mode at 1080p and up.\n- **The clip it continues** — the clip in front of the new part, or the new part alone.\n- **After a render with one seed** — wait for your pick, or finish it right away.\n- **Export** — the file, its size and loudness, **Open folder**.\n- Changing anything here **never re-renders** the seeds: only the finish runs again.\n\n**Render** in the Director always stops after the seeds (a new render drops the old pick): pick in Seeds, then **Finish the winner**.\n\n## 5 · GOOD TO KNOW\n- **A recorded line on the Sound lane:** type the same words in that shot, in quotes. The recording gives the words; the shot tells H3 someone is talking (without them the lips may not follow). A sound doesn't move the picture: for a reaction right on it, pin a middle frame of the reaction just after.\n- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it (later chunks continue on the First/Last checkpoint, which takes no audio).\n- **The voice has to match closely:** make the line first with a voice-clone TTS (LongCat AudioDiT, Fish S2, VoxCPM2), then pin it on the Sound lane or set it as **Lip Sync** (Lip Sync plays the file itself as the video's sound, in every chunk; **Transcribe → Insert as timed shots** types its words for you).\n- **A later chunk sounds dull:** set its join to **Picture, fresh sound**.\n- **The face changes from chunk to chunk, or isn't the character's:** make the character from 8–16 pictures (**+** on the Characters lane) and keep it on: in tests it held the face through the join in First/Last Frame mode, where words alone didn't. H3 reads the words, not the pictures: describe the character in the shots too.\n- **Judder** (the picture holds every second or third frame, most of all in Speed): **de-stutter** fixes it, and PDMD renders much smoother. A higher frame rate alone doesn't.\n- **Fast, small motion smears** (fingers): use PDMD instead of Speed.\n- **Jerky after pinning a line:** check the shot has its exact words, the line stays inside one chunk, the recording has no hard cuts or clipping, and try another seed (any pin changes the whole take).\n- **Middle frames:** up to eight, half a second apart; each adds a little render time (eight add about a tenth). Don't pin fast action in the first half second of a chunk that continues the video (it can snap into place for a frame): pin the moments around it.\n\nTurbo modes can mumble dialogue (measured −31…−39 dB vs −14 dB) — for talking shots use Quality."
    ],
    "color": "#241e2a",
    "bgcolor": "#1b1720"
@@ -1468,48 +1468,56 @@
    "title": "1  SETUP",
    "bounding": [
     -30,
-    -90,
+    -94,
     1840,
-    1560
+    1450
    ],
    "color": "#ff3da8",
-   "flags": {}
+   "flags": {
+    "sh3_stage": true
+   }
   },
   {
    "id": 2,
    "title": "2  DIRECTOR",
    "bounding": [
     1890,
-    -90,
+    -94,
     1900,
-    1720
+    1610
    ],
    "color": "#ffd64a",
-   "flags": {}
+   "flags": {
+    "sh3_stage": true
+   }
   },
   {
    "id": 3,
    "title": "3  SEEDS",
    "bounding": [
     3870,
-    -90,
+    -94,
     1840,
     1250
    ],
    "color": "#ffd64a",
-   "flags": {}
+   "flags": {
+    "sh3_stage": true
+   }
   },
   {
    "id": 4,
    "title": "4  OUTPUT",
    "bounding": [
     5790,
-    -90,
+    -94,
     1840,
-    1400
+    1290
    ],
    "color": "#7cf0c8",
-   "flags": {}
+   "flags": {
+    "sh3_stage": true
+   }
   }
  ],
  "config": {},

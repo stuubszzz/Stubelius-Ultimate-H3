@@ -9,6 +9,7 @@ import {
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtBytes, refreshThemes, THEME_NAMES,
   THEME_SWATCHES, windowOrCompact,
 } from "./stubelius_ui.js";
+import { tidy } from "./stubelius_stage.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -422,6 +423,13 @@ class SetupWindow {
       h("b", name), on ? h("span.su-tcheck", icon("check", 13)) : null));
     }
     panel.appendChild(grid);
+    panel.appendChild(h("div.su-tidy", icon("sparkles", 18),
+      h("div.su-ptxt", h("b", "Tidy the canvas"),
+        h("div.sh3-muted", "The small helper nodes go behind their windows and their wires hide; move a window to reach them.")),
+      button("Tidy", null, "small", () => {
+        const n = tidy();
+        toast(this.root, n ? `${n} helper node${n === 1 ? "" : "s"} tucked behind the windows` : "Nothing to tidy");
+      })));
     return panel;
   }
 
@@ -430,8 +438,9 @@ class SetupWindow {
     if (!t) {
       t = window.LiteGraph?.createNode?.("StubeliusTheme");
       if (!t) return;
-      t.pos = [this.node.pos[0], this.node.pos[1] - 140];
       app.graph.add(t);
+      t.collapse?.(true);
+      t.pos = [this.node.pos[0] + 48, this.node.pos[1] + 140];          // behind this window (stubelius_stage.js)
     }
     setWidget(t, "theme", name);
     setTimeout(() => { refreshThemes(); this.render(); }, 30);
@@ -468,6 +477,10 @@ function injectSetupStyles() {
 .sh3-u .su-left,.sh3-u .su-right{display:flex;flex-direction:column;gap:20px;min-width:0}
 .sh3-u .sh3-panel{padding:20px 22px;display:flex;flex-direction:column;gap:16px}
 .sh3-u .su-ph{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.sh3-u .su-tidy{display:flex;align-items:center;gap:14px;margin-top:14px;padding:12px 14px;border-radius:14px;background:var(--glass);
+  border:1px solid var(--stroke);color:var(--text2)}
+.sh3-u .su-tidy .su-ptxt{flex:1;min-width:0}
+.sh3-u .su-tidy b{color:var(--text);font-weight:600}
 .sh3-u .su-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
 .sh3-u .su-card{border-radius:20px;overflow:hidden;background:var(--glass);border:1px solid var(--stroke);padding:0;text-align:left;display:flex;flex-direction:column;
   color:var(--text)}

@@ -511,6 +511,7 @@ export function autoHeight(node, root, { minHeight = 400, extra = 50, minWidth =
         if (!node.size || Math.abs(node.size[1] - height) > 2 || node.size[0] !== width) {
           node.setSize([width, height]);
           node.setDirtyCanvas?.(true, true);
+          window.dispatchEvent(new CustomEvent("stubelius-window-size", { detail: { node } }));   // its step panel follows
         }
       });
     });
