@@ -27,6 +27,7 @@ class OutputWindow {
     this.mode = "split";
     this.loupe = false;
     this.recent = [];
+    this.frames = {};                                     // prompt id -> its last frame (a Preview Image output)
     injectStyles();
     injectOutputStyles();
     const f = windowFrame({ title: "Ultimate H3 · Output", subtitle: "Upscale, smooth and export", step: 4, onStep: goToStep });
@@ -63,6 +64,18 @@ class OutputWindow {
 
   saver() {
     return targetsOf(this.node, "images").find((n) => /VideoCombine|SaveVideo|CreateVideo/.test(n.comfyClass || n.type)) || null;
+  }
+
+  // The preview nodes that keep the finished video's last frame (Finish -> Image From Batch -> Preview Image), behind
+  // this window: the Last frame card shows what they make
+  lastFrameNodes() {
+    const out = [];
+    const isPreview = (n) => /PreviewImage|SaveImage/.test(n.comfyClass || n.type || "");
+    for (const n of targetsOf(this.node, "images")) {
+      if (isPreview(n)) out.push(n);
+      else if (/ImageFromBatch/.test(n.comfyClass || n.type || "")) for (const p of targetsOf(n, "IMAGE")) if (isPreview(p)) out.push(p);
+    }
+    return out;
   }
 
   setupMode() {
@@ -117,20 +130,28 @@ class OutputWindow {
   async loadRecent() {
     const saver = this.saver();
     const prefix = String(widgetValue(saver, "filename_prefix", "") || "").split(/[\\/]/).pop();
+    const frameIds = new Set(this.lastFrameNodes().map((n) => String(n.id)));
     try {
       const r = await api.fetchApi("/history?max_items=60");
       const hist = r.ok ? await r.json() : {};
       const found = [];
       for (const item of Object.values(hist).reverse()) {
+        // the same run's last frame, when the workflow keeps one
+        const frame = Object.entries(item.outputs || {}).filter(([id]) => frameIds.has(String(id)))
+          .map(([, o]) => (o.images || [])[0]).find(Boolean) || null;
         for (const out of Object.values(item.outputs || {})) {
           for (const g of [...(out.gifs || []), ...(out.videos || [])]) {
             const name = g.filename || "";
             if (!/\.(mp4|webm|mov|mkv)$/i.test(name)) continue;
             if (prefix && !name.startsWith(prefix)) continue;
-            if (!found.some((x) => x.filename === name && x.subfolder === g.subfolder)) found.push(g);
+            if (!found.some((x) => x.filename === name && x.subfolder === g.subfolder)) found.push(frame ? { ...g, lastFrame: frame } : g);
           }
         }
       }
+      // the video on show gets its last frame from the history too (a reload keeps the video, not always its frame)
+      const fin = this.final;
+      const same = fin && found.find((x) => x.filename === fin.filename && x.subfolder === fin.subfolder);
+      if (same?.lastFrame && !fin.lastFrame) fin.lastFrame = same.lastFrame;
       this.recent = found.slice(0, 3);
     } catch (e) {
       this.recent = [];
@@ -279,6 +300,7 @@ class OutputWindow {
     const box = clear(this.right);
     box.appendChild(this.settings());
     box.appendChild(this.exportPanel());
+    box.appendChild(this.lastFramePanel());
     this.recentBox = h("div.o-recent.sh3-panel");
     box.appendChild(this.recentBox);
     this.renderRecent();
@@ -369,7 +391,7 @@ class OutputWindow {
       }).catch(() => {});
     }
     const prefix = widget(saver, "filename_prefix");
-    const name = h("input.sh3-input.o-name", { type: "text", value: fin?.filename || prefix?.value || "StubeliusH3/final",
+    const name = h("input.sh3-input.o-name", { type: "text", value: fin?.filename || prefix?.value || "UltimateH3/UltimateH3",
       title: fin ? "The file the last finish was saved as" : "Saved under this name in the output folder" });
     if (prefix) name.addEventListener("change", () => { setWidget(saver, "filename_prefix", name.value.replace(/\.(mp4|webm|mov)$/i, "")); });
     panel.appendChild(name);
@@ -390,6 +412,76 @@ class OutputWindow {
       "Run the finish (the Director's takes and the seeds come from cache)");
     panel.appendChild(h("div.o-ebtns", button("Open folder", "folder", "ghost", () => this.openFolder(), "Open the output folder on this machine"), exp));
     return panel;
+  }
+
+  // The frame the finished video ends on (to start the next video from, or to keep): the run's own PNG when the
+  // workflow keeps one, else taken from the saved video. Click to see it big, Save to keep it.
+  lastFramePanel() {
+    const fin = this.final;
+    const panel = h("div.o-last.sh3-panel");
+    const base = String(fin?.filename || "video").replace(/\.[^.]+$/, "");
+    const png = fin?.lastFrame ? viewUrl({ ...fin.lastFrame, type: fin.lastFrame.type || "temp" }) : null;
+    const save = button("Save", "download", "small", async () => {
+      try {
+        const blob = png ? await (await fetch(png)).blob() : await this.grabLastFrame(fin);
+        if (!blob) throw new Error("no frame");
+        const a = h("a", { href: URL.createObjectURL(blob), download: `${base}_last_frame.png` });
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      } catch (e) {
+        toast(this.root, "Couldn't get the last frame", "bad");
+      }
+    }, "Save the last frame as a PNG");
+    panel.appendChild(h("div.o-ph", h("div.sh3-h2", "Last frame"), fin ? save : h("span.sh3-muted", "after a finish")));
+    if (!fin) {
+      panel.appendChild(h("div.sh3-muted", "The frame the finished video ends on shows up here: save it to start the next video from it."));
+      return panel;
+    }
+    const shot = h("button.o-lframe", { type: "button", title: "See it big" });
+    const show = (src) => { clear(shot); shot.appendChild(h("img", { src, draggable: false })); };
+    const fromVideo = () => {
+      this.grabLastFrame(fin).then((blob) => { if (blob) show(URL.createObjectURL(blob)); }).catch(() => {});
+    };
+    if (png) {
+      const img = h("img", { src: png, draggable: false });
+      img.addEventListener("error", fromVideo, { once: true });          // a temp file goes when ComfyUI restarts
+      shot.appendChild(img);
+    } else {
+      fromVideo();
+    }
+    shot.addEventListener("click", () => {
+      const src = shot.querySelector("img")?.src;
+      if (!src) return;
+      const wrap = h("div.o-lbox", { onclick: () => wrap.remove(), title: "Click to close" }, h("img", { src, draggable: false }),
+        h("div.o-lbox-cap", `${base} · last frame`));
+      this.root.appendChild(wrap);
+      const esc = (e) => { if (e.key === "Escape") { wrap.remove(); document.removeEventListener("keydown", esc, true); } };
+      document.addEventListener("keydown", esc, true);
+    });
+    panel.appendChild(shot);
+    return panel;
+  }
+
+  // The last frame of a saved video, from the file itself (a frame drawn into a canvas, as a PNG blob)
+  grabLastFrame(fin) {
+    return new Promise((resolve) => {
+      if (!fin) return resolve(null);
+      const v = document.createElement("video");
+      v.muted = true;
+      v.preload = "auto";
+      v.crossOrigin = "anonymous";
+      v.addEventListener("loadedmetadata", () => { v.currentTime = Math.max(0, (v.duration || 0) - 0.02); });
+      v.addEventListener("seeked", () => {
+        const c = document.createElement("canvas");
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext("2d").drawImage(v, 0, 0);
+        c.toBlob((b) => resolve(b), "image/png");
+      }, { once: true });
+      v.addEventListener("error", () => resolve(null), { once: true });
+      v.src = viewUrl(fin);
+    });
   }
 
   renderRecent() {
@@ -476,12 +568,21 @@ class OutputWindow {
     on("executed", (e) => {
       const d = e.detail || {};
       const saver = this.saver();
+      // the last frame and the saved video come from the same run, in either order
+      if (this.lastFrameNodes().some((n) => String(n.id) === String(d.node))) {
+        const img = (d.output?.images || [])[0];
+        if (img) {
+          this.frames[d.prompt_id] = img;
+          const fin = this.final;
+          if (fin && fin.prompt_id === d.prompt_id) { fin.lastFrame = img; this.renderRight(); }
+        }
+      }
       if (saver && String(d.node) === String(saver.id)) {
         const g = [...(d.output?.gifs || []), ...(d.output?.videos || []), ...(d.output?.images || [])]
           .find((x) => /\.(mp4|webm|mov|mkv)$/i.test(x.filename || ""));
         if (g) {
           this.node.properties = this.node.properties || {};
-          this.node.properties.sh3_final = g;
+          this.node.properties.sh3_final = { ...g, prompt_id: d.prompt_id, ...(this.frames[d.prompt_id] ? { lastFrame: this.frames[d.prompt_id] } : {}) };
           this.render();
           this.loadRecent();
         }
@@ -523,7 +624,14 @@ function injectOutputStyles() {
 .sh3-o .o-bar span{position:absolute;left:0;top:0;bottom:0;background:var(--brand);border-radius:4px}
 .sh3-o .o-mbtn{background:rgba(10,8,16,.55);backdrop-filter:blur(12px);border-color:rgba(255,255,255,.18);color:#f3f1f8;height:38px}
 .sh3-o .o-mbtn.on{border-color:rgba(var(--ac),.8);box-shadow:0 0 16px rgba(var(--ac),.35)}
-.sh3-o .o-pipe,.sh3-o .o-set,.sh3-o .o-exp,.sh3-o .o-recent{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.sh3-o .o-pipe,.sh3-o .o-set,.sh3-o .o-exp,.sh3-o .o-recent,.sh3-o .o-last{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.sh3-o .o-lframe{display:block;width:100%;aspect-ratio:16/9;border-radius:13px;overflow:hidden;border:1px solid var(--stroke2);background:#000;
+  padding:0;cursor:zoom-in}
+.sh3-o .o-lframe img{width:100%;height:100%;object-fit:contain;display:block}
+.sh3-o .o-lbox{position:absolute;inset:0;z-index:90;background:rgba(0,0,0,.82);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;padding:30px;cursor:zoom-out;border-radius:inherit}
+.sh3-o .o-lbox img{max-width:100%;max-height:calc(100% - 40px);object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.sh3-o .o-lbox-cap{color:#ddd;font-size:13px}
 .sh3-o .o-ph{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .sh3-o .o-steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .sh3-o .o-step{border-radius:16px;background:var(--glass);border:1px solid var(--stroke);padding:14px;display:flex;flex-direction:column;gap:8px;min-height:140px}
