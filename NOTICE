@@ -57,10 +57,27 @@ THIS REPOSITORY'S OWN CODE
 
 The Muse Minimax Director / Refine engine code is Copyright (c) 2026 Muse
 Collective. The Ultimate H3 nodes (Setup, Models, Output, Director V2,
-Refine V2, Finish, Live Preview, Theme, RIFE to FPS, Color Lock), the example
-workflow and the changes to the engine are Copyright (c) 2026 stuubszzz.
-All of it is licensed under the MIT License — see LICENSE. The MIT License
-applies only to this code and confers no rights over MiniMax H3 itself.
+Refine V2, Finish, Live Preview, Theme, RIFE to FPS, Color Lock, Make a
+Character), the example workflow and the changes to the engine are
+Copyright (c) 2026 stuubszzz. All of it is licensed under the MIT License —
+see LICENSE. The MIT License applies only to this code and confers no
+rights over MiniMax H3 itself.
+
+============================================================
+REFMOD FILES (CHARACTERS FROM MANY PICTURES)
+============================================================
+
+stubelius_refmods.py reads and writes RefMod files in the format of
+ComfyUI-MiniMaxH3Mod (https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod),
+so files made with either pack load in the other: the latents under
+`latent` (or `ref_i` in a bundle), the JSON metadata under the header key
+`refmod_meta`, and the strength below 1 as that pack's mix of the latent
+with a blurred copy of itself. No code of that pack is carried here; the
+format and the strength maths are credited to it under its license:
+
+    ComfyUI-MiniMaxH3Mod
+    Copyright (c) 2026 Luisa (luisacaotica)
+    MIT License
 
 ============================================================
 FONTS

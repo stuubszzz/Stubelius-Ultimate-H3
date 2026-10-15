@@ -16,7 +16,7 @@ jumps to the others.
 | Window | Node | What it holds |
 |---|---|---|
 | **1 Setup** | Stubelius H3 Setup | The four modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), and their fine-tuning; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
-| **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks) and, in Reference mode, the cast and reference clips |
+| **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
 | **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
@@ -215,6 +215,63 @@ at that second with ComfyUI's **Add Guide for MiniMax H3**: the video is made ar
   come out grey) and stays inside its chunk. The speaker icon on a clip's block turns its sound off.
 - Drag a block to move it, × removes it; up to 8. A sound may run on into the next chunk.
 - The Quality polish doesn't pin them again: the take already plays them.
+
+## Characters from many pictures
+
+A character can be made from many pictures of it, saved once and given to every chunk of a video. The
+**Characters** lane at the bottom of the Director's timeline holds them, in both modes.
+
+- **+ → Make a character from pictures**: drop 8 to 16 pictures of one character (the face from
+  different angles and in different light, nothing else in focus), name it and say in words how it
+  looks. **Make** encodes the pictures with H3's video VAE (a few seconds, after a render in progress)
+  and saves the character in `models/refmods` (next to your `loras` folder), with a contact sheet of its
+  pictures. **+ → Add a saved character** picks one from that folder.
+- Click a character for its **strength** (below 100% its pictures are blurred, not hidden: a looser
+  likeness), to switch it off, or to remove it. **Add it to chunk N's first shot** types its
+  description into that shot: H3's text side never sees the pictures, so say who it is in words too.
+- **What it does.** The pictures ride H3's own reference path, the one a Reference (Omni) picture
+  takes, in every chunk and in both modes. In First/Last Frame mode, where H3 otherwise has only the
+  first and last frame and the words, a character holds the face that words alone don't. In Reference
+  (Omni) mode it adds to a picture in the cast: use both.
+- **What it costs.** Each picture adds reference tokens to every sampling step: about 500 at 0.5 MP
+  (the default) and 1,000 at 1 MP. Eight pictures added about 4 s to a 6 s Hybrid chunk at 0.5 MP and
+  13 s at 1 MP, and 0.5 MP held the face as well as 1 MP.
+
+In tests (one character from 8 pictures, a scene none of them show, a 6 s Hybrid take on each of three
+seeds) each take was scored with face recognition against other footage of the character (1.0 = the
+same face; the character's own footage scores 0.74 by this measure):
+
+| | Median score |
+|---|---|
+| Reference (Omni), words only | 0.35 |
+| Reference (Omni), one design picture in the cast | 0.51 |
+| Reference (Omni), one frame from a take in the cast | 0.64 |
+| Reference (Omni), a character (8 pictures, 0.5 MP) | 0.66 |
+| Reference (Omni), a design picture + a character (1 MP) | 0.72 |
+| First/Last Frame, words only | 0.40 |
+| First/Last Frame, a character (1 MP) | 0.74 |
+
+**Past one chunk.** 12 s in two 6 s chunks in First/Last Frame mode, the character described in words
+in the first chunk only (the second chunk's shot just says "he"), three seeds per row:
+
+| | Chunk 1 | Chunk 2 | Render (12 s) |
+|---|---|---|---|
+| Hybrid, words only | 0.43 | 0.49 | 132 s |
+| Hybrid, a character (0.5 MP) | 0.72 | 0.81 | 155 s |
+| Hybrid, a character (1 MP) | 0.71 | 0.80 | 168 s |
+| PDMD, words only | 0.51 | 0.53 | 158 s |
+| PDMD, a character (1 MP) | 0.75 | 0.79 | 164 s |
+
+The character holds the face through the join: with it every seed's second chunk scored 0.77 to 0.82,
+with words alone 0.34 to 0.62 (the second chunk scores higher in every row: he turns to the camera
+there). The second chunk's spoken line came out word for word in every take, louder with a character.
+
+The files are [ComfyUI-MiniMaxH3Mod](https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod)'s RefMods:
+ones made with that pack load here, and the other way round. Tuned RefMods (made with shootthesound's
+Fizgig) are tuned for one checkpoint; use them in the mode they were made for. For scripts, in `timeline_data`:
+`refmods` (`[{"file": "<name in models/refmods, or a path>", "strength": 1.0}]`, `"enabled": false`
+leaves one out); the node **Stubelius H3 Make a Character (RefMod)** makes one from pictures in the
+input folder.
 
 ## Voices: a recorded line, a voice sample, Lip Sync
 
