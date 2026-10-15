@@ -733,11 +733,12 @@ export class DirectorWindow {
     if (!strength) return "off";
     const name = String(widgetValue(models, "speedup_lora", "") || "");
     if (!name || name === "none") return "none";
-    if (/motion.?enhancer/i.test(name)) return "Motion Enhancer";
-    if (/lightx2v/i.test(name)) return "LightX2V";
-    if (/taomate/i.test(name)) return "TaoMate";
-    if (/turbo/i.test(name)) return "Turbo 8-step";
-    return name.split(/[\\/]/).pop().replace(/\.safetensors$/i, "").slice(0, 22);
+    const file = name.split(/[\\/]/).pop();            // the file's own name: a "turbo" folder says nothing about it
+    if (/motion.?enhancer/i.test(file)) return "Motion Enhancer";
+    if (/lightx2v/i.test(file)) return "LightX2V";
+    if (/taomate/i.test(file)) return "TaoMate";
+    if (/turbo.?8.?step|fl2v_turbo/i.test(file)) return "Turbo 8-step";
+    return file.replace(/\.safetensors$/i, "").slice(0, 22);
   }
 
   outputLabel(output) {

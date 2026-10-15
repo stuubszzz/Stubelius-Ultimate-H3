@@ -51,11 +51,11 @@ function precision(name) {
 }
 
 function turboInfo(name) {
-  const n = String(name || "");
+  const n = String(name || "").split(/[\\/]/).pop();      // the file's own name, not its folder
   if (/motion.?enhancer/i.test(n)) return ["Motion Enhancer", "8-step turbo · livelier motion and sound"];
   if (/lightx2v|fl2v_turbo_8step|turbo_8step/i.test(n)) return ["LightX2V turbo", "8-step turbo · the original"];
   if (/taomate/i.test(n)) return ["TaoMate", "3-step finisher"];
-  return [n.split(/[\\/]/).pop().replace(/\.safetensors$/i, ""), "turbo LoRA"];
+  return [n.replace(/\.safetensors$/i, ""), "turbo LoRA"];
 }
 
 // The render size a mode's megapixels make at the Director's shape (as _resolve_resolution does)
@@ -307,8 +307,11 @@ class SetupWindow {
     if (!m) return panel;
     const all = widget(m, "speedup_lora")?.options?.values || [];
     const current = widgetValue(m, "speedup_lora", "none");
-    // H3 turbo LoRAs only (an H3 folder or "h3" in the name): other models' turbo LoRAs don't fit H3
-    const turbos = all.filter((n) => n !== "none" && TURBO_RE.test(n) && /h3/i.test(n) && !/pdmd|nfe/i.test(n));
+    // H3 turbo LoRAs only (an H3 folder or "h3" in the name): other models' turbo LoRAs don't fit H3. The known kinds
+    // first, so a folder full of test turbos doesn't push them off the list; any other LoRA from the dropdown below
+    const kind = (n) => (/motion.?enhancer/i.test(n) ? 0 : /lightx2v|fl2v_turbo_8step/i.test(n) ? 1 : /taomate/i.test(n) ? 2 : 3);
+    const turbos = all.filter((n) => n !== "none" && TURBO_RE.test(n) && /h3/i.test(n) && !/pdmd|nfe/i.test(n))
+      .sort((a, b) => kind(a) - kind(b) || a.localeCompare(b, undefined, { sensitivity: "base" }));
     const shown = [current, ...turbos.filter((n) => n !== current)].filter((n) => n && n !== "none").slice(0, 4);
     const left = h("div.su-lcol", label("Turbo LoRA · Speed and Hybrid"));
     const infos = shown.map(turboInfo);
@@ -322,6 +325,7 @@ class SetupWindow {
       left.appendChild(h("button.su-turbo", { type: "button", class: on ? "on" : null, title: n, onclick: () => this.setM("speedup_lora", n) },
         h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", text)), on ? badge("active", "ac") : null));
     }
+    left.appendChild(this.speedupPicker(all, turbos, current));
     const pd = widget(m, "pdmd_lora");
     if (pd) {
       left.appendChild(h("div.su-pdmd", icon("bolt", 18), h("div.su-pdmd-t", h("b", "PDMD 4-step LoRA"),
@@ -356,6 +360,49 @@ class SetupWindow {
     if (right.childNodes.length === 1) right.appendChild(h("div.sh3-muted", "None"));
     panel.appendChild(h("div.su-lgrid", left, right));
     return panel;
+  }
+
+  // Any LoRA file as the turbo LoRA: a dropdown of every LoRA (the ones named like speed-ups first, then by folder)
+  speedupPicker(all, turbos, current) {
+    const files = all.filter((n) => n && n !== "none");
+    const open = h("button.su-addl", { type: "button", title: "Pick any LoRA file as the turbo LoRA" }, icon("folder", 14),
+      `Choose another speed-up LoRA… (${turbos.length} found)`);
+    open.addEventListener("click", () => {
+      const filter = h("input.sh3-input.su-pick-filter", { type: "text", placeholder: "filter by name or folder…" });
+      const sel = h("select.sh3-select.su-file.su-pick-sel");
+      const fill = () => {
+        clear(sel);
+        const q = filter.value.trim().toLowerCase();
+        const keep = (x) => !q || x.toLowerCase().includes(q);
+        sel.appendChild(h("option", { value: "", text: "pick a LoRA…", selected: true, disabled: true }));
+        const named = turbos.filter(keep);
+        if (named.length) {
+          const og = h("optgroup", { label: "Named like speed-ups" });
+          named.forEach((x) => og.appendChild(h("option", { value: x, text: x.split(/[\\/]/).pop() + (x === current ? "  (active)" : "") })));
+          sel.appendChild(og);
+        }
+        const groups = new Map();
+        for (const x of files) {
+          if (turbos.includes(x) || !keep(x)) continue;
+          const i = Math.max(x.lastIndexOf("\\"), x.lastIndexOf("/"));
+          const f = i > 0 ? x.slice(0, i).replace(/\\/g, " / ") : "(loras root)";
+          if (!groups.has(f)) groups.set(f, []);
+          groups.get(f).push(x);
+        }
+        [...groups.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).forEach((f) => {
+          const og = h("optgroup", { label: f });
+          groups.get(f).forEach((x) => og.appendChild(h("option", { value: x, text: x.split(/[\\/]/).pop() + (x === current ? "  (active)" : "") })));
+          sel.appendChild(og);
+        });
+      };
+      sel.addEventListener("change", () => { if (sel.value) this.setM("speedup_lora", sel.value); });
+      filter.addEventListener("input", fill);
+      fill();
+      const row = h("div.su-pick", filter, sel, iconButton("x", "Close", () => row.replaceWith(open)));
+      open.replaceWith(row);
+      filter.focus();
+    });
+    return open;
   }
 
   memoryPanel() {
@@ -528,6 +575,9 @@ function injectSetupStyles() {
 .sh3-u .su-turbo.on .su-radio{border-color:rgb(var(--ac));background:rgb(var(--ac));box-shadow:0 0 12px rgba(var(--ac),.5)}
 .sh3-u .su-turbo.on .su-radio:after{content:"";position:absolute;inset:4px;border-radius:50%;background:#fff}
 .sh3-u .su-pdmd{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 16px;background:var(--glass);border:1px solid var(--stroke)}
+.sh3-u .su-pick{display:flex;align-items:center;gap:8px;border-radius:14px;padding:8px;border:1px solid rgba(var(--ac),.45);background:var(--glass)}
+.sh3-u .su-pick-filter{flex:0 0 38%;min-width:0}
+.sh3-u .su-pick-sel{flex:1;min-width:0}
 .sh3-u .su-pdmd .sh3-ic{color:rgb(var(--cut))}
 .sh3-u .su-pdmd-t{flex:1;min-width:0;display:flex;flex-direction:column}
 .sh3-u .su-pdmd .sh3-muted{font-size:12px;white-space:nowrap}
