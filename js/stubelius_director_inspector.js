@@ -2,7 +2,7 @@
 //
 // How it joins the chunk before it, its shots (what happens, timed), its style, soundscape and music,
 // its LoRAs, and its takes: every render of it that is kept, the one playing in the video lit; Retake
-// renders it again with a new seed, Hunt renders it with four, a click on a take picks it back.
+// renders it again with a new seed, Hunt renders it with 2, 3 or 4, a click on a take picks it back.
 import { h, icon, clear, seg, button, iconButton, label, menu, slider, toggle, toast } from "./stubelius_ui.js";
 import { CARRY, MIN_CUT_SECONDS, MAX_CHARACTER_SLOTS } from "./stubelius_director_shared.js";
 
@@ -393,9 +393,17 @@ function takesSection(d, k) {
   sec.appendChild(row);
   if (t.stale && t.list.length) sec.appendChild(h("div.i-note", icon("info", 14), "You changed this chunk since: these takes are from before. Render it to get one with the change."));
   else if (t.list.length && !t.current) sec.appendChild(h("div.i-note", icon("info", 14), `Seed ${d.seedOf(k)} isn't rendered with these settings yet.`));
+  // Hunt with 2, 3 or 4 seeds: the button repeats the last count, the arrow picks another (remembered with the workflow)
+  const huntN = [2, 3, 4].includes(Number(d.fold?.hunt)) ? Number(d.fold.hunt) : 4;
+  const huntMore = iconButton("chevronDown", "How many seeds to hunt with: 2, 3 or 4", (e) => menu(e.currentTarget, [2, 3, 4].map((n) => ({
+    label: `Hunt with ${n} seeds`, icon: n === huntN ? "check" : null,
+    onClick: () => { d.fold.hunt = n; d.saveUi(); d.refresh(["insp"]); d.hunt(k, n); },
+  }))));
+  huntMore.classList.add("i-hunt-n");
   sec.appendChild(h("div.i-tbtns",
     button("Retake", "refresh", "", () => d.retake(k), "Render this chunk again with a new seed (the chunks before it stay as they are)"),
-    button("Hunt ×4", "dice", "brand", () => d.hunt(k, 4), "Render this chunk with four seeds side by side; pick one in Seeds")));
+    h("div.i-hunt", button(`Hunt ×${huntN}`, "dice", "brand", () => d.hunt(k, huntN),
+      `Render this chunk with ${huntN} seeds side by side; pick one in Seeds (the arrow: 2, 3 or 4 seeds)`), huntMore)));
   if (own) sec.appendChild(h("div.i-own", icon("lock", 13), `Own seed ${d.seedOf(k)}`,
     h("button.sh3-link", { type: "button", onclick: () => d.clearOwnSeed(k) }, "back to the Director's seed")));
   return sec;
@@ -480,6 +488,10 @@ const CSS = `
 .sh3-d .i-take.new:hover{color:var(--text);border-color:rgba(var(--ac),.6)}
 .sh3-d .i-tbtns{display:flex;gap:8px}
 .sh3-d .i-tbtns .sh3-btn{flex:1}
+.sh3-d .i-hunt{flex:1;display:flex;gap:0;min-width:0}
+.sh3-d .i-hunt .sh3-btn{border-top-right-radius:0;border-bottom-right-radius:0}
+.sh3-d .i-hunt .i-hunt-n{height:40px;width:36px;border-radius:0 12px 12px 0;border:1px solid rgba(var(--ac),.5);border-left:0;
+  background:linear-gradient(100deg,rgba(var(--ac),.16),rgba(var(--ac2),.1))}
 .sh3-d .i-own{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)}
 .sh3-d .i-own .sh3-link{text-decoration:underline;text-underline-offset:2px}
 `;
