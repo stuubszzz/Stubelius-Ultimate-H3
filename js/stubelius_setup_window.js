@@ -325,6 +325,19 @@ class SetupWindow {
       left.appendChild(h("button.su-turbo", { type: "button", class: on ? "on" : null, title: n, onclick: () => this.setM("speedup_lora", n) },
         h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", text)), on ? badge("active", "ac") : null));
     }
+    // its strength, here as well as under the mode cards (the same setting: each mode fills it in)
+    const sw = widget(this.node, "speedup_lora_strength");
+    if (sw && current && current !== "none") {
+      const o = sw.options || {};
+      const pdmd = widgetValue(this.node, "mode") === "PDMD";
+      const val = h("b.su-tstr-v", Number(sw.value ?? 1).toFixed(2));
+      left.appendChild(h("div.su-tstr", { class: pdmd ? "off" : null },
+        h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "not used in PDMD mode (it has its own LoRA)" : "each mode sets it; slide to change"),
+          h("div.sh3-spacer"), val),
+        slider({ min: Number.isFinite(o.min) ? o.min : 0, max: Number.isFinite(o.max) ? o.max : 2, step: 0.05, value: Number(sw.value ?? 1),
+          title: "Turbo LoRA strength", onInput: (v) => { val.textContent = Number(v).toFixed(2); },
+          onChange: (v) => this.setS("speedup_lora_strength", v) })));
+    }
     left.appendChild(this.speedupPicker(all, turbos, current));
     const pd = widget(m, "pdmd_lora");
     if (pd) {
@@ -576,6 +589,11 @@ function injectSetupStyles() {
 .sh3-u .su-turbo.on .su-radio:after{content:"";position:absolute;inset:4px;border-radius:50%;background:#fff}
 .sh3-u .su-pdmd{display:flex;align-items:center;gap:12px;border-radius:16px;padding:12px 16px;background:var(--glass);border:1px solid var(--stroke)}
 .sh3-u .su-pick{display:flex;align-items:center;gap:8px;border-radius:14px;padding:8px;border:1px solid rgba(var(--ac),.45);background:var(--glass)}
+.sh3-u .su-tstr{display:flex;flex-direction:column;gap:8px;border-radius:14px;padding:10px 16px 12px;background:var(--well);border:1px solid var(--stroke)}
+.sh3-u .su-tstr-h{display:flex;align-items:center;gap:10px}
+.sh3-u .su-tstr-h .sh3-muted{font-size:12px}
+.sh3-u .su-tstr-v{font-family:var(--fh);font-size:15px}
+.sh3-u .su-tstr.off{opacity:.55}
 .sh3-u .su-pick-filter{flex:0 0 38%;min-width:0}
 .sh3-u .su-pick-sel{flex:1;min-width:0}
 .sh3-u .su-pdmd .sh3-ic{color:rgb(var(--cut))}
