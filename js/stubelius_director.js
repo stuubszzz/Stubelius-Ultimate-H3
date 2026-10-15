@@ -12,7 +12,7 @@
 import {
   h, icon, clear, seg, button, iconButton, badge, label, menu, closeMenus, toast, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, hideWidget, mountWindow,
-  autoHeight, fmtSeconds, fmtBytes, refreshThemes,
+  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn,
 } from "./stubelius_ui.js";
 import { normalizeMiddleFrames } from "./stubelius_middle_frames.js";
 import { normalizeCues } from "./stubelius_cues.js";
@@ -252,13 +252,17 @@ export class DirectorWindow {
     if (this.sel >= n) this.sel = n - 1;
   }
 
-  // After the length or chunk size changed: drop the chunks past the end, asking first when they hold text
-  applyLengthChange(revert) {
+  // After the length or chunk size changed: drop the chunks past the end, asking first (in the window) when they hold text
+  async applyLengthChange(revert) {
     const n = this.numChunks();
     if (this.timeline.chunks.length > n) {
       const dropping = this.timeline.chunks.slice(n);
       const hasText = dropping.some((c) => c.segments.some((s) => (s.prompt || "").trim()));
-      if (hasText && !confirm(`The new length drops ${dropping.length} chunk(s) at the end that still have shots in them. Continue?`)) {
+      if (hasText && !(await confirmIn(this.root, {
+        title: `Drop ${dropping.length === 1 ? "the last chunk" : `the last ${dropping.length} chunks`}?`,
+        text: `The new length ends before ${dropping.length === 1 ? "a chunk that still has" : "chunks that still have"} shots in it. `
+          + "They go, with their shots, style, sound and LoRAs.",
+        ok: "Drop them", danger: true }))) {
         revert?.();
         this.commit();
         this.refresh();
@@ -308,13 +312,15 @@ export class DirectorWindow {
   }
 
   // This chunk out (its content; the chunks after it move up) and the length shrinks by one chunk size
-  deleteChunk(k) {
+  async deleteChunk(k) {
     if (this.timeline.chunks.length <= 1) {
       toast(this.root, "A video keeps at least one chunk: clear its shots instead.");
       return;
     }
     const chunk = this.timeline.chunks[k];
-    if (chunk?.segments.some((s) => (s.prompt || "").trim()) && !confirm(`Chunk ${k + 1} has shots in it. Delete it anyway?`)) return;
+    if (chunk?.segments.some((s) => (s.prompt || "").trim()) && !(await confirmIn(this.root, {
+      title: `Delete chunk ${k + 1}?`, text: "It still has shots in it. The chunks after it move up and the video gets one chunk shorter.",
+      ok: "Delete it", danger: true }))) return;
     this.timeline.chunks.splice(k, 1);
     this.setWidgetValue("duration_seconds",
       Math.max(this.chunkSizeSeconds, Math.round((this.durationSeconds - this.chunkSizeSeconds) * 10) / 10));
@@ -543,7 +549,8 @@ export class DirectorWindow {
   }
 
   async clearTakes() {
-    if (!confirm("Remove every kept take? The next render starts from scratch.")) return;
+    if (!(await confirmIn(this.root, { title: "Remove every kept take?", text: "The next render starts from scratch.",
+      ok: "Remove them", danger: true }))) return;
     try {
       await api.fetchApi("/stubelius_ultimate_h3/takes/clear", { method: "POST", body: "{}" });
     } catch (e) {

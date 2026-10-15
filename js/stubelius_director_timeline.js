@@ -4,7 +4,7 @@
 // frame), shots (each chunk's shots, their edges dragged to time them), sound (sounds and clips pinned at
 // a second; in Reference mode the Lip Sync recording) and chunks, with how each one joins the chunk
 // before it. Pictures, sounds and clips dropped on it land at that second.
-import { h, icon, clear, iconButton, menu, toast } from "./stubelius_ui.js";
+import { h, icon, clear, iconButton, menu, toast, button, slider, popover, closeMenus } from "./stubelius_ui.js";
 import {
   MAX_MIDDLE_FRAMES, MIDDLE_GAP, defaultMiddleTime, clampMiddleTime, snapToNearest,
 } from "./stubelius_middle_frames.js";
@@ -213,26 +213,68 @@ function keyframeLane(d, dur, bounds, pct) {
   return lane;
 }
 
+// A middle frame's card, in the window: its picture, when the video reaches it (typed, nudged a tenth at a time or
+// slid between its neighbours, the preview following), another picture, remove
 function middleMenu(d, anchor, mf, i) {
-  menu(anchor, [
-    { label: "Another picture…", icon: "upload", onClick: async () => { const f = await pickFile("image/*"); if (f) setMiddle(d, mf, f, null); } },
-    { label: `Set the second… (now ${mf.time.toFixed(2)} s)`, icon: "clock", onClick: () => {
-      const v = parseFloat(prompt(`When does the video reach middle frame ${i + 1}? Seconds from the start:`, mf.time.toFixed(2)));
-      if (!Number.isFinite(v)) return;
-      mf.time = Math.min(d.durationSeconds - MIDDLE_GAP, Math.max(MIDDLE_GAP, v));
-      d.middleFrames();
-      d.touched(d.chunkOf(mf.time));
-      d.refresh(["tl", "insp"]);
-    } },
-    null,
-    { label: "Remove this middle frame", icon: "trash", danger: true, onClick: () => {
-      const live = d.middleFrames();
-      const at = live.indexOf(mf);
-      if (at >= 0) live.splice(at, 1);
-      d.touched(d.chunkOf(mf.time));
-      d.refresh(["tl", "insp", "foot"]);
-    } },
-  ]);
+  const list = d.middleFrames();
+  const dur = d.durationSeconds;
+  const lo = i > 0 ? list[i - 1].time + MIDDLE_GAP : MIDDLE_GAP;
+  const hi = i < list.length - 1 ? list[i + 1].time - MIDDLE_GAP : dur - MIDDLE_GAP;
+  const input = h("input.sh3-input.t-mf-time", { type: "number", step: 0.1, min: lo.toFixed(1), max: hi.toFixed(1), value: mf.time.toFixed(1),
+    title: "Seconds from the start" });
+  const where = h("span.sh3-muted.t-mf-where");
+  const show = (t) => {
+    input.value = t.toFixed(1);
+    where.textContent = `frame ${Math.round(t * 24)} · chunk ${d.chunkOf(t) + 1}`;
+  };
+  const commit = (t) => {
+    if (!Number.isFinite(t)) { show(mf.time); return; }
+    const v = clampMiddleTime(list, list.indexOf(mf), t, dur);
+    show(v);
+    range.setValue(v);
+    d.preview?.seek?.(v);
+    if (Math.abs(v - mf.time) < 1e-6) return;
+    const from = d.chunkOf(mf.time);
+    mf.time = v;
+    d.middleFrames();
+    d.touched(from);
+    d.touched(d.chunkOf(v));
+    d.refresh(["tl", "insp"]);
+  };
+  const range = slider({ min: lo, max: hi, step: 0.1, value: mf.time, title: "Drag: the preview follows",
+    onInput: (t) => { show(t); d.preview?.seek?.(t); }, onChange: (t) => commit(t) });
+  input.addEventListener("change", () => commit(parseFloat(input.value)));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(parseFloat(input.value)); }
+    if (e.key === "Escape") closeMenus();
+  });
+  const nudge = (s) => commit(Math.round((mf.time + s) * 10) / 10);
+  show(mf.time);
+  const card = h("div.t-mfcard",
+    h("div.t-mf-head", h("div.t-kf-t.t-mf-thumb", h("img", { src: pictureUrl(mf), draggable: false })),
+      h("div", h("b", `Middle frame ${i + 1}`), h("div.sh3-muted", "When the video reaches it"))),
+    h("div.t-mf-row", iconButton("minus", "A tenth of a second earlier", () => nudge(-0.1)), input, h("span.t-mf-unit", "s"),
+      iconButton("plus", "A tenth of a second later", () => nudge(0.1)), h("div.sh3-spacer"), where),
+    range,
+    h("div.t-mf-range.sh3-muted", h("span", `${lo.toFixed(1)} s`), h("span", "between the frames around it"), h("span", `${hi.toFixed(1)} s`)),
+    h("div.t-mf-foot",
+      button("Another picture…", "upload", "small", async () => {
+        closeMenus();
+        const f = await pickFile("image/*");
+        if (f) setMiddle(d, mf, f, null);
+      }),
+      h("div.sh3-spacer"),
+      button("Remove", "trash", "small flat danger", () => {
+        closeMenus();
+        const live = d.middleFrames();
+        const at = live.indexOf(mf);
+        if (at >= 0) live.splice(at, 1);
+        d.touched(d.chunkOf(mf.time));
+        d.refresh(["tl", "insp", "foot"]);
+      })));
+  popover(anchor, card, 400);
+  d.preview?.seek?.(mf.time);
+  setTimeout(() => { input.focus(); input.select(); }, 30);
 }
 
 async function pickFirst(d) {
@@ -603,6 +645,16 @@ const CSS = `
 .sh3-d .t-kf-m.cutkf small{color:rgb(var(--cut))}
 .sh3-d .t-kf-m.clip .t-kf-t{border-color:rgba(var(--ok),.8);box-shadow:0 8px 24px rgba(0,0,0,.35),0 0 18px rgba(var(--ok),.25)}
 .sh3-d .t-kf-m:hover .t-kf-t{filter:brightness(1.12)}
+/* a middle frame's card */
+.sh3-d .t-mfcard{display:flex;flex-direction:column;gap:12px;padding:6px}
+.sh3-d .t-mf-head{display:flex;align-items:center;gap:12px}
+.sh3-d .t-mf-thumb{width:84px;height:48px;flex:none}
+.sh3-d .t-mf-row{display:flex;align-items:center;gap:8px}
+.sh3-d .t-mf-time{width:84px;text-align:center;font-family:var(--fh);font-weight:600;font-size:15px}
+.sh3-d .t-mf-unit{color:var(--text2)}
+.sh3-d .t-mf-where{font-size:12px}
+.sh3-d .t-mf-range{display:flex;justify-content:space-between;font-size:11px;margin-top:-6px}
+.sh3-d .t-mf-foot{display:flex;align-items:center;gap:8px}
 .sh3-d .t-kf-slot{position:absolute;top:0;width:96px;height:56px;border-radius:11px;border:1.5px dashed var(--stroke2);background:var(--well);
   color:var(--text3);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:500}
 .sh3-d .t-kf-slot.start{left:0} .sh3-d .t-kf-slot.end{right:0}

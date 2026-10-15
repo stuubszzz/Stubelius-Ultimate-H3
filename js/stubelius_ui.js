@@ -206,6 +206,7 @@ const P = {
   chevronDown: "M6 9l6 6l6 -6",
   chevronUp: "M6 15l6 -6l6 6",
   plus: "M12 5l0 14M5 12l14 0",
+  minus: "M5 12l14 0",
   x: "M18 6l-12 12M6 6l12 12",
   refresh: "M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4",
   dice: "M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2zM8.5 8.5h.01M15.5 8.5h.01M12 12h.01M8.5 15.5h.01M15.5 15.5h.01",
@@ -433,6 +434,38 @@ export function toast(root, text, kind = "") {
   (root.closest?.(".sh3") || root).appendChild(el);
   requestAnimationFrame(() => el.classList.add("in"));
   setTimeout(() => { el.classList.remove("in"); setTimeout(() => el.remove(), 400); }, 2600);
+}
+
+// A question inside the window, never the browser's own dialog: true for OK (or Enter), false for Cancel, Escape or
+// a click beside it
+export function confirmIn(root, { title = "Are you sure?", text = "", ok = "OK", cancel = "Cancel", danger = false } = {}) {
+  const host = root?.closest?.(".sh3") || root || document.body;
+  host.querySelector(":scope > .sh3-modal-wrap")?.remove();
+  closeMenus();
+  return new Promise((resolve) => {
+    let wrap = null;
+    const done = (v) => {
+      document.removeEventListener("keydown", onKey, true);
+      wrap?.remove();
+      resolve(v);
+    };
+    const onKey = (e) => {
+      if (!wrap?.isConnected) return;
+      if (e.key === "Escape" || e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        done(e.key === "Enter");
+      }
+    };
+    const yes = button(ok, danger ? "trash" : null, danger ? "primary danger" : "primary", () => done(true));
+    const no = button(cancel, null, "", () => done(false));
+    wrap = h("div.sh3-modal-wrap", { onclick: (e) => { if (e.target === wrap) done(false); } },
+      h("div.sh3-modal", { role: "dialog" }, h("div.sh3-h2", title), text ? h("div.sh3-modal-text", text) : null,
+        h("div.sh3-modal-foot", h("div.sh3-spacer"), no, yes)));
+    host.appendChild(wrap);
+    document.addEventListener("keydown", onKey, true);
+    setTimeout(() => yes.focus(), 30);
+  });
 }
 
 // The window frame every window uses: gradient edge, glass inside, header with the step bar.
@@ -762,6 +795,14 @@ button.sh3-chip:hover{border-color:var(--stroke2);background:var(--glass2)}
 .sh3-btn.flat:hover{color:var(--text);border-color:var(--stroke)}
 .sh3-btn.danger:hover{border-color:rgba(var(--bad),.6);color:rgb(var(--bad))}
 .sh3-btn.wide{width:100%}
+.sh3-btn.primary{background:var(--brand);border:0;color:var(--on);font-weight:700}
+.sh3-btn.primary:hover{filter:brightness(1.07)}
+.sh3-btn.primary.danger{background:rgb(var(--bad));color:#fff}
+.sh3 .sh3-modal-wrap{position:absolute;inset:0;z-index:90;background:rgba(0,0,0,.5);display:grid;place-items:center;border-radius:inherit}
+.sh3 .sh3-modal{width:520px;max-width:calc(100% - 40px);display:flex;flex-direction:column;gap:14px;padding:22px 24px;border-radius:20px;
+  background:var(--menu);border:1px solid var(--stroke2);box-shadow:0 24px 60px rgba(0,0,0,.5)}
+.sh3 .sh3-modal-text{color:var(--text2);font-size:14px;line-height:1.5}
+.sh3 .sh3-modal-foot{display:flex;align-items:center;gap:10px;margin-top:4px}
 
 /* segmented switch, toggle, slider, fields */
 .sh3-seg{display:flex;border-radius:13px;background:var(--well);border:1px solid var(--stroke);padding:4px;gap:4px}
