@@ -42,6 +42,8 @@ const CSS = `
 .sh3-d .d-knob{position:absolute;top:5px;width:24px;height:24px;border-radius:50%;background:#fff;pointer-events:none;
   box-shadow:0 0 0 5px rgba(var(--ac),.35),0 0 24px rgba(var(--ac),.8)}
 .sh3-d .d-film{position:absolute;left:22px;right:22px;bottom:18px;height:62px;display:flex;gap:6px;z-index:3}
+.sh3-d .d-film.busy{opacity:.35;pointer-events:none}
+.sh3-d .d-pv-spin{width:34px;height:34px;border-width:3px}
 .sh3-d .d-film-cell{flex:1;border-radius:9px;overflow:hidden;border:1px solid rgba(255,255,255,.14);background-color:rgba(255,255,255,.05);
   background-size:cover;background-position:center;padding:0;position:relative}
 .sh3-d .d-film-cell.blank{background:rgba(255,255,255,.04);border-style:dashed}
@@ -254,7 +256,10 @@ export function buildPreview(d) {
   }
 
   function render() {
-    const src = source();
+    // while a render is queued or running, the old video doesn't play: the live frames, or a note, until the new one
+    const busy = d.run.state === "queued" || d.run.state === "running";
+    if (busy) st.hover = null;
+    const src = busy ? null : source();
     const p = poster();
     d.ambient.style.backgroundImage = p ? `url("${p}")` : "none";
     bg.style.backgroundImage = p ? `url("${p}")` : "none";
@@ -264,6 +269,23 @@ export function buildPreview(d) {
       live.style.display = "none";
       liveVideo.style.display = "none";
       if (!liveVideo.paused) liveVideo.pause();
+    }
+    film.classList.toggle("busy", busy);
+    if (busy) {
+      if (!video.paused) video.pause();
+      video.style.display = "none";
+      controls.style.display = "none";
+      if (!(d.live && d.run.state === "running")) {
+        empty.style.display = "flex";
+        clear(empty);
+        empty.append(h("div.d-pv-empty-ic", h("div.sh3-spin.d-pv-spin")),
+          h("div.sh3-h3", d.run.state === "queued" ? "Waiting in the queue" : (d.run.text || "Rendering")),
+          h("div.sh3-muted", "The new take plays here when it's done. Live frames show here while it samples when a live preview model is set in Setup."));
+        if (p) empty.classList.add("over-poster"); else empty.classList.remove("over-poster");
+      }
+      drawChips();
+      drawFilm();
+      return;
     }
     if (src) {
       if (video.dataset.src !== src.url) {
