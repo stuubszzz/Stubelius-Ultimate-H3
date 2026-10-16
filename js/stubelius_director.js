@@ -12,7 +12,7 @@
 import {
   h, icon, clear, seg, button, iconButton, badge, label, menu, closeMenus, toast, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, hideWidget, mountWindow,
-  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn,
+  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn, queueRun,
 } from "./stubelius_ui.js";
 import { normalizeMiddleFrames } from "./stubelius_middle_frames.js";
 import { normalizeCues } from "./stubelius_cues.js";
@@ -49,8 +49,10 @@ export class DirectorWindow {
     this.tw = widget(node, "timeline_data");
     this.w = {};
     for (const name of OWN_WIDGETS) this.w[name] = widget(node, name);
+    this.pendingFlags = null;       // render_until / hunt_chunk for the next prompt only (see queue())
+    this.hookPrompt();
     this.timeline = this.loadState();
-    if (this.freshId) this.commit();
+    if (this.freshId || this.hadFlags) this.commit();
     this.sel = Math.max(0, Math.min(this.numChunks() - 1, Number(node.properties?.sh3_sel) || 0));
     this.selShot = null;            // shot index highlighted in the selected chunk
     this.report = null;             // the last takes report of this node (stubelius_takes.py)
@@ -134,7 +136,8 @@ export class DirectorWindow {
       .filter((e) => e && typeof e.file === "string" && e.file)
       .map((e) => ({ ...e, strength: Math.max(0, Math.min(1, Number(e.strength ?? 1) || 0)) }));
     if (parsed.source_clip && (typeof parsed.source_clip !== "object" || !parsed.source_clip.file)) delete parsed.source_clip;
-    // a render-until or a hunt is asked for one queue at a time (see queue()); never left on
+    // a render-until or a hunt goes with one prompt only (see queue()); an older one saved with it gets it taken out
+    this.hadFlags = "render_until" in parsed || "hunt_chunk" in parsed;
     delete parsed.render_until;
     delete parsed.hunt_chunk;
     // takes are kept for every Director the window shows (stubelius_takes.py)
@@ -166,6 +169,29 @@ export class DirectorWindow {
   commit() {
     if (this.tw) this.tw.value = JSON.stringify(this.timeline);
     this.node.setDirtyCanvas?.(true, true);
+  }
+
+  // Render to chunk N and a hunt go with one prompt only: they're added to the timeline while ComfyUI builds that
+  // prompt (it can build it later, after another queue call has sent), never to the widget the workflow saves
+  hookPrompt() {
+    const tw = this.tw;
+    if (!tw || tw.__sh3Prompt) return;
+    tw.__sh3Prompt = true;
+    const base = tw.serializeValue;
+    const win = this;
+    tw.serializeValue = async function (...args) {
+      let value = base ? await base.apply(this, args) : this.value;
+      const flags = win.pendingFlags;
+      if (flags) {
+        win.pendingFlags = null;
+        try {
+          value = JSON.stringify(Object.assign(JSON.parse(value), flags));
+        } catch (e) {
+          // not a timeline: sent as it is
+        }
+      }
+      return value;
+    };
   }
 
   // a chunk the user changed since the takes report (its takes there are from before the change)
@@ -672,6 +698,7 @@ export class DirectorWindow {
 
   // Queue the workflow. `until` (a chunk index) and `hunt` go into this one prompt only.
   async queue({ until = null, hunt = null, label = null } = {}) {
+    if (this.submitting) return;                // a second click while this one is being sent
     if (!this.hasContent()) {
       toast(this.root, "Nothing to render yet: type what happens in a shot, or add a picture", "warn");
       this.select(0);
@@ -679,23 +706,28 @@ export class DirectorWindow {
       return;
     }
     if (until !== null && until >= this.numChunks() - 1 && !hunt) until = null;
-    if (until !== null) this.timeline.render_until = until;
-    if (hunt) this.timeline.hunt_chunk = hunt;
+    const flags = {};
+    if (until !== null) flags.render_until = until;
+    if (hunt) flags.hunt_chunk = hunt;
     this.commit();
     this.pendingRecipe = this.recipeNow();
     this.holdFinish(until === null && !hunt);
     this.run = { state: "queued", label: label || (until !== null ? `Rendering to chunk ${until + 1}` : "Rendering") };
     this.renderStatus();
     this.preview.render();                   // the old video stops: the new one is on its way
+    this.pendingFlags = Object.keys(flags).length ? flags : null;
+    this.submitting = true;
+    let r;
     try {
-      await app.queuePrompt(0, 1);
-    } catch (e) {
-      this.run = { state: "error", label: "Couldn't queue: " + (e?.message || e) };
+      r = await queueRun();
     } finally {
-      delete this.timeline.render_until;
-      delete this.timeline.hunt_chunk;
-      this.commit();
-      this.renderStatus();
+      this.submitting = false;
+    }
+    if (!r.ok) {                             // ComfyUI turned it down (and said why): nothing is on its way
+      this.pendingFlags = null;
+      this.run = { state: "error", label: "Not rendered: " + r.why };
+      this.live = null;
+      this.refresh(["status", "cmd", "preview"]);
     }
   }
 
@@ -969,8 +1001,11 @@ export class DirectorWindow {
     });
     on("execution_error", (e) => {
       const d = e.detail || {};
-      if (!this.isMe(d.node_id)) return;
-      this.run = { state: "error", label: `Stopped: ${String(d.exception_message || "error").split("\n")[0].slice(0, 120)}` };
+      const mine = this.isMe(d.node_id);
+      // a node before the Director failing stops the render it waits in (the Models node, a missing pack...)
+      if (!mine && this.run.state !== "queued") return;
+      const where = mine ? "" : `${app.graph?.getNodeById?.(d.node_id)?.title || d.node_type || "a node before it"}: `;
+      this.run = { state: "error", label: `Stopped: ${where}${String(d.exception_message || "error").split("\n")[0].slice(0, 120)}` };
       this.live = null;
       this.refresh(["status", "cmd", "preview"]);
     });
@@ -1096,7 +1131,7 @@ app.registerExtension({
       const d = this._sh3;
       if (d) {
         d.timeline = d.loadState();
-        if (d.freshId) d.commit();
+        if (d.freshId || d.hadFlags) d.commit();
         d.fold = this.properties?.sh3_fold || {};
         d.sel = Math.max(0, Math.min(d.numChunks() - 1, Number(this.properties?.sh3_sel) || 0));
         d.report = null;

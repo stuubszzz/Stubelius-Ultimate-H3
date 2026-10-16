@@ -436,6 +436,29 @@ export function toast(root, text, kind = "") {
   setTimeout(() => { el.classList.remove("in"); setTimeout(() => el.remove(), 400); }, 2600);
 }
 
+// Queue the workflow as ComfyUI's Queue button does. app.queuePrompt (frontend 1.55) shows ComfyUI's own message and
+// returns false when the server turns the prompt down; it also returns false at once while another queue call is
+// still sending (that call sends this one next). { ok: true } = queued or waiting behind that send; else
+// { ok: false, why } with a short reason for the window.
+export async function queueRun() {
+  const waits = !!app.processingQueue;
+  let ok;
+  try {
+    ok = await app.queuePrompt(0, 1);
+  } catch (e) {
+    return { ok: false, why: String(e?.message || e) };
+  }
+  if (ok === false && !waits) return { ok: false, why: notQueuedReason() };
+  return { ok: true };
+}
+
+function notQueuedReason() {
+  const nodes = Object.keys(app.lastNodeErrors || {}).map((id) => app.graph?.getNodeById?.(id)).filter(Boolean);
+  if (nodes.some((n) => n.comfyClass === "StubeliusH3Models")) return "model files are missing (see the Setup window)";
+  if (nodes.length) return `ComfyUI stopped at ${nodes.slice(0, 2).map((n) => n.title || n.type).join(", ")} (see its message)`;
+  return "ComfyUI didn't take it (see its message)";
+}
+
 // A question with several answers inside the window: resolves with the chosen value (Enter = the first), null for
 // Escape or a click beside it. choices = [{ label, value, icon, kind }], the first one the main answer.
 export function chooseIn(root, { title = "", text = "", choices = [] } = {}) {

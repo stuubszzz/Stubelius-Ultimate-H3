@@ -7,6 +7,7 @@
 import {
   h, icon, clear, button, iconButton, label, badge, menu, toast, windowFrame, markSteps, goToStep, glideTo, injectStyles,
   widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtClock, fmtBytes, refreshThemes, windowOrCompact,
+  queueRun,
 } from "./stubelius_ui.js";
 import { viewUrl } from "./stubelius_director_media.js";
 import { splitViewer } from "./stubelius_viewer.js";
@@ -121,10 +122,9 @@ class SeedsWindow {
     if (vids[0]?.partial) { toast(this.root, "This is the video up to one chunk: render the rest first"); return; }
     if (this.dw() && !(await this.dw().checkFinish(this.root))) return;     // settings changed since these seeds?
     if (!this.winner()) this.pick(vids[0]);
-    try {
-      await app.queuePrompt(0, 1);
-    } catch (e) {
-      toast(this.root, "Couldn't queue: " + (e?.message || e), "bad");
+    const r = await queueRun();
+    if (!r.ok) {
+      toast(this.root, "Not finished: " + r.why, "bad");
       return;
     }
     const out = nodesOfType("StubeliusH3Finish")[0];

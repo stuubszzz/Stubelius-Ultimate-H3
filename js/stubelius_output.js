@@ -8,7 +8,7 @@
 import {
   h, icon, clear, seg, button, iconButton, label, badge, toast, select, slider, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtClock, fmtBytes, refreshThemes,
-  windowOrCompact,
+  windowOrCompact, queueRun,
 } from "./stubelius_ui.js";
 import { viewUrl } from "./stubelius_director_media.js";
 import { splitViewer } from "./stubelius_viewer.js";
@@ -108,13 +108,21 @@ class OutputWindow {
     }
     const dw = this.director()?._sh3;
     if (dw && !(await dw.checkFinish(this.root))) return;          // settings changed since these seeds?
+    const before = this.stage;
     this.stage = { stage: "queued" };
     this.renderStatus();
-    try {
-      await app.queuePrompt(0, 1);
-    } catch (e) {
-      toast(this.root, "Couldn't queue: " + (e?.message || e), "bad");
+    const r = await queueRun();
+    if (!r.ok) {                             // ComfyUI turned it down (and said why)
+      this.stage = before;
+      this.renderStatus();
+      toast(this.root, "Not finished: " + r.why, "bad");
     }
+  }
+
+  // a finish queued or under way (its stages come from the Finish node)
+  busy() {
+    const s = this.stage?.stage;
+    return !!s && s !== "done" && s !== "hold" && s !== "error";
   }
 
   async openFolder() {
@@ -182,6 +190,7 @@ class OutputWindow {
     let text = `Ready to finish · ${size} · ${fps} fps`, cls = "";
     if (!this.winner()) { text = "Waiting for a winner (Seeds)"; cls = "warn"; }
     if (st?.stage === "queued") { text = "Finishing · queued"; cls = "busy"; }
+    else if (st?.stage === "error") { text = `Not finished: ${st.why || "stopped"}`; cls = "bad"; }
     else if (st?.stage === "hold") {
       text = st.why === "partial" ? `Waiting: chunks 1-${st.chunks} of ${st.of} rendered, render the rest` : "Waiting for a winner (Seeds)";
       cls = "warn";
@@ -600,6 +609,18 @@ class OutputWindow {
         }
       }
     });
+    // a Finish that doesn't run sends no stages: nothing changed (cached), it failed, or it was stopped
+    const settle = (stage) => { this.stage = stage; this.progress = null; this.render(); };
+    on("execution_cached", (e) => {
+      if (this.stage?.stage === "queued" && (e.detail?.nodes || []).some((id) => this.isMe(id))) settle(this.node.properties?.sh3_done || null);
+    });
+    on("execution_error", (e) => {
+      if (!this.busy()) return;
+      const d = e.detail || {};
+      const where = this.isMe(d.node_id) ? "" : `${app.graph?.getNodeById?.(d.node_id)?.title || d.node_type || "a node before it"}: `;
+      settle({ stage: "error", why: where + String(d.exception_message || "error").split("\n")[0].slice(0, 140) });
+    });
+    on("execution_interrupted", () => { if (this.busy()) settle(this.node.properties?.sh3_done || null); });
     on("stubelius-winner", () => this.render(), window);
     on("stubelius-takes", () => this.markSteps(), window);
   }
