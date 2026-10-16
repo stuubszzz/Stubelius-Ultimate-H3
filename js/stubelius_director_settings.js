@@ -13,7 +13,8 @@ export function openFileMenu(d, anchor) {
 }
 
 async function saveTimeline(d) {
-  const text = JSON.stringify(d.timeline, null, 2);
+  // the length and chunk size go with it: the sounds and middle frames are timed against them
+  const text = JSON.stringify({ ...d.timeline, length_seconds: d.durationSeconds, chunk_seconds: d.chunkSizeSeconds }, null, 2);
   const name = "ultimate_h3_timeline.json";
   if (window.showSaveFilePicker) {
     try {
@@ -43,12 +44,19 @@ function loadTimeline(d) {
     try {
       const parsed = JSON.parse(await file.text());
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("not a timeline");
-      const keep = d.timeline.takes_id;
+      const keep = d.timeline.takes_id, owner = d.timeline.takes_owner;
+      // its length first (a file saved before it carried no length keeps the Director's), so nothing is cut short
+      const { length_seconds: len, chunk_seconds: chunk } = parsed;
+      delete parsed.length_seconds;
+      delete parsed.chunk_seconds;
+      if (Number.isFinite(Number(chunk)) && Number(chunk) > 0) d.setWidgetValue("chunk_duration_seconds", Number(chunk));
+      if (Number.isFinite(Number(len)) && Number(len) > 0) d.setWidgetValue("duration_seconds", Number(len));
       d.tw.value = JSON.stringify(parsed);
       d.timeline = d.loadState();
       d.timeline.takes_id = keep;
-      d.commit();
-      d.edited = new Set(d.timeline.chunks.map((_, k) => k));
+      if (owner) d.timeline.takes_owner = owner;
+      d.edited.clear();
+      d.touchAll();
       d.refresh();
       toast(d.root, `Loaded ${file.name}`);
     } catch (err) {

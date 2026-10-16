@@ -35,7 +35,7 @@ export function buildRefs(d) {
   const panel = h("div.sh3-panel.r-panel");
   const lang = h("input.sh3-input.r-lang", { type: "text", value: d.timeline.dialogue_language || "English",
     title: "The language of every spoken line" });
-  lang.addEventListener("change", () => { d.timeline.dialogue_language = lang.value.trim() || "English"; d.commit(); });
+  lang.addEventListener("change", () => { d.timeline.dialogue_language = lang.value.trim() || "English"; d.touchAll(); });
   panel.appendChild(h("div.r-head",
     h("div", h("div.sh3-h2", "Cast and references"),
       h("div.sh3-muted", "Characters and a place the model keeps, reference clips, and the voices. Ref Audio N is Ref N's voice.")),
@@ -70,7 +70,7 @@ function charSlot(d, idx) {
       const up = await uploadFile(file);
       const entry = { ...up, description: "" };
       if (isBg) d.timeline.background = entry; else d.timeline.characters[idx] = entry;
-      d.commit();
+      d.touchAll();
       d.refresh(["refs", "insp", "foot", "preview"]);
     } catch (err) {
       console.error("[Stubelius Director] upload failed", err);
@@ -87,7 +87,7 @@ function charSlot(d, idx) {
   const pic = h("div.r-pic", h("img", { src: pictureUrl(data), draggable: false }), h("span.r-pic-name", name));
   const del = iconButton("x", "Remove", () => {
     if (isBg) d.timeline.background = {}; else d.timeline.characters[idx] = null;
-    d.commit();
+    d.touchAll();
     d.refresh(["refs", "insp", "foot", "preview"]);
   });
   del.classList.add("r-del");
@@ -95,11 +95,11 @@ function charSlot(d, idx) {
   dropTarget(pic, set);
   const desc = h("textarea.sh3-text.r-desc", { rows: 2, placeholder: isBg ? "The place, e.g. a sunlit beach at low tide" : "Who this is: look, clothes, age…" });
   desc.value = data.description || "";
-  desc.addEventListener("input", () => { data.description = desc.value; d.commit(); });
+  desc.addEventListener("input", () => { data.description = desc.value; d.touchAll(); });
   const analyze = button(data.description ? "Analyze again" : "Analyze", "sparkles", "small", () => runAnalysis(d, idx, isBg, analyze, desc),
     "Describe the picture with the Analyze backend (Settings)");
   slot.append(pic, desc, h("div.r-row", analyze,
-    select(VISUAL_RETENTION, data.retention || "fully_preserved", (v) => { data.retention = v; d.commit(); }, "r-mini")));
+    select(VISUAL_RETENTION, data.retention || "fully_preserved", (v) => { data.retention = v; d.touchAll(); }, "r-mini")));
   return slot;
 }
 
@@ -120,7 +120,7 @@ async function runAnalysis(d, idx, isBg, btn, descInput) {
     if (result.status === "success") {
       data.description = result.description;
       descInput.value = result.description;
-      d.commit();
+      d.touchAll();
       btn.querySelector("span").textContent = "Analyze again";
     } else {
       toast(d.root, "Analyze: " + result.message, "bad");
@@ -159,7 +159,7 @@ function avSlot(d, kind, idx) {
       }
       e._blobUrl = URL.createObjectURL(file);
       d.timeline[key][idx] = e;
-      d.commit();
+      d.touchAll();
       d.refresh(["refs", "foot", "tl"]);
     } catch (err) {
       console.error("[Stubelius Director] upload failed", err);
@@ -169,7 +169,7 @@ function avSlot(d, kind, idx) {
   const headRow = h("div.r-av-head", h("span.r-av-title", title));
   if (entry) {
     headRow.appendChild(h("span.r-av-file", { title: entry.fileName || entry.file }, d.timeline.show_filenames === false ? "" : (entry.fileName || "")));
-    headRow.appendChild(iconButton("x", "Remove", () => { d.timeline[key][idx] = null; d.commit(); d.refresh(["refs", "foot", "tl"]); }));
+    headRow.appendChild(iconButton("x", "Remove", () => { d.timeline[key][idx] = null; d.touchAll(); d.refresh(["refs", "foot", "tl"]); }));
   }
   slot.appendChild(headRow);
   if (!entry) {
@@ -184,11 +184,11 @@ function avSlot(d, kind, idx) {
   slot.appendChild(media(d, kind, entry));
   if (isVideo) {
     slot.append(
-      h("label.r-inline", toggle(!!entry.includeAudio, (v) => { entry.includeAudio = v; d.commit(); }), "Send its sound too (as its own reference)"),
+      h("label.r-inline", toggle(!!entry.includeAudio, (v) => { entry.includeAudio = v; d.touchAll(); }), "Send its sound too (as its own reference)"),
       descField(entry, "If it shows a person or thing to reuse, describe it (blank = motion and camera only)", d),
-      h("div.r-row", select(VIDEO_ROLES, entry.role || "reference", (v) => { entry.role = v; d.commit(); }, "r-mini"),
+      h("div.r-row", select(VIDEO_ROLES, entry.role || "reference", (v) => { entry.role = v; d.touchAll(); }, "r-mini"),
         select(VIDEO_RETENTION, entry.retention || (entry.description ? "fully_preserved" : entry.role === "editing_source" ? "partially_preserved" : "weak_reference"),
-          (v) => { entry.retention = v; d.commit(); }, "r-mini")));
+          (v) => { entry.retention = v; d.touchAll(); }, "r-mini")));
   } else {
     const paired = d.timeline.characters[idx];
     const pairedOk = paired && (paired.file || paired.image_b64);
@@ -197,7 +197,7 @@ function avSlot(d, kind, idx) {
       descField(entry, "Only used without a character in its Ref, e.g. Sarah: warm, mid-range", d),
       h("div.r-row", select(AUDIO_RETENTION, entry.retention || "reference", (v) => {
         entry.retention = v;
-        d.commit();
+        d.touchAll();
         d.refresh(["refs", "foot", "tl"]);
       }, "r-mini r-wide")));
     if (entry.retention === "fully_copy") slot.appendChild(lipSyncBox(d, entry, idx));
@@ -208,7 +208,7 @@ function avSlot(d, kind, idx) {
 function descField(entry, placeholder, d) {
   const t = h("textarea.sh3-text.r-desc", { rows: 2, placeholder });
   t.value = entry.description || "";
-  t.addEventListener("input", () => { entry.description = t.value; d.commit(); });
+  t.addEventListener("input", () => { entry.description = t.value; d.touchAll(); });
   return t;
 }
 
@@ -250,19 +250,19 @@ function media(d, kind, entry) {
     entry.sourceDurationSec = el.duration;
     if (atEnd) entry.trimEndSec = el.duration;
     scrub.max = String(el.duration);
-    d.commit();
+    d.touchAll();
     showTrim();
   });
   scrub.addEventListener("input", () => { el.currentTime = parseFloat(scrub.value); });
   const setIn = button("Set in", null, "small", () => {
     entry.trimStartSec = Math.max(0, Math.min(el.currentTime, (entry.trimEndSec ?? el.duration ?? el.currentTime + 1) - 0.05));
-    d.commit();
+    d.touchAll();
     showTrim();
     d.refresh(["tl"]);
   });
   const setOut = button("Set out", null, "small", () => {
     entry.trimEndSec = Math.max(el.currentTime, (entry.trimStartSec || 0) + 0.05);
-    d.commit();
+    d.touchAll();
     showTrim();
     d.refresh(["tl"]);
   });
@@ -279,6 +279,7 @@ function lipSyncBox(d, entry, idx) {
   const model = select(["tiny", "base", "small", "medium"], entry.whisper_model || "small", (v) => { entry.whisper_model = v; d.commit(); }, "r-mini");
   const has = Array.isArray(entry.transcript_segments) && entry.transcript_segments.length;
   const go = button(has ? "Transcribe again" : "Transcribe", "type", "small", async () => {
+    if (go.classList.contains("disabled")) return;            // still transcribing: one at a time
     if (!entry.file) { toast(d.root, "The upload is still saving: try again in a second."); return; }
     go.classList.add("disabled");
     go.querySelector("span").textContent = "Transcribing…";
@@ -289,7 +290,7 @@ function lipSyncBox(d, entry, idx) {
       const result = await resp.json();
       if (result.status === "success") {
         entry.transcript_segments = result.segments;
-        d.commit();
+        d.touchAll();
         d.refresh(["refs"]);
         return;
       }
@@ -307,7 +308,7 @@ function lipSyncBox(d, entry, idx) {
     entry.transcript_segments.forEach((seg, i) => {
       const m = Math.floor(seg.start / 60), s = (seg.start % 60).toFixed(1);
       const input = h("input.sh3-input.r-line", { type: "text", value: seg.text });
-      input.addEventListener("input", () => { entry.transcript_segments[i].text = input.value; d.commit(); });
+      input.addEventListener("input", () => { entry.transcript_segments[i].text = input.value; d.touchAll(); });
       list.appendChild(h("div.r-line-row", h("span.r-ts", `${m}:${s.padStart(4, "0")}`), input));
     });
     box.appendChild(list);

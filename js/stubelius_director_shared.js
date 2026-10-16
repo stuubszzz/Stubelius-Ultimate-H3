@@ -13,6 +13,16 @@ export const CARRY = [
 ];
 export const CARRY_IDS = new Set(CARRY.map((c) => c[0]));
 
+// A speed-up LoRA by its name: "8step", "4-steps", a known kind; not a training step count ("V16-step00002250").
+// One rule for the Setup window's speed-up list and the per-chunk LoRA lists (which leave speed-ups and PDMD out).
+export const SPEEDUP_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|(^|[^0-9])([1-9]|1[0-6])[-_ ]?steps?(?![0-9])/i;
+export const PDMD_RE = /pdmd|[0-9]nfe/i;
+
+export function isSpeedupLora(name) {
+  const file = String(name || "").split(/[\\/]/).pop();
+  return SPEEDUP_RE.test(file) || PDMD_RE.test(file);
+}
+
 export function newSeed() {
   return Math.floor(Math.random() * 2 ** 32);
 }

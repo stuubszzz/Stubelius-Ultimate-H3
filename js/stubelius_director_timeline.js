@@ -123,7 +123,12 @@ function keyframeLane(d, dur, bounds, pct) {
     const m = h("button.t-kf-m.start.clip", { type: "button", title: `${clip.fileName || clip.file}: the video continues this clip from its last frame`,
       onclick: (e) => menu(e.currentTarget, [
         { label: "Another clip or a first frame…", icon: "upload", onClick: () => pickFirst(d) },
-        { label: "Remove the clip", icon: "trash", danger: true, onClick: () => { delete d.timeline.source_clip; d.touched(0); d.refresh(); } },
+        { label: "Remove the clip", icon: "trash", danger: true, onClick: () => {
+          delete d.timeline.source_clip;
+          snapClipCues(d);             // pinned clips back on the grid of a video without one in front
+          d.touched(0);
+          d.refresh();
+        } },
       ]) }, thumb(null, clipStill(clip)), h("small", "Clip · continues it"));
     lane.appendChild(m);
   } else if (first && (first.file || first.image_b64)) {

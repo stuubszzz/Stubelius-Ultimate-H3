@@ -14,7 +14,7 @@ import {
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, hideWidget, mountWindow,
   autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn, queueRun,
 } from "./stubelius_ui.js";
-import { normalizeMiddleFrames } from "./stubelius_middle_frames.js";
+import { normalizeMiddleFrames, MIDDLE_GAP } from "./stubelius_middle_frames.js";
 import { normalizeCues } from "./stubelius_cues.js";
 import { buildPreview } from "./stubelius_director_preview.js";
 import { buildInspector } from "./stubelius_director_inspector.js";
@@ -255,7 +255,7 @@ export class DirectorWindow {
     if (!v || v === this.w.mode.value) return;
     this.w.mode.value = v;
     this.w.mode.callback?.(v);
-    this.commit();
+    this.touchAll();                 // another model: every chunk's takes are from before
     this.refresh();
   }
 
@@ -307,25 +307,38 @@ export class DirectorWindow {
   // After the length or chunk size changed: drop the chunks past the end, asking first (in the window) when they hold text
   async applyLengthChange(revert) {
     const n = this.numChunks();
-    if (this.timeline.chunks.length > n) {
-      const dropping = this.timeline.chunks.slice(n);
-      const hasText = dropping.some((c) => c.segments.some((s) => (s.prompt || "").trim()));
-      if (hasText && !(await confirmIn(this.root, {
-        title: `Drop ${dropping.length === 1 ? "the last chunk" : `the last ${dropping.length} chunks`}?`,
-        text: `The new length ends before ${dropping.length === 1 ? "a chunk that still has" : "chunks that still have"} shots in it. `
-          + "They go, with their shots, style, sound and LoRAs.",
-        ok: "Drop them", danger: true }))) {
+    const dur = this.durationSeconds;
+    // what a shorter length takes away: chunks with shots, sounds and clips past its end, middle frames moved in
+    const backup = JSON.stringify({ cues: this.timeline.cues || [], middle: this.timeline.middle_frames || [] });
+    const dropping = this.timeline.chunks.length > n ? this.timeline.chunks.slice(n) : [];
+    const shots = dropping.some((c) => c.segments.some((s) => (s.prompt || "").trim()));
+    const cuesGone = (this.timeline.cues || []).filter((c) => Number(c.time) >= dur).length;
+    const midsMoved = (this.timeline.middle_frames || []).filter((m) => Number(m.time) > dur - MIDDLE_GAP).length;
+    if (shots || cuesGone || midsMoved) {
+      const lost = [
+        shots ? `${dropping.length === 1 ? "the last chunk" : `the last ${dropping.length} chunks`} (with shots in it)` : null,
+        cuesGone ? `${cuesGone} pinned sound${cuesGone > 1 ? "s or clips" : " or clip"}` : null,
+      ].filter(Boolean);
+      const ok = await confirmIn(this.root, {
+        title: "Make the video shorter?",
+        text: (lost.length ? `The new length ends before ${lost.join(" and ")}: ${lost.length > 1 ? "they go" : "it goes"}. ` : "")
+          + (midsMoved ? `${midsMoved} middle frame${midsMoved > 1 ? "s move" : " moves"} inside the new end.` : ""),
+        ok: "Make it shorter", danger: true });
+      if (!ok) {
         revert?.();
+        const b = JSON.parse(backup);
+        this.timeline.cues = b.cues;
+        this.timeline.middle_frames = b.middle;
         this.commit();
         this.refresh();
         return;
       }
-      this.timeline.chunks.length = n;
     }
+    if (dropping.length) this.timeline.chunks.length = n;
     this.syncChunkCount();
     this.middleFrames();
     this.cues();
-    this.commit();
+    this.touchAll();                 // the chunks start and end elsewhere now
     this.refresh();
   }
 
@@ -373,9 +386,22 @@ export class DirectorWindow {
     if (chunk?.segments.some((s) => (s.prompt || "").trim()) && !(await confirmIn(this.root, {
       title: `Delete chunk ${k + 1}?`, text: "It still has shots in it. The chunks after it move up and the video gets one chunk shorter.",
       ok: "Delete it", danger: true }))) return;
+    const [s, e] = this.bounds()[k] || [0, 0];
+    const span = Math.max(0, e - s);                       // this chunk's own length (the last one can be short)
     this.timeline.chunks.splice(k, 1);
-    this.setWidgetValue("duration_seconds",
-      Math.max(this.chunkSizeSeconds, Math.round((this.durationSeconds - this.chunkSizeSeconds) * 10) / 10));
+    // its middle frames and pinned sounds go with it; the later ones move up with their chunks
+    const moveUp = (list) => (list || []).filter((x) => !(Number(x.time) >= s && Number(x.time) < e))
+      .map((x) => (Number(x.time) >= e ? Object.assign(x, { time: Math.round((Number(x.time) - span) * 1000) / 1000 }) : x));
+    this.timeline.middle_frames = moveUp(this.timeline.middle_frames);
+    this.timeline.cues = moveUp(this.timeline.cues);
+    const min = this.w.duration_seconds?.options?.min ?? 1;
+    this.setWidgetValue("duration_seconds", Math.max(min, Math.round((this.durationSeconds - span) * 10) / 10));
+    // the takes report follows the chunks: the ones after it moved up one, and follow another chunk now
+    if (this.report?.chunks) {
+      this.report = { ...this.report, chunks: this.report.chunks.filter((c) => c.chunk !== k)
+        .map((c) => (c.chunk > k ? { ...c, chunk: c.chunk - 1 } : c)) };
+    }
+    for (let j = k; j < this.timeline.chunks.length; j++) this.markEdited(j);
     this.syncChunkCount();
     this.sel = Math.min(this.sel, this.numChunks() - 1);
     this.saveUi();
@@ -408,9 +434,13 @@ export class DirectorWindow {
     return this.timeline.refmods;
   }
 
-  // a character goes into every chunk, so every chunk's takes are from before the change
+  // a change that goes into every chunk (a character, a reference, the picture shape...): every chunk's takes are
+  // from before it. One save for all of them (a typed description calls this on every key).
   touchAll() {
-    for (let k = 0; k < this.numChunks(); k++) this.touched(k);
+    const first = !this.edited.size;
+    for (let k = 0; k < this.numChunks(); k++) this.markEdited(k);
+    this.commit();
+    if (first) this.renderStatus();
   }
 
   addRefmod(name) {
@@ -821,7 +851,7 @@ export class DirectorWindow {
     // shape, length, chunk size, seed
     const aspect = this.w.aspect_ratio;
     const aspectSel = h("select.d-val-select", {
-      title: "Picture shape", onchange: () => { this.setWidgetValue("aspect_ratio", aspectSel.value); this.commit(); },
+      title: "Picture shape", onchange: () => { this.setWidgetValue("aspect_ratio", aspectSel.value); this.touchAll(); this.refresh(["insp", "tl"]); },
     });
     for (const v of aspect?.options?.values || []) aspectSel.appendChild(h("option", { value: v, text: String(v).split(" ")[0], selected: v === aspect.value }));
     const numField = (value, title, onSet) => {
@@ -840,6 +870,9 @@ export class DirectorWindow {
       const digits = seedInput.value.replace(/[^0-9]/g, "") || "0";
       seedInput.value = digits;
       this.setWidgetValue("seed", Number(digits));
+      // the chunks on the Director's seed render differently from now on
+      for (let k = 0; k < this.numChunks(); k++) if (!this.hasOwnSeed(k)) this.markEdited(k);
+      this.commit();
       this.refresh(["insp", "tl", "preview"]);
     });
     const ctrl = this.w.control_after_generate;

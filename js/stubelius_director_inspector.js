@@ -4,14 +4,13 @@
 // its LoRAs, and its takes: every render of it that is kept, the one playing in the video lit; Retake
 // renders it again with a new seed, Hunt renders it with 2, 3 or 4, a click on a take picks it back.
 import { h, icon, clear, seg, button, iconButton, label, menu, slider, toggle, toast } from "./stubelius_ui.js";
-import { CARRY, MIN_CUT_SECONDS, MAX_CHARACTER_SLOTS } from "./stubelius_director_shared.js";
+import { CARRY, MIN_CUT_SECONDS, MAX_CHARACTER_SLOTS, isSpeedupLora } from "./stubelius_director_shared.js";
 
 const { api } = window.comfyAPI.api;
 
 const LORAS = { list: null, pending: null };
 const LORA_SUM_WARN = 2.0;
 const LORA_MAX = 9;
-const TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|step|pdmd|nfe/i;
 const shortName = (n) => (n || "").split(/[\\/]/).pop().replace(/\.safetensors$/i, "");
 const folderOf = (n) => { const i = Math.max((n || "").lastIndexOf("\\"), (n || "").lastIndexOf("/")); return i > 0 ? n.slice(0, i).replace(/\\/g, " / ") : "(loras root)"; };
 
@@ -270,26 +269,35 @@ function lorasSection(d, k, chunk) {
     on.length ? h("span.sh3-badge", { class: sum > LORA_SUM_WARN ? "cut" : null,
       title: sum > LORA_SUM_WARN ? "A high combined strength may break the render (slider LoRAs are made for it)" : "" }, `sum ${sum.toFixed(2)}`) : null));
   const chips = h("div.i-loras");
+  // the LoRA list once, then the chips say which files aren't on this machine (before a render fails on them)
+  const known = LORAS.list;
+  if (!known && chunk.loras.length && !LORAS.asked) { LORAS.asked = true; loraList().then(() => d.refresh(["insp"])); }
+  const missing = [];
   chunk.loras.forEach((row, i) => {
     const open = d.fold.lora === `${k}:${i}`;
     const strength = Number(row.strength ?? 1);
     const pct = Math.min(100, (Math.abs(strength) / 2) * 100);
+    const gone = !!(known && row.name && !known.includes(row.name));
+    const speedup = !!(row.name && isSpeedupLora(row.name));
+    if (gone && row.enabled !== false) missing.push(shortName(row.name));
     chips.appendChild(h("button.i-lora", {
-      type: "button", class: [open ? "open" : "", row.enabled === false ? "off" : ""].join(" ").trim() || null,
-      title: row.name || "pick a LoRA",
+      type: "button", class: [open ? "open" : "", row.enabled === false ? "off" : "", gone ? "missing" : ""].join(" ").trim() || null,
+      title: gone ? `${row.name}: not in models/loras on this machine`
+        : speedup ? `${row.name}: a speed-up LoRA. It belongs in the Setup window (its steps are the whole video's)` : row.name || "pick a LoRA",
       onclick: () => { d.fold.lora = open ? null : `${k}:${i}`; d.saveUi(); d.refresh(["insp"]); },
     }, icon("bolt", 15), h("span.i-lora-name", row.name ? shortName(row.name) : "pick a LoRA"),
     h("span.i-bar", h("span", { style: { width: `${pct}%` } })), h("b", strength.toFixed(2))));
   });
   chips.appendChild(h("button.i-addl", { type: "button", onclick: async () => {
     const list = await loraList();
-    const first = list.find((x) => !TURBO_RE.test(x)) || "";
+    const first = list.find((x) => !isSpeedupLora(x)) || "";
     chunk.loras.push({ name: first, strength: 1.0, enabled: true });
     d.fold.lora = `${k}:${chunk.loras.length - 1}`;
     d.touched(k);
     d.refresh(["insp"]);
   } }, icon("plus", 14), "Add LoRA"));
   sec.appendChild(chips);
+  if (missing.length) sec.appendChild(h("div.i-note.bad", icon("alert", 14), `Not in models/loras on this machine: ${missing.join(", ")}`));
 
   if (k > 0) {
     const before = (d.timeline.chunks[k - 1]?.loras || []).filter((l) => l.enabled !== false && l.name).map((l) => l.name);
@@ -309,7 +317,7 @@ function loraEditor(d, k, chunk, row, i) {
   const fill = (list) => {
     clear(sel);
     const q = filter.value.trim().toLowerCase();
-    const names = list.filter((x) => !TURBO_RE.test(x));
+    const names = list.filter((x) => !isSpeedupLora(x));
     if (row.name && !names.includes(row.name)) names.push(row.name);
     if (!row.name) sel.appendChild(h("option", { value: "", text: "pick a LoRA", selected: true }));
     const groups = new Map();
@@ -339,7 +347,6 @@ function loraEditor(d, k, chunk, row, i) {
     d.touched(k);
     d.refresh(["insp"]);
   });
-  const missing = LORAS.list && row.name && !LORAS.list.includes(row.name);
   ed.append(
     h("div.i-lora-line", filter, iconButton("refresh", "Read models/loras again", () => loraList(true).then(fill))),
     h("div.i-lora-line", sel),
@@ -360,7 +367,6 @@ function loraEditor(d, k, chunk, row, i) {
       }, "This LoRA, at this strength, on every chunk"),
       button("Remove", "trash", "small flat danger", () => { chunk.loras.splice(i, 1); d.fold.lora = null; d.touched(k); d.refresh(["insp"]); })),
   );
-  if (missing) ed.append(h("div.i-note.bad", icon("alert", 14), "Not found in models/loras on this machine"));   // (append() prints a null)
   return ed;
 }
 
@@ -462,6 +468,7 @@ const CSS = `
 .sh3-d .i-lora .sh3-ic{color:rgb(var(--ac))}
 .sh3-d .i-lora.open{border-color:rgba(var(--ac),.8);box-shadow:0 0 18px rgba(var(--ac),.25)}
 .sh3-d .i-lora.off{opacity:.5}
+.sh3-d .i-lora.missing{border-color:rgba(var(--bad),.7);background:rgba(var(--bad),.1)}
 .sh3-d .i-lora-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
 .sh3-d .i-bar{width:54px;height:5px;border-radius:3px;background:var(--glass3);position:relative;overflow:hidden;flex:none}
 .sh3-d .i-bar span{position:absolute;left:0;top:0;bottom:0;background:var(--brand)}

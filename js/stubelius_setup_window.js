@@ -10,6 +10,7 @@ import {
   THEME_SWATCHES, windowOrCompact,
 } from "./stubelius_ui.js";
 import { tidy } from "./stubelius_stage.js";
+import { SPEEDUP_RE } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -37,8 +38,7 @@ const PERF = [
   ["spectrum", "Spectrum forecasting", "chart", "faster, may soften"],
   ["h3_cache", "H3 step cache", "database", "faster, may soften"],
 ];
-// a few-step LoRA by its name: "8step", "4-steps"; not a training step count ("V16-step00002250")
-const TURBO_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|(^|[^0-9])([1-9]|1[0-6])[-_ ]?steps?(?![0-9])/i;
+const TURBO_RE = SPEEDUP_RE;            // a few-step LoRA by its name (stubelius_director_shared.js)
 const LORA_MAX = 9;
 
 function precision(name) {
