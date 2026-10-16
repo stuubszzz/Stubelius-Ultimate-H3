@@ -265,7 +265,6 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
     exactly, since that's the only place in H3's own source that encodes real
     (non-empty) audio."""
     from comfy import nested_tensor as _comfy_nested
-    import torchaudio
 
     n = _trim_to_grid(frames.shape[0])
     video_latent = vae.encode(frames[:n])
@@ -274,7 +273,12 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
     sr = audio["sample_rate"]
     vae_sr = getattr(audio_vae, "audio_sample_rate", 32000)
     if sr != vae_sr:
-        waveform = torchaudio.functional.resample(waveform, sr, vae_sr)
+        # ComfyUI's own resampler (0.38+, what H3's nodes use; newer installs may not have torchaudio at all)
+        try:
+            from comfy.audio import resample
+        except ImportError:
+            from torchaudio.functional import resample
+        waveform = resample(waveform, sr, vae_sr)
     audio_latent = audio_vae.encode(waveform[:1].movedim(1, -1))
 
     return {"samples": _comfy_nested.NestedTensor((video_latent, audio_latent))}, n

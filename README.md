@@ -352,6 +352,8 @@ Measured on an RTX 5090, 6.6 s clips at 1344x768 finished to 2K with DLSS5 + Col
 
 ## Install
 
+Needs ComfyUI 0.34 or newer (made and tested on 0.41, frontend 1.55): update ComfyUI first.
+
 **ComfyUI Manager:** Install via Git URL → `https://github.com/stuubszzz/Stubelius-Ultimate-H3`, then restart.
 
 **git:**
