@@ -86,11 +86,20 @@ class SeedsWindow {
     return k == null ? null : (v.chunk_seeds || [])[k] ?? null;
   }
 
-  // A hunt's tile is picked when its seed is the hunted chunk's own seed; any other tile when it is the winner
+  // The chunks a pick keeps in the Director: a hunt's chunk; every chunk of a video up to one chunk (Render the rest
+  // goes on from it); none for a whole video (the Finish takes its winner)
+  keeps(v) {
+    if (v.hunt != null) return [v.hunt];
+    if (v.partial && Array.isArray(v.chunk_seeds)) return v.chunk_seeds.map((_, k) => k);
+    return [];
+  }
+
+  // A tile is picked when the Director keeps its seeds for those chunks; a whole video's when it is the winner
   isPicked(v) {
-    if (v.hunt != null) {
+    const ks = this.keeps(v);
+    if (ks.length) {
       const dw = this.dw();
-      return !!dw && dw.hasOwnSeed(v.hunt) && dw.seedOf(v.hunt) === Number(v.chunk_seeds?.[v.hunt]);
+      return !!dw && ks.every((k) => dw.hasOwnSeed(k) && dw.seedOf(k) === Number(v.chunk_seeds?.[k]));
     }
     return v.candidate === this.winner();
   }
@@ -99,20 +108,21 @@ class SeedsWindow {
     return this.videos.find((v) => this.isPicked(v))?.candidate || 0;
   }
 
-  // Pick a seed: the winner for the Finish; in a chunk hunt that chunk's seed in the Director (the hunt is
-  // only the video up to that chunk, so there is no winner to finish yet)
+  // Pick a seed: the winner for the Finish; in a hunt or a video up to one chunk, its seeds for those chunks in the
+  // Director (there is no whole video to finish yet; Render the rest goes on from them)
   pick(v) {
     const dw = this.dw();
-    if (dw && v.hunt != null && v.chunk_seeds?.[v.hunt] != null) {
-      dw.pickTake(v.hunt, v.chunk_seeds[v.hunt]);
-      toast(this.root, `Chunk ${v.hunt + 1}: seed ${v.chunk_seeds[v.hunt]} kept. Hunt the next chunk or render the rest.`);
+    const ks = this.keeps(v).filter((k) => v.chunk_seeds?.[k] != null);
+    if (dw && ks.length) {
+      dw.pickSeeds(ks.map((k) => [k, v.chunk_seeds[k]]));
+      toast(this.root, v.hunt != null ? `Chunk ${v.hunt + 1}: seed ${v.chunk_seeds[v.hunt]} kept. Hunt the next chunk or render the rest.`
+        : `Seed ${v.candidate} kept for chunks 1-${ks.length}: render the rest next.`);
     } else {
       const f = this.finish();
       if (f) setWidget(f, "winner", v.candidate);
       toast(this.root, `Seed ${v.candidate} is the winner`);
     }
-    window.dispatchEvent(new CustomEvent("stubelius-winner"));
-    this.render();
+    window.dispatchEvent(new CustomEvent("stubelius-winner"));     // this window redraws on it too
     dw?.markSteps?.();
   }
 
@@ -121,7 +131,13 @@ class SeedsWindow {
     if (!vids.length) { toast(this.root, "Render the video first (Director)"); return; }
     if (vids[0]?.partial) { toast(this.root, "This is the video up to one chunk: render the rest first"); return; }
     if (this.dw() && !(await this.dw().checkFinish(this.root))) return;     // settings changed since these seeds?
-    if (!this.winner()) this.pick(vids[0]);
+    if (!this.winner()) {
+      // the tile kept for a hunted chunk (a hunt of the last chunk is the whole video), else the first seed
+      const v = vids.find((x) => this.isPicked(x)) || vids[0];
+      const f = this.finish();
+      if (f) setWidget(f, "winner", v.candidate);
+      window.dispatchEvent(new CustomEvent("stubelius-winner"));
+    }
     const r = await queueRun();
     if (!r.ok) {
       toast(this.root, "Not finished: " + r.why, "bad");
@@ -168,6 +184,8 @@ class SeedsWindow {
   }
 
   renderLeft() {
+    // playback goes on across a redraw (a toggle, a pick): the same moment, still playing if it was
+    const was = this.master ? { t: this.master.currentTime || 0, playing: !this.master.paused } : null;
     const box = clear(this.left);
     const vids = this.videos;
     this.tiles = [];
@@ -196,6 +214,19 @@ class SeedsWindow {
     }
     box.appendChild(this.transport());
     this.applySound();
+    if (was && this.master) this.resume(was);
+  }
+
+  resume({ t, playing }) {
+    const videos = this.viewer ? [this.viewer.b] : (this.tiles || []).map((x) => x.video);
+    for (const v of videos) {
+      const go = () => {
+        try { v.currentTime = t; } catch (e) { /* not seekable yet */ }
+        if (playing) v.play().catch(() => {});
+      };
+      if (v.readyState >= 1) go();
+      else v.addEventListener("loadedmetadata", go, { once: true });
+    }
   }
 
   tile(v) {
@@ -217,11 +248,12 @@ class SeedsWindow {
       "Hear this seed (the others stay quiet)");
     soloBtn.classList.add("s-solo");
     soloBtn.dataset.cand = String(v.candidate);
+    const keeps = this.keeps(v).length > 0;
     const pickBtn = button(isWin ? "Picked" : "Pick", "crown", isWin ? "small s-picked" : "small", () => this.pick(v),
-      v.hunt != null ? `Keep this seed for chunk ${v.hunt + 1}` : "Finish this seed");
+      v.hunt != null ? `Keep this seed for chunk ${v.hunt + 1}` : keeps ? "Keep this seed's chunks: render the rest from them" : "Finish this seed");
     const el = h("div.s-tile", { class: isWin ? "win" : null },
       h("div.s-vwrap", video,
-        h("div.s-tchips", isWin ? h("div.sh3-gchip.brand.s-winchip", icon(v.hunt != null ? "lock" : "crown", 15), v.hunt != null ? "Kept" : "Winner") : null,
+        h("div.s-tchips", isWin ? h("div.sh3-gchip.brand.s-winchip", icon(keeps ? "lock" : "crown", 15), keeps ? "Kept" : "Winner") : null,
           h("div.sh3-gchip", icon("dice", 15), `Seed ${v.candidate}${seed != null ? " · " + seed : ""}`)),
         h("div.s-tchips-r", flagChip),
         scrub),
@@ -245,10 +277,12 @@ class SeedsWindow {
     return this.picked() ? `Sound: seed ${this.picked()}` : "Sound: seed 1";
   }
 
-  // one seed's sound at a time: the solo one, else the picked one's, else the first
+  // one seed's sound at a time: the solo one, else the picked one's, else the first; always one that is on show
   applySound() {
-    const want = this.solo || this.picked() || this.tiles[0]?.v.candidate;
-    for (const t of this.tiles || []) t.video.muted = t.v.candidate !== want;
+    const tiles = this.tiles || [];
+    let want = this.solo || this.picked() || tiles[0]?.v.candidate;
+    if (!tiles.some((t) => t.v.candidate === want)) want = tiles[0]?.v.candidate;
+    for (const t of tiles) t.video.muted = t.v.candidate !== want;
   }
 
   transport() {

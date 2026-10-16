@@ -352,7 +352,7 @@ function loraEditor(d, k, chunk, row, i) {
         d.timeline.chunks.forEach((c, j) => {
           const hit = c.loras.find((l) => l.name === row.name);
           if (hit) { hit.strength = row.strength; hit.enabled = row.enabled !== false; } else c.loras.push({ name: row.name, strength: row.strength ?? 1, enabled: row.enabled !== false });
-          d.edited.add(j);
+          d.markEdited(j);
         });
         d.commit();
         toast(d.root, `${shortName(row.name)} on every chunk`);

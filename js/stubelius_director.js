@@ -197,9 +197,16 @@ export class DirectorWindow {
   // a chunk the user changed since the takes report (its takes there are from before the change)
   touched(k) {
     const first = !this.edited.size;
-    this.edited.add(k);
+    this.markEdited(k);
     this.commit();
     if (first) this.renderStatus();
+  }
+
+  // when chunk k was edited (a count): a takes report clears only the edits made before its render was queued
+  markEdited(k) {
+    this.editSeq = (this.editSeq || 0) + 1;
+    (this.editedAt ||= new Map()).set(k, this.editSeq);
+    this.edited.add(k);
   }
 
   saveUi() {
@@ -460,11 +467,23 @@ export class DirectorWindow {
     return this.report?.chunks?.find((c) => c.chunk === k) || null;
   }
 
-  // The takes of chunk k (the main video's), oldest first; `current` = the one with its seed now
+  // The seed chunk k had in the video on show: the last render's, for the picked seed. The seed box may have moved on
+  // since (randomize or increment after queueing), and a picked seed's chunks aren't the first seed's.
+  renderedSeed(k) {
+    const rc = this.reportChunk(k);
+    if (!rc) return null;
+    const w = Number(widgetValue(this.finishNode(), "winner", 0)) || 0;
+    const c = (w >= 1 && rc.candidates?.[w - 1]) || rc.candidates?.[0];
+    const s = Number(c?.seed ?? rc.seed);
+    return Number.isFinite(s) ? s : null;
+  }
+
+  // The takes of chunk k (the main video's), oldest first; `current` = the one in the video now: its own seed's, else
+  // the one the last render used
   takesOf(k) {
     const rc = this.reportChunk(k);
     const list = rc?.takes || [];
-    const seed = this.seedOf(k);
+    const seed = !this.hasOwnSeed(k) && rc ? (this.renderedSeed(k) ?? this.seedOf(k)) : this.seedOf(k);
     return { list, base: rc?.base || null, current: list.find((t) => Number(t.seed) === seed) || null, stale: this.edited.has(k) };
   }
 
@@ -505,7 +524,14 @@ export class DirectorWindow {
 
   onReport(report, fresh = true) {
     this.report = report;
-    if (fresh) this.edited.clear();
+    if (fresh) {
+      // edits made while that render ran aren't in it (a render queued from ComfyUI's own button: all of them)
+      const upTo = this.queuedSeq ?? Infinity;
+      for (const k of [...this.edited]) {
+        if ((this.editedAt?.get(k) || 0) <= upTo) { this.edited.delete(k); this.editedAt?.delete(k); }
+      }
+      this.queuedSeq = null;
+    }
     // the seeds now in Seeds were made with the settings of the render that brought them
     if (fresh && this.pendingRecipe) {
       this.node.properties = this.node.properties || {};
@@ -586,8 +612,17 @@ export class DirectorWindow {
   // can only change k and what comes after it.
   keepBefore(k) {
     for (let j = 0; j < k; j++) {
-      if (!this.hasOwnSeed(j)) this.timeline.chunks[j].seed = this.seedOf(j);
+      if (!this.hasOwnSeed(j)) this.timeline.chunks[j].seed = this.renderedSeed(j) ?? this.seedOf(j);
     }
+  }
+
+  // Keep these seeds for these chunks (a pick in Seeds): [[k, seed], ...]
+  pickSeeds(pairs) {
+    if (!pairs.length) return;
+    for (const [k, seed] of pairs) if (this.timeline.chunks[k]) this.timeline.chunks[k].seed = Number(seed);
+    this.keepBefore(Math.max(...pairs.map(([k]) => k)));
+    this.commit();
+    this.refresh(["preview", "insp", "tl"]);
   }
 
   // A render brings new takes, so an older pick doesn't hold: the Finish waits for one in Seeds (winner 0).
@@ -711,6 +746,7 @@ export class DirectorWindow {
     if (hunt) flags.hunt_chunk = hunt;
     this.commit();
     this.pendingRecipe = this.recipeNow();
+    this.queuedSeq = this.editSeq || 0;
     this.holdFinish(until === null && !hunt);
     this.run = { state: "queued", label: label || (until !== null ? `Rendering to chunk ${until + 1}` : "Rendering") };
     this.renderStatus();

@@ -334,7 +334,7 @@ function insertTranscript(d, entry, charIdx) {
     const chunk = d.timeline.chunks[k];
     if (chunk.segments.length === 1 && !chunk.segments[0].prompt) chunk.segments = [];
     chunk.segments.push({ prompt: `"${text}"`, weight: Math.max(0.3, (seg.end || at) - at), speakerCharIdxs: [charIdx] });
-    d.edited.add(k);
+    d.markEdited(k);
     count++;
   }
   d.commit();
