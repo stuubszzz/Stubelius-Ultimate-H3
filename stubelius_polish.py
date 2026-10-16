@@ -264,7 +264,7 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
             previous if carry else None, previous_audio if carry else None, carry,
             log_label=f"chunk {index + 1}/{len(chunks)}", audio_lock=True,
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",
-            positive=positive, trim_frames=int(chunk.get("trim") or 0))
+            positive=positive, trim_frames=int(chunk.get("trim") or 0), extra_refs=chunk.get("refmods"))
         if previous is not None and follows != "new_shot":
             seam_from = _fit_image_to_target(previous[-1:], int(images.shape[2]), int(images.shape[1]), "stretch")
             _smooth_seam(seam_from, images, bundle.get("seam_frames"))

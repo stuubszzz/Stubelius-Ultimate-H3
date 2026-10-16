@@ -65,7 +65,9 @@ def cap_bytes():
         gb = float(os.environ.get("STUBELIUS_TAKES_GB", DEFAULT_GB))
     except ValueError:
         gb = DEFAULT_GB
-    return int(max(0.0, gb) * 1e9)
+    if gb != gb:                                 # nan: takes off, as for a 0
+        return 0
+    return int(min(max(0.0, gb), 1e9) * 1e9)     # "inf" or a huge number: no real cap, still a number
 
 
 def _seed(value):
@@ -458,10 +460,17 @@ def _take_folder(base, seed, top=None):
     return os.path.join(top or root(), base, str(int(seed)))
 
 
+def _complete(folder):
+    """A take load() can read: its meta of this version and its data files (a broken or older one is replaced)."""
+    meta = _read_meta(folder)
+    return (bool(meta) and meta.get("version") == VERSION and os.path.isfile(os.path.join(folder, "data.pt"))
+            and os.path.isfile(os.path.join(folder, "frames.mkv")))
+
+
 def save(base, seed, take, info, top=None):
     """Write one take (atomically: a half-written take is never found)."""
     folder = _take_folder(base, seed, top)
-    if os.path.isfile(os.path.join(folder, "meta.json")):
+    if _complete(folder):
         return folder
     os.makedirs(os.path.dirname(folder), exist_ok=True)
     tmp = f"{folder}.part-{uuid.uuid4().hex[:8]}"
@@ -483,7 +492,7 @@ def save(base, seed, take, info, top=None):
         meta["bytes"] = _folder_bytes(tmp) + 512
         _write_json(os.path.join(tmp, "meta.json"), meta)
         with _LOCK:
-            if os.path.isfile(os.path.join(folder, "meta.json")):     # made by another render meanwhile
+            if _complete(folder):                                    # made by another render meanwhile
                 shutil.rmtree(tmp, ignore_errors=True)
             else:
                 if os.path.isdir(folder):
@@ -641,6 +650,7 @@ class Store:
         self.memory = {}
         self.used = set()
         self.rows = []
+        self.pending = {}
         self.memo = {}
         if plan.takes_id and models is None:
             log.info("[StubeliusTakes] takes are kept with the Models node only (its settings are part of a "
@@ -688,7 +698,14 @@ class Store:
         except Exception as e:
             log.warning("[StubeliusTakes] chunk %d's take couldn't be kept (%s): the render goes on", chunk_idx + 1, e)
 
+    def started(self, candidate, chunk_idx, base, seed):
+        """A chunk this run starts to render: in the report even when the run stops inside it, so the chunk's
+        earlier takes stay listed (and can be picked back) after a stopped Retake or Hunt."""
+        self.pending[(candidate, chunk_idx)] = {"candidate": candidate, "chunk": chunk_idx, "base": base,
+                                                "seed": int(seed), "reused": False}
+
     def note(self, candidate, chunk_idx, base, seed, reused):
+        self.pending.pop((candidate, chunk_idx), None)
         self.rows.append({"candidate": candidate, "chunk": chunk_idx, "base": base, "seed": int(seed),
                           "reused": bool(reused)})
 
@@ -699,6 +716,8 @@ class Store:
         chunks = []
         for k in range(self.plan.last + 1):
             rows = sorted((r for r in self.rows if r["chunk"] == k), key=lambda r: r["candidate"])
+            if not rows:                         # the chunk a stopped run was rendering: its takes still listed
+                rows = sorted((r for r in self.pending.values() if r["chunk"] == k), key=lambda r: r["candidate"])
             if not rows:
                 break
             main = rows[0]
@@ -863,7 +882,11 @@ def _routes():
             return web.Response(status=400)
         top = os.path.abspath(folder_paths.get_output_directory())
         path = os.path.abspath(os.path.join(top, str(body.get("subfolder") or "")))
-        if os.path.commonpath([path, top]) != top or not os.path.isdir(path):
+        try:
+            inside = os.path.commonpath([path, top]) == top
+        except ValueError:                       # another drive
+            inside = False
+        if not inside or not os.path.isdir(path):
             return web.json_response({"opened": False, "why": "not a folder in the output folder"}, status=400)
         await off_loop(open_in_file_manager, path)
         return web.json_response({"opened": True})

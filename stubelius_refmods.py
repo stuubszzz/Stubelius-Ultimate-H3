@@ -87,6 +87,9 @@ def find(name):
         return name if os.path.isfile(name) else None
     rel = name if name.lower().endswith(".safetensors") else name + ".safetensors"
     parts = [p for p in rel.replace("\\", "/").split("/") if p not in ("", ".", "..")]
+    # a part with a drive ("D:x", "C:..") would make os.path.join leave the refmods folder on Windows
+    if any(os.path.splitdrive(p)[0] for p in parts):
+        return None
     for r in roots():
         p = os.path.join(r, *parts)
         if os.path.isfile(p):
@@ -112,6 +115,8 @@ def read(path):
         try:
             meta = json.loads((f.metadata() or {}).get(META_KEY, "{}"))
         except ValueError:
+            meta = {}
+        if not isinstance(meta, dict):            # "null" or a list from another tool: not ours
             meta = {}
         keys = set(f.keys())
         if meta.get("kind") == "bundle":
@@ -180,16 +185,18 @@ def blocks(entries):
     for e in entries or []:
         if not isinstance(e, dict) or e.get("enabled") is False:
             continue
-        try:
-            strength = max(0.0, min(1.0, float(e.get("strength", 1.0))))
-        except (TypeError, ValueError):
-            strength = 1.0
+        strength = _strength(e)
         path = find(e.get("file"))
         if path is None or strength <= 0:
             if path is None:
                 log.warning("[StubeliusRefMods] no RefMod file '%s'", e.get("file"))
             continue
-        for latent, m in read(path):
+        try:
+            refs = read(path)
+        except Exception as err:                 # cut short, replaced while in use, not a RefMod: skipped
+            log.warning("[StubeliusRefMods] '%s' couldn't be read (%s): left out", e.get("file"), err)
+            continue
+        for latent, m in refs:
             if latent.dim() != 5:
                 continue
             if strength < 1.0:
@@ -216,6 +223,13 @@ def attach(conditioning, refs):
     return out
 
 
+def _strength(e):
+    try:
+        return max(0.0, min(1.0, float(e.get("strength", 1.0))))
+    except (TypeError, ValueError):             # null or text from a hand-made timeline: full strength
+        return 1.0
+
+
 def stamp(entries):
     """What the takes key needs: each file's identity (size, time) and strength."""
     rows = []
@@ -224,8 +238,16 @@ def stamp(entries):
             continue
         path = find(e.get("file"))
         st = os.stat(path) if path else None
-        rows.append([str(e.get("file")), float(e.get("strength", 1.0)), [st.st_size, int(st.st_mtime)] if st else None])
+        rows.append([str(e.get("file")), _strength(e), [st.st_size, int(st.st_mtime)] if st else None])
     return rows
+
+
+def _inside(path, top):
+    """path is top or in it (False for another drive, where commonpath raises)."""
+    try:
+        return os.path.commonpath([path, top]) == top
+    except ValueError:
+        return False
 
 
 # ------------------------------------------------------------------------------------------- making one
@@ -342,7 +364,7 @@ class StubeliusH3RefModMaker:
         top = os.path.abspath(folder_paths.get_input_directory())
         for rel in files:
             p = os.path.abspath(os.path.join(top, str(rel)))
-            if os.path.commonpath([p, top]) != top or not os.path.isfile(p):
+            if not _inside(p, top) or not os.path.isfile(p):
                 log.warning("[StubeliusRefMods] picture not found in the input folder: %s", rel)
                 continue
             img = ImageOps.exif_transpose(Image.open(p)).convert("RGB")

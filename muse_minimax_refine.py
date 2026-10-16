@@ -368,6 +368,7 @@ def _refine_one_chunk(
     two_stage_strategy="complete then polish (stubelius)",
     positive=None,
     trim_frames=None,
+    extra_refs=None,
 ):
     """Stubelius, for a take polished chunk by chunk (stubelius_polish.py), both off by default:
     `positive` is the chunk's own conditioning, or a function (width, height) -> conditioning
@@ -437,6 +438,14 @@ def _refine_one_chunk(
         ))[0]
     else:
         positive = _unpack_node_result(_execute_comfy_node(CLIPTextEncode, clip=clip, text=chunk_prompt))[0]
+    # Stubelius: the RefMod characters the chunk was made with (stubelius_refmods.py), on its polish too
+    if extra_refs:
+        from .stubelius_refmods import attach
+        if positive_at is not None:
+            made_at = positive_at
+            positive_at = lambda width_px, height_px: attach(made_at(width_px, height_px), extra_refs)
+        else:
+            positive = attach(positive, extra_refs)
 
     def _guider_at(width_px, height_px):
         return _unpack_node_result(_execute_comfy_node(

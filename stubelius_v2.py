@@ -19,7 +19,7 @@ import comfy.sd
 import comfy.utils
 import folder_paths
 
-from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE
+from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE, _bucket_segments_into_chunks
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
 from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
@@ -217,8 +217,10 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             hunt = _takes.hunt_request(json.loads(timeline_data or "{}"))
         except (TypeError, ValueError):
             hunt = None
-        if hunt is not None:
-            n = hunt[1]         # a chunk hunt (stubelius_takes.py) brings its own count
+        # a chunk hunt (stubelius_takes.py) brings its own count, when that chunk is in the video (Plan leaves an
+        # out-of-range hunt out: the render is then the Setup's seeds, not 2-4 whole videos)
+        if hunt is not None and hunt[0] < len(_bucket_segments_into_chunks({}, duration_seconds, chunk_duration_seconds)[2]):
+            n = hunt[1]
         use_override = bool(prompt_override and str(prompt_override).strip())
         hybrid = (model_fl2va is not None and mode == MODE_REFERENCE
                   and duration_seconds > chunk_duration_seconds)

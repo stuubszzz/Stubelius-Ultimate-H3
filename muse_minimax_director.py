@@ -1796,7 +1796,9 @@ class MuseMinimaxDirector:
                         elif role == "continuation_source":
                             task_flags.add("video continuation")
                         v_desc = (meta.get("description") or "").strip()
-                        v_retention = meta.get("retention") or ("fully_preserved" if v_desc else "weak_reference")
+                        # no retention picked: what the window shows (an editing source keeps its picture, partly)
+                        v_retention = meta.get("retention") or ("fully_preserved" if v_desc else
+                                                                "partially_preserved" if role == "editing_source" else "weak_reference")
                         if v_desc:
                             subj_n = len(chunk_subject_tags) + 1
                             chunk_subject_tags.append(f"<Subject {subj_n}>")
@@ -2136,6 +2138,8 @@ class MuseMinimaxDirector:
                         recipe.add("refmods", refmod_stamp)
                     take_base = recipe.hexdigest()
                     take = store.find(take_base, chunk_seed, chunk_idx)
+                    if take is None:
+                        store.started(candidate_idx, chunk_idx, take_base, chunk_seed)
                 # Stubelius: where the render is, for the Director window's status
                 _takes.progress({"takes_id": plan.takes_id, "node": getattr(self, "_takes_node", None),
                                  "chunk": chunk_idx, "of": plan.last + 1, "total": num_chunks,
@@ -2548,6 +2552,9 @@ class MuseMinimaxDirector:
                         # that is the last frame of the chunk before it
                         "ref_images": None if keyframed else dict(chunk_ref_images),
                         "anchor": f"ref_image_{bg_index}" if continues and not keyframed else None,
+                        # Stubelius: the characters made from many pictures it was conditioned with (RefMods):
+                        # the polish keeps them, so the face doesn't drift as the chunk is rendered bigger
+                        "refmods": refmod_blocks or None,
                     })
 
                 # Two chunks are still independent generation calls even with that
@@ -2649,7 +2656,15 @@ class MuseMinimaxDirector:
                     all_waveform = torch.cat([all_waveform, waveform], dim=-1)
                 else:
                     if carry_mode == "new_shot":
-                        # Stubelius: a cut; the sound fades out and in over 10 ms so it doesn't click
+                        # Stubelius: a cut. The sound so far goes back on the video's clock first: a chunk's
+                        # sound is a whole number of 40 Hz frames (up to 8 ms off its picture), and a cut has
+                        # no trim to take that up, so it added up over cut after cut. Then the sound fades out
+                        # and in over 10 ms so it doesn't click.
+                        on_clock = round(frames_done / 24.0 * audio_sample_rate)
+                        if all_waveform.shape[-1] > on_clock:
+                            all_waveform = all_waveform[..., :on_clock]
+                        elif all_waveform.shape[-1] < on_clock:
+                            all_waveform = torch.nn.functional.pad(all_waveform, (0, on_clock - all_waveform.shape[-1]))
                         all_waveform, waveform = _soft_cut(all_waveform, waveform, audio_sample_rate)
                     all_waveform = torch.cat([all_waveform, waveform], dim=-1)
 

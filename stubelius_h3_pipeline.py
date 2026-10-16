@@ -549,6 +549,20 @@ def _with_clip(info, images, audio, enlarge=None):
 _POLISH_MEMO = []   # [(key, (images, audio))], newest last, two kept
 
 
+def _take_identity(takes, w):
+    """What a take is made of, for the polish memory: each chunk's seed, carry, prompt, LoRAs and characters, and
+    the candidate's chunk seeds. A Retake or a pick changes these without changing the take's size or prompt."""
+    from .stubelius_polish import chunks_of
+    candidate = (takes.get("latents") or [None] * w)[w - 1]
+    made = (candidate.get("_muse_stage1_settings") or {}) if isinstance(candidate, dict) else {}
+    rows = tuple((c.get("seed"), c.get("carry"), hash(c.get("prompt")),
+                  tuple(tuple(str(x) for x in lora) for lora in c.get("loras") or ()),
+                  len(c.get("refmods") or ())) for c in chunks_of(candidate))
+    seeds = (takes.get("chunk_seeds") or [])
+    return (rows, tuple(seeds[w - 1] or ()) if len(seeds) >= w else (), made.get("seed"), made.get("steps"),
+            hash(made.get("compiled_prompt")))
+
+
 def _stage(node, stage, **info):
     """Tell the Output window where the finish is (winner, polish, de-stutter, fps, upscale, done)."""
     try:
@@ -623,8 +637,9 @@ class StubeliusH3Finish:
             # by chunk. Either way only the picture is rendered again, so the take keeps its own sound.
             from .muse_minimax_refine import effective_polish_scale
             # chunk by chunk past one chunk, and for a take that continues a clip (it starts from the clip)
+            # and for a take with characters made from many pictures (RefMods): the chunk path keeps them
             polish = (self._polish_chunks if len(chunks_of(candidate)) > 1 or source_of(candidate)
-                      else self._polish)
+                      or any(c.get("refmods") for c in chunks_of(candidate)) else self._polish)
             scale = effective_polish_scale(o["polish_method"], o.get("polish_scale", 2.0), "[StubeliusH3Finish]")
             images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
                             o["polish_method"], unique_id, scale=scale)[0]
@@ -677,7 +692,7 @@ class StubeliusH3Finish:
 
     @staticmethod
     def _polish(takes, models, w, strength, steps, method, node_id=None, scale=2.0):
-        key = (id(takes), w, strength, steps, method, models.key, scale)
+        key = (id(takes), w, strength, steps, method, models.key, scale, _take_identity(takes, w))
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
@@ -709,8 +724,7 @@ class StubeliusH3Finish:
         candidate, take = takes["latents"][w - 1], takes["images"][w - 1]
         made = candidate.get("_muse_stage1_settings") or {}
         # by what the take is, not only by id(takes): a new take can get a freed one's id
-        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape),
-               made.get("seed"), made.get("steps"), hash(made.get("compiled_prompt")))
+        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape), _take_identity(takes, w))
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
@@ -831,7 +845,17 @@ class StubeliusSeedPreviews:
         from .stubelius_destutter import destutter
         from .stubelius_takes import write_mp4
         mode = output.get("de_stutter", "auto")
-        folder = os.environ.get("STUBELIUS_PREVIEWS_DIR") or os.path.join(folder_paths.get_output_directory(), *PREVIEWS)
+        out_dir = folder_paths.get_output_directory()
+        folder = os.environ.get("STUBELIUS_PREVIEWS_DIR") or os.path.join(out_dir, *PREVIEWS)
+        # the windows play the previews through ComfyUI's /view, which serves the output folder only
+        try:
+            sub = os.path.relpath(folder, out_dir).replace("\\", "/")
+        except ValueError:                       # another drive
+            sub = ".."
+        if sub == ".." or sub.startswith("../"):
+            log.warning("[StubeliusSeedPreviews] STUBELIUS_PREVIEWS_DIR is outside the output folder: the previews are "
+                        "written there, but the windows can only play from inside the output folder")
+            sub = "/".join(PREVIEWS)
         prefix = re.sub(r"[^A-Za-z0-9_-]", "", str(takes.get("takes_id") or f"node{unique_id or ''}")) or "seeds"
         seeds = list(takes.get("chunk_seeds") or [])
         times = list(takes.get("seconds") or [])
@@ -851,7 +875,7 @@ class StubeliusSeedPreviews:
             except Exception as e:
                 log.warning("[StubeliusSeedPreviews] seed %d: no preview video (%s)", i + 1, e)
                 continue
-            shown.append({"filename": name, "subfolder": "/".join(PREVIEWS), "type": "output", "candidate": i + 1,
+            shown.append({"filename": name, "subfolder": "" if sub == "." else sub, "type": "output", "candidate": i + 1,
                           "frames": int(frames.shape[0]), "seconds": round(int(frames.shape[0]) / SOURCE_FPS, 3),
                           "width": int(frames.shape[2]), "height": int(frames.shape[1]),
                           "chunk_seeds": seeds[i] if i < len(seeds) else None,
