@@ -214,7 +214,7 @@ function subtitleOf(group) {
 // A window shown on a step panel: its title bar, badges and node background aren't drawn (the panel's title says
 // it, the window covers the rest); the title strip still moves it
 export function onStage(node) {
-  if (!node?._sh3) return false;
+  if (!node?._sh3 || node.flags?.collapsed) return false;      // a collapsed window draws its own title, as any node
   const graph = node.graph || app.graph;
   return (graph?._groups || graph?.groups || []).some((g) => isStage(g, graph) && holds(g, node));
 }
@@ -410,8 +410,8 @@ export function tidy(graph = app.graph) {
 
 // A step panel laid out by tidy() (flags.sh3_stage) keeps the height of its window as the window grows or shrinks
 function fitStageTo(win) {
-  const graph = win?.graph || app.graph;
-  if (!win?.pos || !win?.size) return;
+  if (!win?.graph || !win.pos || !win.size) return;           // a copy's clone isn't on the canvas
+  const graph = win.graph;
   for (const g of graph?._groups || graph?.groups || []) {
     if (!g.flags?.sh3_stage) continue;
     const [gx, gy, gw, gh] = [g.pos[0], g.pos[1], g.size[0], g.size[1]];
@@ -432,7 +432,8 @@ async function autoTidy(graph) {
   }
   await new Promise((r) => setTimeout(r, 300));     // and size themselves
   if (graph !== app.graph) return;
-  const steps = (graph?._groups || graph?.groups || []).filter((g) => isStage(g, graph));
+  // the four step panels only: the How to use panel the guide adds to an older workflow comes flagged already
+  const steps = (graph?._groups || graph?.groups || []).filter((g) => STEP_TITLE.test(String(g.title || "")) && isStage(g, graph));
   if (!steps.length || steps.some((g) => g.flags?.sh3_stage)) return;
   const n = tidy(graph);
   if (!n) return;

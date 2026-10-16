@@ -106,22 +106,25 @@ export function themeKey(graph = app.graph) {
   return THEMES[themeName(graph)];
 }
 
-const themed = new Set();          // window roots that follow the workflow's theme
+// Window roots that follow the workflow's theme, held weakly: a window whose node is gone (undo, a workflow tab
+// switch, a copy's clone) can be freed. A window not on the page yet gets the theme too.
+const themed = new Set();
 
 export function followTheme(root) {
-  themed.add(root);
+  themed.add(new WeakRef(root));
   root.dataset.theme = themeKey();
 }
 
 export function forgetTheme(root) {
-  themed.delete(root);
+  for (const ref of themed) if (ref.deref() === root) themed.delete(ref);
 }
 
 export function refreshThemes() {
   const key = themeKey();
-  for (const root of themed) {
-    if (!root.isConnected && !document.body.contains(root)) continue;
-    root.dataset.theme = key;
+  for (const ref of themed) {
+    const root = ref.deref();
+    if (root) root.dataset.theme = key;
+    else themed.delete(ref);
   }
 }
 window.addEventListener("stubelius-theme", refreshThemes);
@@ -592,6 +595,10 @@ export function autoHeight(node, root, { minHeight = 400, extra = 50, minWidth =
     frame = requestAnimationFrame(() => {
       frame = requestAnimationFrame(() => {
         frame = 0;
+        // a window ComfyUI hides (off screen, collapsed) or hasn't put on the page measures 0, and a copy's clone
+        // isn't in any graph: their size stays as it is
+        if (!node.graph || !root.isConnected || !root.getClientRects().length) return;
+        if (root.querySelector(":scope > .sh3-inner")?.offsetHeight === 0) return;
         const content = Math.max(windowHeight(root), minHeight);
         const width = Math.max(node.size?.[0] || minWidth, minWidth);
         const height = Math.ceil(content + extra);
@@ -651,6 +658,7 @@ export function windowOrCompact(nodeType, { name, widgets = [], create, minWidth
     const node = this;
     setTimeout(() => {           // a loaded workflow's properties arrive with configure, after this
       if (node._sh3 || node._sh3Compact) return;
+      if (!node.graph) return;   // a clone made for a copy (Ctrl+C): never on the canvas, no window for it
       const want = node.properties?.sh3_window;
       if (want === true || (want === undefined && !node._sh3Configured)) makeWindow(node);
       else makeCompact(node);

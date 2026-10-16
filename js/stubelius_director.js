@@ -171,6 +171,25 @@ export class DirectorWindow {
     this.node.setDirtyCanvas?.(true, true);
   }
 
+  // The takes belong to one saved workflow file: a copy of it (Save As) starts its own takes report and seed previews
+  // at its first render instead of writing over the original's. Only a hash of the file's path is kept.
+  ownTakes() {
+    const wf = this.workflowFile();
+    if (!wf?.path || wf.isTemporary) return;
+    let h = 0x811c9dc5;
+    for (const ch of String(wf.path)) h = Math.imul(h ^ ch.codePointAt(0), 0x01000193) >>> 0;
+    const owner = h.toString(16);
+    if (this.timeline.takes_owner && this.timeline.takes_owner !== owner) {
+      this.timeline.takes_id = newTakesId();
+      this.report = null;
+    }
+    this.timeline.takes_owner = owner;
+  }
+
+  workflowFile() {
+    return app.extensionManager?.workflow?.activeWorkflow || null;
+  }
+
   // Render to chunk N and a hunt go with one prompt only: they're added to the timeline while ComfyUI builds that
   // prompt (it can build it later, after another queue call has sent), never to the widget the workflow saves
   hookPrompt() {
@@ -744,6 +763,7 @@ export class DirectorWindow {
     const flags = {};
     if (until !== null) flags.render_until = until;
     if (hunt) flags.hunt_chunk = hunt;
+    this.ownTakes();
     this.commit();
     this.pendingRecipe = this.recipeNow();
     this.queuedSeq = this.editSeq || 0;
@@ -1157,6 +1177,8 @@ app.registerExtension({
       if (typeof ResizeObserver !== "undefined") {
         new ResizeObserver(() => d.root.classList.toggle("narrow", d.root.offsetWidth < 1500)).observe(d.root);
       }
+      // a clone made for a copy (Ctrl+C) never joins a graph: its window lets go of its listeners
+      setTimeout(() => { if (!this.graph) d.dispose(); }, 0);
       return r;
     };
 
@@ -1167,6 +1189,10 @@ app.registerExtension({
       const d = this._sh3;
       if (d) {
         d.timeline = d.loadState();
+        // a pasted or duplicated Director gets its own takes (report, live events, seed previews)
+        const twin = (this.graph?._nodes || []).some((n) => n !== this && n.comfyClass === "StubeliusH3DirectorV2"
+          && n._sh3?.timeline?.takes_id === d.timeline.takes_id);
+        if (twin) { d.timeline.takes_id = newTakesId(); delete d.timeline.takes_owner; d.freshId = true; }
         if (d.freshId || d.hadFlags) d.commit();
         d.fold = this.properties?.sh3_fold || {};
         d.sel = Math.max(0, Math.min(d.numChunks() - 1, Number(this.properties?.sh3_sel) || 0));
