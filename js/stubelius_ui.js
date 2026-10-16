@@ -176,7 +176,9 @@ export function isolate(el) {
     el.addEventListener(type, (e) => {
       if (type === "keydown" || type === "keyup") {
         const t = e.target;
-        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) e.stopPropagation();
+        // typing stays in the window; ComfyUI's own Ctrl+S (save) and Ctrl+Enter (queue) still work from it
+        const global = (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === "Enter" || e.key.toLowerCase() === "s");
+        if (!global && t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) e.stopPropagation();
         return;
       }
       e.stopPropagation();
@@ -189,7 +191,7 @@ export function fmtSeconds(s, places = 1) {
 }
 
 export function fmtClock(s) {
-  s = Math.max(0, Number(s) || 0);
+  s = Math.round(Math.max(0, Number(s) || 0) * 100) / 100;        // rounded first: 59.996 s is 01:00.00, not 00:60.00
   const m = Math.floor(s / 60);
   return `${String(m).padStart(2, "0")}:${(s - m * 60).toFixed(2).padStart(5, "0")}`;
 }
@@ -480,7 +482,9 @@ export function chooseIn(root, { title = "", text = "", choices = [] } = {}) {
       if (e.key === "Escape" || e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
-        done(e.key === "Enter" && choices.length ? choices[0].value : null);
+        // Enter answers with the button that has focus (Tab moves it), the main answer when none has
+        const i = btns.indexOf(document.activeElement);
+        done(e.key === "Escape" ? null : i >= 0 ? choices[i].value : choices.length ? choices[0].value : null);
       }
     };
     const btns = choices.map((c, i) => button(c.label, c.icon || null, c.kind ?? (i === 0 ? "primary" : ""), () => done(c.value)));
@@ -511,7 +515,8 @@ export function confirmIn(root, { title = "Are you sure?", text = "", ok = "OK",
       if (e.key === "Escape" || e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
-        done(e.key === "Enter");
+        // Enter answers with the button that has focus: Cancel when Tab moved there
+        done(e.key === "Enter" && document.activeElement !== no);
       }
     };
     const yes = button(ok, danger ? "trash" : null, danger ? "primary danger" : "primary", () => done(true));

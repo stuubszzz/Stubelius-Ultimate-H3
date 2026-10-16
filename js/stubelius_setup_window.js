@@ -58,13 +58,14 @@ function turboInfo(name) {
   return [n.replace(/\.safetensors$/i, ""), "turbo LoRA"];
 }
 
-// The render size a mode's megapixels make at the Director's shape (as _resolve_resolution does)
+// The render size a mode's megapixels make at the Director's shape: _resolve_resolution's formula (ComfyUI's
+// ResolutionSelector, sides on 32), Python's round included (halves to the even side)
 function sizeFor(mp, aspect) {
   const m = /(\d+)\s*:\s*(\d+)/.exec(String(aspect || "16:9"));
-  const ar = m ? Number(m[1]) / Number(m[2]) : 16 / 9;
-  const w = Math.max(64, Math.round(Math.sqrt(mp * 1e6 * ar) / 32) * 32);
-  const hgt = Math.max(64, Math.round(w / ar / 32) * 32);
-  return `${w}×${hgt}`;
+  const [wr, hr] = m ? [Number(m[1]), Number(m[2])] : [16, 9];
+  const scale = Math.sqrt((Number(mp) * 1024 * 1024) / (wr * hr));
+  const round = (x) => { const f = Math.floor(x), d = x - f; return d > 0.5 || (d === 0.5 && f % 2) ? f + 1 : f; };
+  return `${round((wr * scale) / 32) * 32}×${round((hr * scale) / 32) * 32}`;
 }
 
 // ------------------------------------------------------------------------------------------- mode art
@@ -187,6 +188,7 @@ class SetupWindow {
     setWidget(this.node, name, value);
     this.render();
     this.director()?._sh3?.renderCmd?.();
+    window.dispatchEvent(new CustomEvent("stubelius-setup", { detail: { name } }));   // the Output's sizes follow the mode
   }
 
   // ----------------------------------------------------------------------------------- drawing
@@ -250,20 +252,24 @@ class SetupWindow {
 
     // fine-tuning
     const sv = (name) => Number(widgetValue(this.node, name, 0));
-    const tune = (lab, name, min, max, step, fmt) => {
+    const tune = (lab, name, min, max, step, fmt, locked = "") => {
       const o = widget(this.node, name)?.options || {};     // the node's own range
       if (Number.isFinite(o.min)) min = o.min;
       if (Number.isFinite(o.max)) max = o.max;
       const val = h("b", fmt(sv(name)));
-      return h("div.su-tune", h("div.su-tune-h", label(lab), val),
-        slider({ min, max, step, value: sv(name), onInput: (v) => { val.textContent = fmt(v); }, onChange: (v) => this.setS(name, v) }));
+      const s = slider({ min, max, step, value: sv(name), onInput: (v) => { val.textContent = fmt(v); }, onChange: (v) => this.setS(name, v) });
+      if (locked) { s.disabled = true; s.title = locked; }
+      return h("div.su-tune", { class: locked ? "locked" : null, title: locked || null }, h("div.su-tune-h", label(lab), val), s);
     };
+    // PDMD runs its own LoRA at this strength (stubelius_h3_pipeline: the mode sets 1.00); a lower one under-samples
+    const pdmdMode = mode === "PDMD";
     const samplers = widget(this.node, "sampler")?.options?.values || [];
     const scheds = widget(this.node, "scheduler")?.options?.values || [];
     panel.appendChild(h("div.su-tunes",
       tune("Steps", "steps", 1, 40, 1, (v) => String(Math.round(v))),
       tune("Size", "megapixels", 0.1, 2, 0.02, (v) => `${Number(v).toFixed(2)} MP`),
-      tune("Turbo strength", "speedup_lora_strength", 0, 2, 0.05, (v) => Number(v).toFixed(2)),
+      tune(pdmdMode ? "PDMD LoRA strength" : "Turbo strength", "speedup_lora_strength", 0, 2, 0.05, (v) => Number(v).toFixed(2),
+        pdmdMode ? "PDMD mode sets it: its 4-step LoRA runs at full strength" : ""),
       h("div.su-tune", label("Sampler"), select(samplers, widgetValue(this.node, "sampler"), (v) => this.setS("sampler", v))),
       h("div.su-tune", label("Scheduler"), select(scheds, widgetValue(this.node, "scheduler"), (v) => this.setS("scheduler", v))),
       h("div.su-tune.su-seeds", label("Seeds to compare"),
@@ -290,7 +296,7 @@ class SetupWindow {
       const isPreview = name === "live_preview";
       const sel = select(opts, v, (x) => this.setM(name, x), "su-file");
       sel.title = String(v || "");
-      const state = isPreview ? (v === "off" ? "Off" : "On") : name === "text_encoder" ? "Runs first" : found ? "On disk" : "Missing";
+      const state = isPreview && v === "off" ? "Off" : !found ? "Missing" : isPreview ? "On" : name === "text_encoder" ? "Runs first" : "On disk";
       grid.appendChild(h("div.su-mcard", { class: found || (isPreview && v === "off") ? null : "missing" },
         h("span.sh3-ico.ac.su-mic", icon(ic, 18)),
         h("div.su-mbody", h("b", title), sel,
@@ -322,8 +328,11 @@ class SetupWindow {
       // two files of one kind: told apart by the file
       const text = seen[name] > 1 ? n.replace(/\.safetensors$/i, "") : infos[i][1];
       const on = n === current;
-      left.appendChild(h("button.su-turbo", { type: "button", class: on ? "on" : null, title: n, onclick: () => this.setM("speedup_lora", n) },
-        h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", text)), on ? badge("active", "ac") : null));
+      const gone = !all.includes(n);             // the workflow names it, models/loras doesn't have it
+      left.appendChild(h("button.su-turbo", { type: "button", class: [on ? "on" : "", gone ? "missing" : ""].join(" ").trim() || null,
+        title: gone ? `${n}: not in models/loras on this machine` : n, onclick: () => this.setM("speedup_lora", n) },
+      h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", gone ? "not on this machine" : text)),
+      on ? badge(gone ? "missing" : "active", gone ? "bad" : "ac") : null));
     }
     // its strength, here as well as under the mode cards (the same setting: each mode fills it in)
     const sw = widget(this.node, "speedup_lora_strength");
@@ -331,12 +340,13 @@ class SetupWindow {
       const o = sw.options || {};
       const pdmd = widgetValue(this.node, "mode") === "PDMD";
       const val = h("b.su-tstr-v", Number(sw.value ?? 1).toFixed(2));
+      const s = slider({ min: Number.isFinite(o.min) ? o.min : 0, max: Number.isFinite(o.max) ? o.max : 2, step: 0.05, value: Number(sw.value ?? 1),
+        title: "Turbo LoRA strength", onInput: (v) => { val.textContent = Number(v).toFixed(2); },
+        onChange: (v) => this.setS("speedup_lora_strength", v) });
+      if (pdmd) { s.disabled = true; s.title = "PDMD mode sets it: its 4-step LoRA runs at full strength"; }
       left.appendChild(h("div.su-tstr", { class: pdmd ? "off" : null },
-        h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "not used in PDMD mode (it has its own LoRA)" : "each mode sets it; slide to change"),
-          h("div.sh3-spacer"), val),
-        slider({ min: Number.isFinite(o.min) ? o.min : 0, max: Number.isFinite(o.max) ? o.max : 2, step: 0.05, value: Number(sw.value ?? 1),
-          title: "Turbo LoRA strength", onInput: (v) => { val.textContent = Number(v).toFixed(2); },
-          onChange: (v) => this.setS("speedup_lora_strength", v) })));
+        h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "PDMD mode uses its own LoRA here, at the strength the mode sets" : "each mode sets it; slide to change"),
+          h("div.sh3-spacer"), val), s));
     }
     left.appendChild(this.speedupPicker(all, turbos, current));
     const pd = widget(m, "pdmd_lora");
@@ -436,7 +446,8 @@ class SetupWindow {
     let off = 0, arcs = "";
     for (const [, v, k] of parts.slice(0, 3)) {
       const len = (v / sum) * c;
-      if (len > 0.5) arcs += `<circle cx="90" cy="90" r="${r}" fill="none" style="stroke:rgb(var(--${k}))" stroke-width="16" stroke-dasharray="${len - 3} ${c}" stroke-dashoffset="${-off}" stroke-linecap="round"/>`;
+      // a short arc (under 3 units) keeps no gap: a negative dash would draw the whole ring
+      if (len > 0.5) arcs += `<circle cx="90" cy="90" r="${r}" fill="none" style="stroke:rgb(var(--${k}))" stroke-width="16" stroke-dasharray="${len > 3 ? len - 3 : len} ${c}" stroke-dashoffset="${-off}" stroke-linecap="round"/>`;
       off += len;
     }
     const ring = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -562,6 +573,7 @@ function injectSetupStyles() {
 .sh3-u .su-tunes{display:grid;grid-template-columns:1fr 1fr 1fr 150px 150px 190px;gap:16px;align-items:end;padding:14px 16px;border-radius:16px;
   background:var(--well);border:1px solid var(--stroke)}
 .sh3-u .su-tune{display:flex;flex-direction:column;gap:4px;min-width:0}
+.sh3-u .su-tune.locked{opacity:.55}
 .sh3-u .su-tune-h{display:flex;align-items:center;justify-content:space-between}
 .sh3-u .su-tune-h b{font-family:var(--fh);font-weight:600}
 .sh3-u .su-tune .sh3-select{width:100%}
@@ -585,6 +597,7 @@ function injectSetupStyles() {
 .sh3-u .su-turbo>div{flex:1;min-width:0}
 .sh3-u .su-turbo .sh3-muted{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh3-u .su-turbo.on{background:linear-gradient(110deg,rgba(var(--ac),.2),rgba(var(--ac2),.06));border-color:rgba(var(--ac),.65)}
+.sh3-u .su-turbo.missing{border-color:rgba(var(--bad),.6);background:rgba(var(--bad),.08)}
 .sh3-u .su-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke2);flex:none;position:relative}
 .sh3-u .su-turbo.on .su-radio{border-color:rgb(var(--ac));background:rgb(var(--ac));box-shadow:0 0 12px rgba(var(--ac),.5)}
 .sh3-u .su-turbo.on .su-radio:after{content:"";position:absolute;inset:4px;border-radius:50%;background:#fff}

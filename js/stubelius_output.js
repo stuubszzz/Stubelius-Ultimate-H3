@@ -411,10 +411,20 @@ class OutputWindow {
         if (n) sizeBadge.textContent = `≈ ${fmtBytes(n)}`;
       }).catch(() => {});
     }
+    // the name the next finish is saved under, inside the prefix's folder (output/UltimateH3); the last file in the tip
     const prefix = widget(saver, "filename_prefix");
-    const name = h("input.sh3-input.o-name", { type: "text", value: fin?.filename || prefix?.value || "UltimateH3/UltimateH3",
-      title: fin ? "The file the last finish was saved as" : "Saved under this name in the output folder" });
-    if (prefix) name.addEventListener("change", () => { setWidget(saver, "filename_prefix", name.value.replace(/\.(mp4|webm|mov)$/i, "")); });
+    const pfx = String(prefix?.value || "UltimateH3/UltimateH3");
+    const cut = Math.max(pfx.lastIndexOf("/"), pfx.lastIndexOf("\\"));
+    const folder = cut >= 0 ? pfx.slice(0, cut + 1) : "";
+    const name = h("input.sh3-input.o-name", { type: "text", value: pfx.slice(cut + 1),
+      title: `Saved as output/${folder}${pfx.slice(cut + 1)}_00001.mp4 and on` + (fin ? ` · the last finish: ${fin.filename}` : "") });
+    if (prefix) name.addEventListener("change", () => {
+      // a typed file name loses its counter and extension; a name with a folder in it is taken as it is
+      const typed = name.value.trim().replace(/\.(mp4|webm|mov|mkv)$/i, "").replace(/(_\d{5})?(-audio)?$/i, "");
+      if (!typed) { name.value = pfx.slice(cut + 1); return; }
+      setWidget(saver, "filename_prefix", /[\\/]/.test(typed) ? typed : folder + typed);
+      this.renderFoot();
+    });
     panel.appendChild(name);
     const fmt = String(widgetValue(saver, "format", "video/h264-mp4"));
     const crf = widgetValue(saver, "crf", null);
@@ -441,11 +451,14 @@ class OutputWindow {
     const fin = this.final;
     const panel = h("div.o-last.sh3-panel");
     const base = String(fin?.filename || "video").replace(/\.[^.]+$/, "");
-    const png = fin?.lastFrame ? viewUrl({ ...fin.lastFrame, type: fin.lastFrame.type || "temp" }) : null;
+    const key = fin ? `${fin.subfolder || ""}/${fin.filename}` : null;
+    // the run's own PNG, unless it's known gone (temp files go when ComfyUI restarts)
+    const png = fin?.lastFrame && this.pngGone !== key ? viewUrl({ ...fin.lastFrame, type: fin.lastFrame.type || "temp" }) : null;
     const save = button("Save", "download", "small", async () => {
       try {
-        const blob = png ? await (await fetch(png)).blob() : await this.grabLastFrame(fin);
-        if (!blob) throw new Error("no frame");
+        const r = png ? await fetch(png).catch(() => null) : null;
+        const blob = r?.ok ? await r.blob() : await this.grabLastFrame(fin);
+        if (!blob || !blob.size) throw new Error("no frame");
         const a = h("a", { href: URL.createObjectURL(blob), download: `${base}_last_frame.png` });
         document.body.appendChild(a);
         a.click();
@@ -461,12 +474,19 @@ class OutputWindow {
     }
     const shot = h("button.o-lframe", { type: "button", title: "See it big" });
     const show = (src) => { clear(shot); shot.appendChild(h("img", { src, draggable: false })); };
+    // taken from the saved video once per file (the panel is redrawn on every stage and setting): one picture kept
     const fromVideo = () => {
-      this.grabLastFrame(fin).then((blob) => { if (blob) show(URL.createObjectURL(blob)); }).catch(() => {});
+      if (this.grabbed?.key === key) { show(this.grabbed.url); return; }
+      this.grabLastFrame(fin).then((blob) => {
+        if (!blob) return;
+        if (this.grabbed) URL.revokeObjectURL(this.grabbed.url);
+        this.grabbed = { key, url: URL.createObjectURL(blob) };
+        show(this.grabbed.url);
+      }).catch(() => {});
     };
     if (png) {
       const img = h("img", { src: png, draggable: false });
-      img.addEventListener("error", fromVideo, { once: true });          // a temp file goes when ComfyUI restarts
+      img.addEventListener("error", () => { this.pngGone = key; fromVideo(); }, { once: true });   // a temp file goes when ComfyUI restarts
       shot.appendChild(img);
     } else {
       fromVideo();
@@ -622,6 +642,7 @@ class OutputWindow {
     });
     on("execution_interrupted", () => { if (this.busy()) settle(this.node.properties?.sh3_done || null); });
     on("stubelius-winner", () => this.render(), window);
+    on("stubelius-setup", () => this.render(), window);       // a mode change in Setup narrows the sizes on offer
     on("stubelius-takes", () => this.markSteps(), window);
   }
 

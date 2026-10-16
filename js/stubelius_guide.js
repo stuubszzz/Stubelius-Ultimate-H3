@@ -11,6 +11,16 @@ const TYPE = "StubeliusH3Guide";
 const TEXT_URL = new URL("./how_to_use.md", import.meta.url).href;
 const REPO = "https://github.com/stuubszzz/Stubelius-Ultimate-H3";
 const OLD_NOTE = /^\s*#\s*Ultimate H3\s*[—–-]\s*how to use/i;
+// The how-to note's text in every version the pack shipped (whitespace collapsed, FNV-1a): only an untouched note
+// becomes the guide; a note the user wrote into stays as it is
+const SHIPPED_NOTES = new Set(["f184ff7d", "11bfe5ed", "83935cbd", "50e2547d", "1a6aa4a6", "f8afe4b1", "89532f74", "8bda15c1",
+  "ae6c5527", "fd59e063", "4dbef44f", "4046937a", "3ec372dc"]);
+
+function noteHash(text) {
+  let h = 0x811c9dc5;
+  for (const ch of String(text).replace(/\s+/g, " ").trim()) h = Math.imul(h ^ ch.codePointAt(0), 0x01000193) >>> 0;
+  return h.toString(16);
+}
 let text = null;
 
 async function guideText() {
@@ -161,9 +171,9 @@ function upgradeNote() {
   const graph = app.graph;
   const nodes = graphNodes(graph);
   if (!graph || nodes.some((n) => n.type === TYPE)) return;
-  const note = nodes.find((n) => /^(MarkdownNote|Note)$/.test(n.type || "")
-    && OLD_NOTE.test(String(n.widgets?.find((w) => w.name === "text")?.value ?? n.widgets_values?.[0] ?? "")));
-  if (!note) return;
+  const textOf = (n) => String(n.widgets?.find((w) => w.name === "text")?.value ?? n.widgets_values?.[0] ?? "");
+  const note = nodes.find((n) => /^(MarkdownNote|Note)$/.test(n.type || "") && OLD_NOTE.test(textOf(n)));
+  if (!note || !SHIPPED_NOTES.has(noteHash(textOf(note)))) return;
   const LG = window.LiteGraph;
   const guide = LG?.createNode?.(TYPE);
   if (!guide) return;
