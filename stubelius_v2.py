@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Director V2 and Refine V2 nodes
 """Stubelius H3 Director V2 / Refine V2 — content-only front ends over the V1.2 engines.
 
 The Director keeps only what the video IS (input mode, timeline, aspect, duration, seed).
