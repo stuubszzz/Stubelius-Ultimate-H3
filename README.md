@@ -5,8 +5,28 @@ One MiniMax H3 workflow for ComfyUI, in four windows. **Setup** decides **how** 
 video is**. **Seeds** plays 1–4 full seeds with sound side by side, you pick the winner, and only
 the winner gets finished in **Output** (resolution, frame rate, upscaler).
 
+![The four windows of Ultimate H3: Setup, Director, Seeds and Output](docs/ultimate-h3-0.13.jpg)
+
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
+
+## What's new in 0.13
+
+Video walkthrough: https://youtu.be/Xeyb0Y9bvho
+
+- **Four windows**: Setup, Director, Seeds and Output, six looks, a **How to use** window, and a short explanation
+  when you hover over an option.
+- **Hunt one chunk**: render a later chunk with 2, 3 or 4 seeds of its own instead of the whole video, then pick it
+  in Seeds. **Retake** renders a chunk again with its own seed; the chunks before it stay, and every take is kept to
+  pick back ([Takes](#takes-render-one-chunk-again)).
+- **How a chunk joins the one before it**: picture and sound, the picture with fresh sound, the last frame only, or a
+  **new shot** ([Videos past one chunk](#videos-past-one-chunk)).
+- **Characters from many pictures** (RefMods): make one from 8 to 16 pictures and put it on every chunk
+  ([Characters](#characters-from-many-pictures)).
+- **Output**: any frame rate from 24 to 120, the finished video against the winner in a split view with a loupe, and
+  a Last frame card.
+
+Already on an older version? [Update](#update) in place, then open the example workflow to get the windows.
 
 ## The four windows
 
