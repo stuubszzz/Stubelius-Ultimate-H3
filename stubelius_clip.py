@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Continue a clip from the First Frame box
 """Continue a clip: in First/Last Frame mode the First Frame box takes a video as well as a picture,
 and the new video starts where that clip ends.
 
