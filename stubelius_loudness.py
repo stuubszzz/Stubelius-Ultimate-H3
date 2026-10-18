@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Loudness (LUFS) of the finished video
 """Integrated loudness (LUFS, ITU-R BS.1770-4) of a finished video's sound, for the Output window.
 
 K-weighting (the standard's high shelf and high pass, RBJ biquads at any sample rate), 400 ms blocks every
