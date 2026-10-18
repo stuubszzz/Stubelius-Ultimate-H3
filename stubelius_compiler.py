@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Pauses ComfyUI's model compiler during H3 renders
 """ComfyUI's model compiler, paused while the Stubelius H3 nodes render.
 
 ComfyUI 0.37 and newer (with dynamic VRAM) record how a model allocates its working memory on the
