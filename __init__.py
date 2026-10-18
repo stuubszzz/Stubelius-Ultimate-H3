@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Registers the Stubelius H3 nodes and the windows
 """Stubelius Ultimate H3: one MiniMax H3 workflow for ComfyUI.
 
 Registers only the Ultimate H3 nodes. The Director / Refine engines underneath are the Muse
