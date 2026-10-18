@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Characters from many pictures (RefMods)
 """Characters saved from many pictures (RefMods) for the Director.
 
 A RefMod is a set of pictures of one character, encoded once with H3's video VAE and stacked as one reference
