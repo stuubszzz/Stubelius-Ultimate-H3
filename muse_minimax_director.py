@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Director engine: timeline, chunks and sampling
 """
 Muse Minimax Director — an all-in-one timeline-driven Director node for MiniMax H3,
 matching MuseDirectorSamplerV10Final's own philosophy: take the real models as inputs
