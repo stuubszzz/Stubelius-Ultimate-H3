@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Sounds and clips pinned on the timeline
 """Sounds and clips on the timeline (First/Last Frame mode), each pinned at its own second.
 
 timeline_data "cues": [{"kind": "sound" | "clip", "file", "fileName", "time", "sound": true}], time in
