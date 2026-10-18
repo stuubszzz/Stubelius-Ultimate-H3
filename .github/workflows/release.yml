@@ -1,4 +1,4 @@
-# Push a tag (git tag v0.8.0 && git push origin v0.8.0) -> a release with the free download:
+# Push a tag (git tag v0.13.0 && git push origin v0.13.0) -> a release with the free download:
 # Stubelius_Ultimate_H3.zip = the example workflow + INSTALL.txt. The landing page links
 # releases/latest/download/Stubelius_Ultimate_H3.zip, so it always serves the newest one.
 name: release
