@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Lip Sync from a recording, chunk by chunk
 """Lip Sync past one chunk: the recording becomes every chunk's own sound.
 
 A reference audio set to Lip Sync (retention fully_copy) is the video's soundtrack. H3 only takes
