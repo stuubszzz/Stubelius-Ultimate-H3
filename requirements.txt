@@ -1,1 +1,2 @@
+# Stubelius Ultimate H3 · Python packages on top of ComfyUI's own (faster-whisper: Transcribe in Lip Sync)
 faster-whisper
