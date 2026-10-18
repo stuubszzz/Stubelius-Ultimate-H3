@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Refine engine: the second, hi-res pass
 """
 Muse Minimax Refine — a standalone second-pass "hi-res fix" node for MiniMax H3.
 
