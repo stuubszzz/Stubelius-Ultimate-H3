@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Setup, Models and Finish nodes
 """Stubelius H3 pipeline nodes: Setup, Models and Finish.
 
 Setup   decides HOW the video is generated (mode presets, seed count, optional overrides).
