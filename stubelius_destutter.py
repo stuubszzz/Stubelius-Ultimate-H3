@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · De-stutter: held frames redrawn
 """De-stutter: smooth out frames where H3 held the picture still for a frame while the rest moved.
 
 Some takes move in a fixed rhythm with a held frame in it: "move, move, hold" (every 3rd frame almost a copy
