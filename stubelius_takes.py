@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Takes: retake, pick back and hunt one chunk
 """Takes (Ultimate H3): every chunk the Director renders is kept, so one chunk can be rendered again (a
 retake) without rendering the chunks before it, an older take picked back, one chunk hunted with several
 seeds while the chunks before it render once, and a stopped or crashed render picked up where it stopped.
