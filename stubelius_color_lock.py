@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Color Lock: original colours back after DLSS 5
 """Stubelius Color Lock — keep an enhancer's detail, take colour and tone from the original.
 
 In LAB: L = low-pass(reference L) + high-pass(enhanced L); a, b from the reference. The
