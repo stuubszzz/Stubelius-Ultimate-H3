@@ -29,6 +29,8 @@ Manager > Update All - or run this in ComfyUI/custom_nodes/Stubelius-Ultimate-H3
     git pull
 then restart ComfyUI. The newest workflow is always in ComfyUI's template browser
 (Workflow > Browse Templates > Stubelius-Ultimate-H3) and at the same download link.
+Coming from a version before 0.13? Open that new example workflow to get the four windows
+(Setup, Director, Seeds, Output); your older workflows still open and run as before.
 
 
 3. OTHER NODE PACKS
