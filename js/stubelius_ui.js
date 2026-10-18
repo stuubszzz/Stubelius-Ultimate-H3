@@ -1,4 +1,4 @@
-// Stubelius Ultimate H3: the look the four windows share (Setup, Director, Seeds, Output).
+// Stubelius Ultimate H3 · front end: the look the four windows share (Setup, Director, Seeds, Output).
 //
 // One set of colour tokens per pack theme (the workflow's Stubelius Theme node picks it, see
 // stubelius_theme.js; a workflow without one gets "ComfyUI default"), the components the windows are
