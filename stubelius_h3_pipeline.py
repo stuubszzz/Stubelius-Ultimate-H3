@@ -22,6 +22,7 @@ import re
 import time
 import types
 
+import comfy.model_management
 import comfy.samplers
 import comfy.sd
 import folder_paths
@@ -246,6 +247,18 @@ class StubeliusH3Output:
 # ---------------------------------------------------------------- Models
 
 _BASE, _PATCHED, _AUX = {}, {}, {}
+_PREVIEW_ERRORS = set()     # a failed live preview is logged once per error, not on every chunk
+
+
+class _Hidden(types.SimpleNamespace):
+    """The hidden inputs ComfyUI's executor gives a node it runs (unique_id, dynprompt, prompt ...). For a node we
+    call ourselves, the ones not set here read as None, as when the executor has none to give: KJNodes' preview
+    reads dynprompt since 2026-10-14 and falls back to unique_id when it is None."""
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return None
 
 
 class H3Models:
@@ -302,17 +315,28 @@ class H3Models:
 
     def preview(self, model, node_id):
         """Attach the live sampling preview (KJ Model Preview Override) for the node that samples.
-        Cheap (clone + wrapper), so it's applied per run instead of being cached."""
+        Cheap (clone + wrapper), so it's applied per run instead of being cached. The preview only
+        shows the sampling: when KJNodes' node fails (a version this call doesn't fit), the render
+        goes on without it."""
         tiny = self.cfg["live_preview"]
         cls = _cls("ModelPreviewOverrideKJ")
         if model is None or tiny == "off" or cls is None:
             return model
         saved = getattr(cls, "hidden", None)
-        cls.hidden = types.SimpleNamespace(unique_id=node_id)   # normally set by ComfyUI's executor
+        cls.hidden = _Hidden(unique_id=node_id)   # normally set by ComfyUI's executor
         try:
             return _unpack_node_result(cls.execute(model=model, max_resolution=0, jpeg_quality=80,
                                                    suppress_default_preview=True, preview_frames=124,
                                                    preview_fps=24, vae=None, tiny_vae=tiny))[0]
+        except comfy.model_management.InterruptProcessingException:
+            raise
+        except Exception as e:
+            error = f"{type(e).__name__}: {e}"
+            if error not in _PREVIEW_ERRORS:
+                _PREVIEW_ERRORS.add(error)
+                log.warning("[StubeliusH3Models] live preview skipped, the render goes on without it: "
+                            "KJNodes' Model Preview Override failed (%s)", error)
+            return model
         finally:
             cls.hidden = saved
 
