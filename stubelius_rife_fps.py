@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · RIFE to any frame rate
 """Stubelius RIFE to FPS — frame interpolation to any target frame rate in one pass.
 
 RIFE's IFNet accepts any in-between point t in (0, 1), not just k/multiplier. Every output
