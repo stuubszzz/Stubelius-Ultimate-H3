@@ -251,17 +251,21 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
                                               round(int(video.shape[-2]) * 16 * scale), keep,
                                               rate=getattr(audio_vae, "audio_sample_rate", None))
     for index, chunk in enumerate(chunks):
+        # How the chunk followed the one before it when it was made (the Director's CARRY_MODES): the
+        # carry-over only for a chunk that had one; a new shot is a cut, with no seam smoothing.
+        follows = chunk.get("carry") or "picture_sound"
+        carry = carry_length if follows in ("picture_sound", "picture") else 0
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
             _model(models, chunk, node_id, scale), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
-            made.get("ref_image_size", "match"), int(made.get("seed", 0)), int(made.get("steps", 8)),
+            made.get("ref_image_size", "match"), int(chunk.get("seed", made.get("seed", 0))), int(made.get("steps", 8)),
             int(made.get("first_pass_steps", 2)), made.get("sampler_name", "euler"), made.get("scheduler", "beta"),
             float(scale), method, refs,
-            previous if carry_length else None, previous_audio if carry_length else None, carry_length,
+            previous if carry else None, previous_audio if carry else None, carry,
             log_label=f"chunk {index + 1}/{len(chunks)}", audio_lock=True,
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",
-            positive=positive, trim_frames=int(chunk.get("trim") or 0))
-        if previous is not None:
+            positive=positive, trim_frames=int(chunk.get("trim") or 0), extra_refs=chunk.get("refmods"))
+        if previous is not None and follows != "new_shot":
             seam_from = _fit_image_to_target(previous[-1:], int(images.shape[2]), int(images.shape[1]), "stretch")
             _smooth_seam(seam_from, images, bundle.get("seam_frames"))
 

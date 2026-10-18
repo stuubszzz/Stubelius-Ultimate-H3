@@ -265,7 +265,6 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
     exactly, since that's the only place in H3's own source that encodes real
     (non-empty) audio."""
     from comfy import nested_tensor as _comfy_nested
-    import torchaudio
 
     n = _trim_to_grid(frames.shape[0])
     video_latent = vae.encode(frames[:n])
@@ -274,7 +273,12 @@ def _encode_av_latent(vae, audio_vae, frames, audio):
     sr = audio["sample_rate"]
     vae_sr = getattr(audio_vae, "audio_sample_rate", 32000)
     if sr != vae_sr:
-        waveform = torchaudio.functional.resample(waveform, sr, vae_sr)
+        # ComfyUI's own resampler (0.38+, what H3's nodes use; newer installs may not have torchaudio at all)
+        try:
+            from comfy.audio import resample
+        except ImportError:
+            from torchaudio.functional import resample
+        waveform = resample(waveform, sr, vae_sr)
     audio_latent = audio_vae.encode(waveform[:1].movedim(1, -1))
 
     return {"samples": _comfy_nested.NestedTensor((video_latent, audio_latent))}, n
@@ -364,6 +368,7 @@ def _refine_one_chunk(
     two_stage_strategy="complete then polish (stubelius)",
     positive=None,
     trim_frames=None,
+    extra_refs=None,
 ):
     """Stubelius, for a take polished chunk by chunk (stubelius_polish.py), both off by default:
     `positive` is the chunk's own conditioning, or a function (width, height) -> conditioning
@@ -433,6 +438,14 @@ def _refine_one_chunk(
         ))[0]
     else:
         positive = _unpack_node_result(_execute_comfy_node(CLIPTextEncode, clip=clip, text=chunk_prompt))[0]
+    # Stubelius: the RefMod characters the chunk was made with (stubelius_refmods.py), on its polish too
+    if extra_refs:
+        from .stubelius_refmods import attach
+        if positive_at is not None:
+            made_at = positive_at
+            positive_at = lambda width_px, height_px: attach(made_at(width_px, height_px), extra_refs)
+        else:
+            positive = attach(positive, extra_refs)
 
     def _guider_at(width_px, height_px):
         return _unpack_node_result(_execute_comfy_node(

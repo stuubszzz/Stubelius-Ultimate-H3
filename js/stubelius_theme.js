@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { onStage } from "./stubelius_stage.js";
 
 // Per-workflow theme. A "Stubelius Theme" node inside a workflow decides how THAT workflow looks
 // while its tab is open: node colours, a stage stripe on each title bar, group colours, the canvas
@@ -64,7 +65,7 @@ function drawStripe(node) {
   const orig = node.onDrawForeground;
   node.onDrawForeground = function (ctx) {
     const r = orig?.apply(this, arguments);
-    if (active && THEMES[active] && this.__stbColor && !this.flags?.collapsed) {
+    if (active && THEMES[active] && this.__stbColor && !this.flags?.collapsed && !onStage(this)) {
       const h = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
       ctx.save();
       ctx.fillStyle = this.__stbColor;
@@ -106,6 +107,7 @@ function apply() {
     if (name) clearOurColours(graph);
     window.__stubeliusGoldRepaint?.();
     canvas?.setDirty(true, true);
+    window.dispatchEvent(new CustomEvent("stubelius-theme", { detail: { name } }));   // the windows follow
     return;
   }
 
@@ -130,6 +132,7 @@ function apply() {
     if (k in stageByGroup) g.color = p.s[stageByGroup[k]];
   }
   canvas?.setDirty(true, true);
+  window.dispatchEvent(new CustomEvent("stubelius-theme", { detail: { name } }));   // the windows follow
 }
 
 const later = () => setTimeout(apply, 0);   // run after other extensions (gold) have painted

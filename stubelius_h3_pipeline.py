@@ -17,6 +17,8 @@ are skipped (or reported clearly) when their pack isn't installed.
 """
 import logging
 import os
+import re
+import time
 import types
 
 import comfy.samplers
@@ -176,9 +178,9 @@ class StubeliusH3Output:
                     "(and the upscaler for what the polish doesn't reach). PDMD: native (≈768p) up to 4K, "
                     "upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
-                    "per frame, so keep 4K clips short, especially at 48/60 fps."}),
+                    "per frame, so keep 4K clips short, especially at high frame rates."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
-                    "24 = untouched. 48 / 60 = RIFE draws the in-between frames; length and sync kept."}),
+                    "24 = untouched. Above 24, any rate up to 120: RIFE draws the in-between frames; length and sync kept."}),
                 "upscaler": (UPSCALERS, {"default": "RTX VSR", "tooltip":
                     "Used when the final resolution needs an upscale. DLSS5 adds far more detail; Color Lock "
                     "then restores the original colours. Needs ComfyUI-DLSS5-Enhancer."}),
@@ -547,6 +549,31 @@ def _with_clip(info, images, audio, enlarge=None):
 _POLISH_MEMO = []   # [(key, (images, audio))], newest last, two kept
 
 
+def _take_identity(takes, w):
+    """What a take is made of, for the polish memory: each chunk's seed, carry, prompt, LoRAs and characters, and
+    the candidate's chunk seeds. A Retake or a pick changes these without changing the take's size or prompt."""
+    from .stubelius_polish import chunks_of
+    candidate = (takes.get("latents") or [None] * w)[w - 1]
+    made = (candidate.get("_muse_stage1_settings") or {}) if isinstance(candidate, dict) else {}
+    rows = tuple((c.get("seed"), c.get("carry"), hash(c.get("prompt")),
+                  tuple(tuple(str(x) for x in lora) for lora in c.get("loras") or ()),
+                  len(c.get("refmods") or ())) for c in chunks_of(candidate))
+    seeds = (takes.get("chunk_seeds") or [])
+    return (rows, tuple(seeds[w - 1] or ()) if len(seeds) >= w else (), made.get("seed"), made.get("steps"),
+            hash(made.get("compiled_prompt")))
+
+
+def _stage(node, stage, **info):
+    """Tell the Output window where the finish is (winner, polish, de-stutter, fps, upscale, done)."""
+    try:
+        from server import PromptServer
+        send = getattr(PromptServer.instance, "send_sync", None)
+        if send is not None:
+            send("stubelius_ultimate_h3.finish", dict(info, node=node, stage=stage))
+    except Exception:
+        pass
+
+
 class StubeliusH3Finish:
     """The engine: everything it does comes from the Output node. WINNER is the only choice left
     after a seed hunt."""
@@ -576,6 +603,16 @@ class StubeliusH3Finish:
             from comfy_execution.graph import ExecutionBlocker
             log.info("[StubeliusH3Finish] WINNER 0 = hold: %d seed(s) rendered, finish skipped. "
                      "Set WINNER 1-%d and re-queue.", takes["count"], takes["count"])
+            _stage(unique_id, "hold", why="winner")
+            return (ExecutionBlocker(None), ExecutionBlocker(None), ExecutionBlocker(None))
+        partial = takes.get("partial")
+        if partial:
+            # the video up to one chunk (render_until, or a chunk hunt): looked at in the seed previews
+            from comfy_execution.graph import ExecutionBlocker
+            log.info("[StubeliusH3Finish] the Director rendered chunk%s of %d%s: the finish waits for the whole "
+                     "video.", " 1" if partial["chunks"] == 1 else f"s 1-{partial['chunks']}", partial["of"],
+                     f" (hunting chunk {partial['hunt'] + 1})" if partial.get("hunt") is not None else "")
+            _stage(unique_id, "hold", why="partial", chunks=partial["chunks"], of=partial["of"])
             return (ExecutionBlocker(None), ExecutionBlocker(None), ExecutionBlocker(None))
         w = max(1, min(int(winner), takes["count"]))
         if w != winner:
@@ -588,15 +625,21 @@ class StubeliusH3Finish:
         candidate = (takes.get("latents") or [None] * w)[w - 1]
         # the clip this take continues (First/Last Frame mode), to go in front of it (stubelius_clip.py)
         clip = source_of(candidate) if o.get("clip_in_output", True) else None
-        if o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images):
+        polishing = bool(o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images))
+        _stage(unique_id, "start", winner=w, frames=int(images.shape[0]), width=int(images.shape[2]),
+               height=int(images.shape[1]), polish=polishing, resolution=o["resolution"], fps=float(o["fps"]),
+               upscaler=o["upscaler"])
+        if polishing:
+            _stage(unique_id, "polish")
             # Quality re-renders the take 1.5x or 2x bigger (the polish) when the size picked is
             # above what it rendered; at or below that, the render itself is the final picture.
             # The upscaler takes it the rest of the way. A take past one chunk is polished chunk
             # by chunk. Either way only the picture is rendered again, so the take keeps its own sound.
             from .muse_minimax_refine import effective_polish_scale
             # chunk by chunk past one chunk, and for a take that continues a clip (it starts from the clip)
+            # and for a take with characters made from many pictures (RefMods): the chunk path keeps them
             polish = (self._polish_chunks if len(chunks_of(candidate)) > 1 or source_of(candidate)
-                      else self._polish)
+                      or any(c.get("refmods") for c in chunks_of(candidate)) else self._polish)
             scale = effective_polish_scale(o["polish_method"], o.get("polish_scale", 2.0), "[StubeliusH3Finish]")
             images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
                             o["polish_method"], unique_id, scale=scale)[0]
@@ -606,14 +649,18 @@ class StubeliusH3Finish:
             images = _fit(images, target)
         # held frames drawn again (stubelius_destutter.py): the take only, before RIFE and the upscale
         from .stubelius_destutter import destutter
-        images = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")[0]
+        _stage(unique_id, "destutter")
+        images, stutter = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")
 
         fps = SOURCE_FPS
         if clip is None:
+            if o["fps"] > SOURCE_FPS + 1e-6:
+                _stage(unique_id, "fps")
             images, fps = _to_fps(images, o["fps"])
 
         upscaled = bool(target and target / _short(images) > 1.02)
         if upscaled:
+            _stage(unique_id, "upscale")
             images = self._upscale(images, target, o["upscaler"])
         if target:
             images = _fit(images, target)   # exact size (DLSS5 only scales 1.5x / 2x)
@@ -623,16 +670,29 @@ class StubeliusH3Finish:
             # clip's last frame and the take's first
             enlarge = ((lambda frames: _fit(self._upscale(frames, target, o["upscaler"]), target))
                        if target else None)
+            _stage(unique_id, "clip")
             images, audio = _with_clip(clip, images, audio, enlarge)
             images, fps = _to_fps(images, o["fps"])
         log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s",
                  o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps,
                  o["upscaler"] if upscaled else "none")
+        loudness = None
+        try:
+            from .stubelius_loudness import lufs
+            loudness = lufs(audio["waveform"], audio["sample_rate"])
+        except Exception as e:
+            log.info("[StubeliusH3Finish] no loudness reading: %s", e)
+        wave = audio["waveform"]
+        _stage(unique_id, "done", width=int(images.shape[2]), height=int(images.shape[1]), fps=float(fps),
+               frames=int(images.shape[0]), seconds=round(int(images.shape[0]) / float(fps), 3),
+               lufs=round(loudness, 1) if loudness is not None else None, upscaler=o["upscaler"] if upscaled else None,
+               polished=polishing, destutter=stutter, rate=int(audio["sample_rate"]),
+               channels=int(wave.shape[1]) if wave.dim() == 3 else 1)
         return (images, audio, float(fps))
 
     @staticmethod
     def _polish(takes, models, w, strength, steps, method, node_id=None, scale=2.0):
-        key = (id(takes), w, strength, steps, method, models.key, scale)
+        key = (id(takes), w, strength, steps, method, models.key, scale, _take_identity(takes, w))
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
@@ -664,8 +724,7 @@ class StubeliusH3Finish:
         candidate, take = takes["latents"][w - 1], takes["images"][w - 1]
         made = candidate.get("_muse_stage1_settings") or {}
         # by what the take is, not only by id(takes): a new take can get a freed one's id
-        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape),
-               made.get("seed"), made.get("steps"), hash(made.get("compiled_prompt")))
+        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape), _take_identity(takes, w))
         for k, v in _POLISH_MEMO:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
@@ -743,30 +802,89 @@ class StubeliusLivePreview:
         return ()
 
 
+PREVIEWS = ("StubeliusH3", "previews")     # in the output folder: one mp4 per seed, overwritten by the next run
+QUIET_DBFS = -45.0                          # a seed whose loudest second stays under this is flagged as silent
+
+
+def _seed_flags(report, audio):
+    """Hints for the Seeds window, never a ranking: held frames that de-stutter drew again, a silent take."""
+    flags = []
+    held = re.search(r"(\d+) held frame\(s\)", report or "")
+    if held and "drawn again" in (report or ""):
+        flags.append({"kind": "motion", "text": f"{held.group(1)} held frames redrawn"})
+    wave = (audio or {}).get("waveform")
+    rate = int((audio or {}).get("sample_rate") or 0)
+    if torch.is_tensor(wave) and wave.numel() and rate:
+        w = wave[0].float().mean(dim=0)
+        n = w.shape[-1] // rate
+        if n:
+            loudest = float(w[:n * rate].reshape(n, rate).pow(2).mean(dim=1).sqrt().max())
+            if loudest < 10 ** (QUIET_DBFS / 20):
+                flags.append({"kind": "sound", "text": "Nearly silent"})
+    return flags
+
+
 class StubeliusSeedPreviews:
     """The seeds for their previews, with the Output node's de-stutter applied, so the seed you pick looks
     the way it will in the finished video. It reads the Director's takes, not the Director itself: changing
-    the switch re-runs only this node, the previews and the Finish, never the seeds."""
+    the switch re-runs only this node, the previews and the Finish, never the seeds. It also writes each seed
+    as an mp4 (output/StubeliusH3/previews) for the Director and Seeds windows."""
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)}}
+        return {"required": {"takes": ("H3_TAKES",), "output": ("H3_OUTPUT",)},
+                "hidden": {"unique_id": "UNIQUE_ID"}}
 
     RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE")
     RETURN_NAMES = ("seed_1", "seed_2", "seed_3", "seed_4")
     FUNCTION = "run"
     CATEGORY = "Stubelius"
+    OUTPUT_NODE = True          # it shows the seeds itself, with or without preview nodes after it
 
-    def run(self, takes, output):
+    def run(self, takes, output, unique_id=None):
         from .stubelius_destutter import destutter
+        from .stubelius_takes import write_mp4
         mode = output.get("de_stutter", "auto")
-        out = []
+        out_dir = folder_paths.get_output_directory()
+        folder = os.environ.get("STUBELIUS_PREVIEWS_DIR") or os.path.join(out_dir, *PREVIEWS)
+        # the windows play the previews through ComfyUI's /view, which serves the output folder only
+        try:
+            sub = os.path.relpath(folder, out_dir).replace("\\", "/")
+        except ValueError:                       # another drive
+            sub = ".."
+        if sub == ".." or sub.startswith("../"):
+            log.warning("[StubeliusSeedPreviews] STUBELIUS_PREVIEWS_DIR is outside the output folder: the previews are "
+                        "written there, but the windows can only play from inside the output folder")
+            sub = "/".join(PREVIEWS)
+        prefix = re.sub(r"[^A-Za-z0-9_-]", "", str(takes.get("takes_id") or f"node{unique_id or ''}")) or "seeds"
+        seeds = list(takes.get("chunk_seeds") or [])
+        times = list(takes.get("seconds") or [])
+        partial = takes.get("partial") or None
+        sounds = list(takes.get("audio") or [])
+        out, shown = [], []
         for i, images in enumerate(list(takes["images"])[:4]):
             if images is None or i >= takes["count"] or images.shape[0] < 4:
                 out.append(images)            # a seed that wasn't rendered: its empty frames, as before
-            else:
-                out.append(destutter(images, mode, label=f"seed {i + 1}: ")[0])
-        return tuple(out)
+                continue
+            frames, report = destutter(images, mode, label=f"seed {i + 1}: ")
+            out.append(frames)
+            name = f"{prefix}_seed{i + 1}.mp4"
+            try:
+                os.makedirs(folder, exist_ok=True)
+                write_mp4(os.path.join(folder, name), frames, sounds[i] if i < len(sounds) else None, fps=SOURCE_FPS, crf=20)
+            except Exception as e:
+                log.warning("[StubeliusSeedPreviews] seed %d: no preview video (%s)", i + 1, e)
+                continue
+            shown.append({"filename": name, "subfolder": "" if sub == "." else sub, "type": "output", "candidate": i + 1,
+                          "frames": int(frames.shape[0]), "seconds": round(int(frames.shape[0]) / SOURCE_FPS, 3),
+                          "width": int(frames.shape[2]), "height": int(frames.shape[1]),
+                          "chunk_seeds": seeds[i] if i < len(seeds) else None,
+                          "flags": _seed_flags(report, sounds[i] if i < len(sounds) else None), "destutter": report,
+                          "partial": bool(partial), "chunks": partial["chunks"] if partial else None,
+                          "of": partial["of"] if partial else None, "hunt": takes.get("hunt_chunk"),
+                          "render_seconds": round(times[i], 1) if i < len(times) and times[i] else None,
+                          "v": int(time.time() * 1000)})
+        return {"ui": {"stubelius_seeds": shown}, "result": tuple(out)}
 
 
 NODE_CLASS_MAPPINGS = {

@@ -6,6 +6,9 @@ Nodes:    https://github.com/stuubszzz/Stubelius-Ultimate-H3
 
 1. INSTALL THE NODES (once)
 ---------------------------
+Needs ComfyUI 0.34 or newer (made and tested on 0.41). Update ComfyUI first
+(Manager > Update ComfyUI).
+
 Option A - ComfyUI Manager:
   Manager > Install via Git URL > paste
       https://github.com/stuubszzz/Stubelius-Ultimate-H3
@@ -36,7 +39,7 @@ Needed:
   ComfyUI-VideoHelperSuite     https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite   (video outputs)
   Nvidia RTX nodes             https://github.com/Comfy-Org/Nvidia_RTX_Nodes_ComfyUI      (RTX VSR upscaling, NVIDIA RTX GPU)
   ComfyUI-KJNodes              https://github.com/kijai/ComfyUI-KJNodes                   (live preview, low-VRAM options, a large Quality polish)
-  ComfyUI-Frame-Interpolation  https://github.com/Fannovel16/ComfyUI-Frame-Interpolation  (48 / 60 fps)
+  ComfyUI-Frame-Interpolation  https://github.com/Fannovel16/ComfyUI-Frame-Interpolation  (frame rates above 24)
 
 Recommended:
   ComfyUI-H3-Motion-Context-MultiRef  https://github.com/seitanism/ComfyUI-H3-Motion-Context-MultiRef
@@ -83,17 +86,20 @@ models/vae_approx/         taeh3.safetensors
   https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)
   then pick it as "live preview" on the Models node.
 
-RIFE (rife47.pth) downloads by itself the first time you pick 48 or 60 fps.
+RIFE (rife47.pth) downloads by itself the first time you pick a frame rate above 24.
 
 
 5. FIRST RUN
 ------------
-Load Stubelius_Ultimate_H3.json, check that the Models node shows your files, press Queue.
+Load Stubelius_Ultimate_H3.json (or Workflow > Browse Templates > Stubelius-Ultimate-H3).
+Four windows open, left to right: 1 Setup, 2 Director, 3 Seeds, 4 Output, with a How to use
+window beside them. The Setup window shows every model file: red "Missing" means it isn't in
+its folder yet (the list above says where each one goes). Then press Render in the Director.
 The example is a 12.5 s text-to-video shot of a glassblower - replace it with your own in the
-Director. The HOW TO USE note inside the workflow explains every node.
+Director.
 
-Developed on an RTX 5090 (32 GB). With less VRAM, turn on the Models node's low-VRAM options
-or use GGUF models.
+Developed on an RTX 5090 (32 GB). With less VRAM, turn on the low-VRAM switches under
+Performance in the Setup window, or use GGUF models.
 
 Powered by MiniMax H3 (MiniMax H3 Community License). The nodes are MIT licensed and built on
 Muse Minimax Director - see LICENSE and NOTICE in the repository.

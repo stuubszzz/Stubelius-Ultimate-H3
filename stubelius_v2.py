@@ -19,10 +19,11 @@ import comfy.sd
 import comfy.utils
 import folder_paths
 
-from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE
+from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE, _bucket_segments_into_chunks
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
 from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
+from . import stubelius_takes as _takes
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +119,41 @@ _DIRECTOR_KEEP_REQUIRED = ("mode", "aspect_ratio", "duration_seconds", "chunk_du
                            "seed", "timeline_data")
 
 
+def _has_content(mode, timeline_data, prompt_override):
+    """Anything for H3 to go on: typed text (a shot, a style, sound or music line, the prompt override), a picture,
+    a clip to continue, a pinned sound or clip, a reference. Without any of it H3 makes up a video of its own."""
+    if prompt_override and str(prompt_override).strip():
+        return True
+    try:
+        t = json.loads(timeline_data or "{}")
+    except (TypeError, ValueError):
+        return True                      # a broken timeline is reported by the engine itself
+    if not isinstance(t, dict):
+        return True
+
+    def typed(s):
+        return bool(str(s or "").strip())
+
+    def filed(p):
+        return isinstance(p, dict) and bool(p.get("file") or p.get("image_b64"))
+
+    for c in t.get("chunks") or []:
+        if not isinstance(c, dict):
+            continue
+        if any(typed(s.get("prompt")) for s in c.get("segments") or [] if isinstance(s, dict)):
+            return True
+        if typed(c.get("style_line")) or typed(c.get("overall_soundscape")) or typed(c.get("non_diegetic_music")):
+            return True
+    if any(isinstance(e, dict) and e.get("file") and e.get("enabled") is not False for e in t.get("refmods") or []):
+        return True                      # a saved reference (RefMod, stubelius_refmods.py)
+    if mode == MODE_REFERENCE:
+        return (any(filed(p) for p in t.get("characters") or []) or filed(t.get("background"))
+                or any(filed(v) for v in list(t.get("refVideos") or []) + list(t.get("refAudios") or [])))
+    return (any(filed(p) for p in (t.get("characters") or [])[:2])
+            or any(filed(m) for m in t.get("middle_frames") or [])
+            or filed(t.get("source_clip")) or any(filed(c) for c in t.get("cues") or []))
+
+
 class StubeliusH3DirectorV2(MuseMinimaxDirector):
     @classmethod
     def INPUT_TYPES(cls):
@@ -153,6 +189,10 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                    model_fl2va=None, prompt_override=None,
                    megapixels=0.98, steps=8, sampler_name="euler", scheduler="beta", seed_count=1,
                    unique_id=None):
+        if not _has_content(mode, timeline_data, prompt_override):
+            raise ValueError("[StubeliusH3DirectorV2] Nothing to render yet: every shot is empty and there is no "
+                             "picture, clip, sound or reference. Type what happens in a shot (or add a picture) "
+                             "and render again; without anything to go on H3 makes up a video of its own.")
         _release_held_models()
         if setup is not None:
             megapixels, steps = setup["megapixels"], setup["steps"]
@@ -173,6 +213,14 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
         if scheduler not in comfy.samplers.KSampler.SCHEDULERS:
             raise ValueError(f"[StubeliusH3DirectorV2] unknown scheduler '{scheduler}'")
         n = max(1, min(4, int(seed_count)))
+        try:
+            hunt = _takes.hunt_request(json.loads(timeline_data or "{}"))
+        except (TypeError, ValueError):
+            hunt = None
+        # a chunk hunt (stubelius_takes.py) brings its own count, when that chunk is in the video (Plan leaves an
+        # out-of-range hunt out: the render is then the Setup's seeds, not 2-4 whole videos)
+        if hunt is not None and hunt[0] < len(_bucket_segments_into_chunks({}, duration_seconds, chunk_duration_seconds)[2]):
+            n = hunt[1]
         use_override = bool(prompt_override and str(prompt_override).strip())
         hybrid = (model_fl2va is not None and mode == MODE_REFERENCE
                   and duration_seconds > chunk_duration_seconds)
@@ -183,6 +231,9 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
 
         self._lora_plan = _build_lora_plan(timeline_data)
         self._lora_models = {}
+        # the Models node's settings are part of every take's key (stubelius_takes.py)
+        self._takes_models = _takes.bundle_key(models)
+        self._takes_node = unique_id           # the window that shows this render's progress
         try:
             out = self._execute_v1(mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,
@@ -192,13 +243,22 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             _hold_run_models(model, model_fl2va)
             raise
         finally:
-            self._lora_plan, self._lora_models = {}, {}
+            self._lora_plan, self._lora_models, self._takes_models = {}, {}, None
         out[0], out[1] = out[4], out[5]
+        plan = getattr(self, "_takes_plan", None)
         takes = {
             "count": n, "prompt": out[2], "ref_images": out[3],
             "images": [out[4], out[6], out[8], out[10]], "audio": [out[5], out[7], out[9], out[11]],
             "latents": [out[12], out[13], out[14], out[15]],
             "kind": "ref" if (mode == MODE_REFERENCE and model is not None) else "fl2va",
+            # per-chunk takes (stubelius_takes.py): every candidate's seed for each chunk it rendered, and
+            # whether this is the video up to one chunk only (render_until, a chunk hunt): the Finish waits
+            "chunk_seeds": list(getattr(self, "_takes_seeds", None) or [])[:n],
+            "seconds": list(getattr(self, "_takes_times", None) or [])[:n],
+            "takes_id": plan.takes_id if plan is not None else None,
+            "hunt_chunk": plan.hunt if plan is not None else None,
+            "partial": ({"chunks": plan.last + 1, "of": plan.num_chunks, "hunt": plan.hunt}
+                        if plan is not None and plan.partial else None),
         }
         return tuple(out) + (takes,)
 

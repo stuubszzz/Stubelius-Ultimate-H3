@@ -7,9 +7,13 @@ the upscale factor (one source pixel), which is where new detail lives.
 """
 import torch
 import torch.nn.functional as F
-import kornia
 
 from comfy.model_management import get_torch_device
+
+try:
+    import kornia               # one of ComfyUI's optional requirements: without it the pack still loads
+except ImportError:
+    kornia = None
 
 
 def _blur(x, sigma):
@@ -38,6 +42,9 @@ class StubeliusColorLock:
     def run(self, enhanced, reference, detail_radius, batch_size, inplace=False):
         """inplace=True writes the result over `enhanced` (no second full-size copy). Only for a
         private tensor, like the Finish node's own DLSS5 output; as a node it never touches its input."""
+        if kornia is None:
+            raise RuntimeError("[StubeliusColorLock] needs the kornia package (one of ComfyUI's optional requirements). "
+                               "Install it with ComfyUI's Python: python -m pip install kornia")
         n = min(enhanced.shape[0], reference.shape[0])
         if enhanced.shape[0] != reference.shape[0]:
             raise ValueError(f"[StubeliusColorLock] frame counts differ: enhanced {enhanced.shape[0]}, "
