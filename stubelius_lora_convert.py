@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Loads H3 LoRAs saved with Diffusers names
 """MiniMax H3 LoRAs saved with Diffusers module names (PEFT), made loadable by ComfyUI.
 
 ComfyUI's H3 model has one fused q/k/v projection and keeps the SwiGLU halves as [gate; value], while
