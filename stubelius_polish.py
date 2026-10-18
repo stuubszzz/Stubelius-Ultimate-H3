@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Quality polish at 1.5x or 2x, past one chunk
 """Quality polish of a take that runs past one chunk.
 
 The polish renders a finished take again, 1.5x or 2x its size. It was handed one latent per take,
