@@ -1,3 +1,4 @@
+# Stubelius Ultimate H3 · Middle frames: up to eight on the timeline
 """Middle frames for First/Last Frame mode: up to eight pictures the video passes through, each at its own time.
 
 The timeline keeps them in timeline_data "middle_frames": [{"file", "fileName", "time"}], time in seconds of
