@@ -1,5 +1,11 @@
 # Stubelius Ultimate H3
 
+[![Watch the Ultimate H3 0.13 video on YouTube](docs/video-0.13.jpg)](https://youtu.be/Xeyb0Y9bvho)
+
+**▶ [Watch the 0.13 video on YouTube](https://youtu.be/Xeyb0Y9bvho)** (22 min). It goes through all four windows, from
+the first setting to the finished video, with hunting and retaking one chunk, middle frames and characters from many
+pictures.
+
 One MiniMax H3 workflow for ComfyUI, in four windows. **Setup** decides **how** the video is made
 (Speed, Hybrid, Quality or PDMD, the models, the speed-ups). The **Director** holds **what the
 video is**. **Seeds** plays 1–4 full seeds with sound side by side, you pick the winner, and only
@@ -12,7 +18,7 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
 
 ## What's new in 0.13
 
-Video walkthrough: https://youtu.be/Xeyb0Y9bvho
+Video walkthrough: [Ultimate H3 0.13 on YouTube](https://youtu.be/Xeyb0Y9bvho)
 
 - **Four windows**: Setup, Director, Seeds and Output, six looks, a **How to use** window, and a short explanation
   when you hover over an option.
