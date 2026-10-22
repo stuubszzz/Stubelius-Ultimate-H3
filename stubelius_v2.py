@@ -23,6 +23,7 @@ import folder_paths
 from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE, _bucket_segments_into_chunks
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
+from .stubelius_h3_pipeline import SHIFT_AUDIO, SHIFT_VIDEO
 from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
 from . import stubelius_takes as _takes
 
@@ -85,6 +86,18 @@ def _release_held_models():
     if _HELD:
         gc.collect()
         _HELD.clear()
+
+
+def with_shift(model, made):
+    """The model on the flow shift a take was made with (its _muse_stage1_settings), for the Quality
+    polish. A take from before 0.14 carries none: it was made on H3's own 12 / 3, which the model
+    already has."""
+    if model is None or not made or "shift_video" not in made:
+        return model
+    from .muse_minimax_director import MiniMaxH3SigmaShift, _execute_comfy_node, _unpack_node_result
+    return _unpack_node_result(_execute_comfy_node(
+        MiniMaxH3SigmaShift, model=model, shift_video=float(made["shift_video"]),
+        shift_audio=float(made.get("shift_audio", SHIFT_AUDIO))))[0]
 
 
 def _build_lora_plan(timeline_data):
@@ -195,9 +208,12 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
                              "picture, clip, sound or reference. Type what happens in a shot (or add a picture) "
                              "and render again; without anything to go on H3 makes up a video of its own.")
         _release_held_models()
+        shift_video, shift_audio = SHIFT_VIDEO, SHIFT_AUDIO
         if setup is not None:
             megapixels, steps = setup["megapixels"], setup["steps"]
             sampler_name, scheduler, seed_count = setup["sampler"], setup["scheduler"], setup["seed_count"]
+            shift_video = float(setup.get("shift_video", SHIFT_VIDEO))     # a Setup from before 0.14 has none
+            shift_audio = float(setup.get("shift_audio", SHIFT_AUDIO))
         if models is not None:
             clip, vae, audio_vae = models.clip(), models.vae(), models.audio_vae()
             if mode == MODE_REFERENCE:
@@ -239,7 +255,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             out = self._execute_v1(mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,
                                    use_override, steps, sampler_name, scheduler, upscale_methods,
-                                   timeline_data, n, model_fl2va, prompt_override)
+                                   timeline_data, n, model_fl2va, prompt_override, shift_video, shift_audio)
         except BaseException:
             _hold_run_models(model, model_fl2va)
             raise
@@ -266,7 +282,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
     def _execute_v1(self, mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                     duration_seconds, chunk_duration_seconds, hybrid, carry, seed, use_override,
                     steps, sampler_name, scheduler, upscale_methods, timeline_data, n,
-                    model_fl2va, prompt_override):
+                    model_fl2va, prompt_override, shift_video=SHIFT_VIDEO, shift_audio=SHIFT_AUDIO):
         return list(self.execute(
             mode=mode, model=model, clip=clip, vae=vae, audio_vae=audio_vae,
             aspect_ratio=aspect_ratio, megapixels=megapixels, multiple=32, resize_method="crop",
@@ -277,7 +293,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             steps=steps, sampler_name=sampler_name, scheduler=scheduler,
             two_stage_sampling=False, two_stage_first_pass_steps=2, two_stage_upscale_factor=1.5,
             two_stage_upscale_method=upscale_methods[0], two_stage_seed_hunt_latent_only=False,
-            shift_video=12.0, shift_audio=3.0, timeline_data=timeline_data,
+            shift_video=shift_video, shift_audio=shift_audio, timeline_data=timeline_data,
             candidate_2=n >= 2, candidate_3=n >= 3, candidate_4=n >= 4,
             model_fl2va=model_fl2va, prompt_override=prompt_override,
         ))

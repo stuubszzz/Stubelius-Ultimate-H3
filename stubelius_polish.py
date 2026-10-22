@@ -94,10 +94,11 @@ def save_vram(model, tokens):
     return model
 
 
-def _model(models, chunk, node_id, scale):
-    """The checkpoint that made this chunk, with the chunk's own LoRAs, as the Director had it."""
-    from .stubelius_v2 import _lora_state_dict
-    model = models.model(chunk["model"])
+def _model(models, chunk, node_id, scale, made=None):
+    """The checkpoint that made this chunk, with the chunk's own LoRAs and the take's flow shift, as the
+    Director had it."""
+    from .stubelius_v2 import _lora_state_dict, with_shift
+    model = with_shift(models.model(chunk["model"]), made)
     for _, path, strength in chunk.get("loras") or []:
         model, _ = comfy.sd.load_lora_for_models(model, None, _lora_state_dict(path), strength, 0)
     return models.preview(save_vram(model, polish_tokens(chunk["latent"], scale)), node_id)
@@ -258,7 +259,7 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
         carry = carry_length if follows in ("picture_sound", "picture") else 0
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
-            _model(models, chunk, node_id, scale), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
+            _model(models, chunk, node_id, scale, made), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
             made.get("ref_image_size", "match"), int(chunk.get("seed", made.get("seed", 0))), int(made.get("steps", 8)),
             int(made.get("first_pass_steps", 2)), made.get("sampler_name", "euler"), made.get("scheduler", "beta"),
             float(scale), method, refs,

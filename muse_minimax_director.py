@@ -2739,6 +2739,9 @@ class MuseMinimaxDirector:
                     "upscale_factor": float(two_stage_upscale_factor),
                     "ref_image_size": ref_image_size,
                     "compiled_prompt": "\n\n".join(compiled_prompts),
+                    # Stubelius: the flow shift it was sampled on, so the Quality polish uses it too
+                    "shift_video": float(shift_video),
+                    "shift_audio": float(shift_audio),
                 }
                 if chunk_records:
                     # Stubelius: the whole take rides on its candidate latent, chunk by chunk,
