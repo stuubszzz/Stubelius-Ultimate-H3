@@ -16,6 +16,11 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.14
+
+- **Flow shift** in the Setup window (video and audio): render on the shift a speed-up LoRA or checkpoint was
+  trained on, for example 6 / 3 for LightX2V's 768p turbo LoRAs ([Flow shift](#flow-shift)).
+
 ## What's new in 0.13
 
 Video walkthrough: [Ultimate H3 0.13 on YouTube](https://youtu.be/Xeyb0Y9bvho)
@@ -43,7 +48,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 
 | Window | Node | What it holds |
 |---|---|---|
-| **1 Setup** | Stubelius H3 Setup | The four modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), and their fine-tuning; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
+| **1 Setup** | Stubelius H3 Setup | The four modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
 | **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
@@ -375,6 +380,20 @@ the LoRA slots now).
 Measured on an RTX 5090, 6.6 s clips at 1344x768 finished to 2K with DLSS5 + Color Lock: PDMD 100 s
 (67 s of it the 4-step render), Hybrid 85-99 s (at half the pixels), Quality with its 1.5x polish
 715-800 s.
+
+## Flow shift
+
+**Video shift** and **Audio shift**, under the fine-tuning in the Setup window, decide where the sampler spends its
+steps: a higher shift spends more of them on the rough shapes and motion, a lower one more on the fine detail.
+H3's own is 12 / 3, and every mode starts there: picking a mode puts it back.
+
+Render on the shift a speed-up LoRA or checkpoint was trained on. LightX2V's 768p turbo LoRAs were trained on 6 / 3;
+its 544p turbo LoRAs and PDMD's 4 steps on 12 / 3. When the turbo LoRA in use is one of LightX2V's, the window says
+which shift it was trained on and offers it in one click.
+
+- A take made on another shift is a new take: the ones made before stay in Takes.
+- The Quality polish runs on the shift the take was made on.
+- For scripts: the Setup node's `shift_video` and `shift_audio` inputs (optional; 12 and 3 when left out).
 
 ## Install
 

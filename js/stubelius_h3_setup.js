@@ -12,6 +12,8 @@ const FIELDS = {
   scheduler: "scheduler",
   megapixels: "megapixels",
   speedup_strength: "speedup_lora_strength",
+  shift_video: "shift_video",
+  shift_audio: "shift_audio",
 };
 const SIZES = { perMode: null, fallback: null };
 

@@ -34,13 +34,17 @@ from .stubelius_compiler import compiler_paused
 log = logging.getLogger(__name__)
 
 MODES = ["Speed", "Hybrid", "Quality", "PDMD"]
+# H3's own flow shift (ComfyUI's MiniMax H3 default): every mode starts on it, and picking a mode puts it back.
+# Some speed-up LoRAs are trained on another one: LightX2V's 768p turbo LoRAs on 6 / 3 (their model card).
+SHIFT_VIDEO, SHIFT_AUDIO = 12.0, 3.0
+_SHIFT = dict(shift_video=SHIFT_VIDEO, shift_audio=SHIFT_AUDIO)
 PRESETS = {
-    "Speed":   dict(steps=8,  sampler="res_multistep", scheduler="simple", megapixels=0.4,  speedup_strength=1.0),
-    "Hybrid":  dict(steps=10, sampler="euler",         scheduler="beta",   megapixels=0.5,  speedup_strength=0.75),
-    "Quality": dict(steps=20, sampler="euler",         scheduler="beta",   megapixels=0.98, speedup_strength=0.0),
+    "Speed":   dict(steps=8,  sampler="res_multistep", scheduler="simple", megapixels=0.4,  speedup_strength=1.0, **_SHIFT),
+    "Hybrid":  dict(steps=10, sampler="euler",         scheduler="beta",   megapixels=0.5,  speedup_strength=0.75, **_SHIFT),
+    "Quality": dict(steps=20, sampler="euler",         scheduler="beta",   megapixels=0.98, speedup_strength=0.0, **_SHIFT),
     # PDMD's 4-step student (Projected Distribution Matching Distillation, Apache-2.0): Euler on H3's own
     # 12/3 shift with the simple scheduler is its 4-step grid; H3 has no CFG anyway
-    "PDMD":    dict(steps=4,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=1.0),
+    "PDMD":    dict(steps=4,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=1.0, **_SHIFT),
 }
 PDMD_LORA_HELP = ("PDMD mode needs the PDMD 4-step LoRA: download lora_model_0.safetensors from "
                   "huggingface.co/pdmd2026/pdmd_4NFE_lora into models/loras (e.g. as pdmd_4nfe_lora.safetensors) "
@@ -137,7 +141,15 @@ class StubeliusH3Setup:
                 "speedup_lora_strength": ("FLOAT", {"default": h["speedup_strength"], "min": 0.0, "max": 2.0,
                     "step": 0.05, "tooltip": "Strength of the speedup LoRA chosen on the Models node. "
                                              "0 = off (Quality preset)."}),
-            }
+            },
+            "optional": {
+                "shift_video": ("FLOAT", {"default": SHIFT_VIDEO, "min": 0.5, "max": 30.0, "step": 0.5, "tooltip":
+                    "Where the sampler spends its steps on the picture: higher = more steps on the rough "
+                    "shapes, lower = more on the fine detail. H3's own is 12. Use what a speed-up LoRA or "
+                    "checkpoint was trained on: LightX2V's 768p turbo LoRAs want 6. Picking a mode sets 12."}),
+                "shift_audio": ("FLOAT", {"default": SHIFT_AUDIO, "min": 0.5, "max": 30.0, "step": 0.5, "tooltip":
+                    "The same for the sound. H3's own is 3, and the turbo LoRAs were trained on 3."}),
+            },
         }
 
     RETURN_TYPES = ("H3_SETUP", "INT")
@@ -145,9 +157,11 @@ class StubeliusH3Setup:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, mode, seeds, steps, sampler, scheduler, megapixels, speedup_lora_strength):
+    def run(self, mode, seeds, steps, sampler, scheduler, megapixels, speedup_lora_strength,
+            shift_video=SHIFT_VIDEO, shift_audio=SHIFT_AUDIO):
         p = dict(mode=mode, steps=steps, sampler=sampler, scheduler=scheduler, megapixels=megapixels,
-                 speedup_strength=speedup_lora_strength, seed_count=max(1, min(4, seeds)))
+                 speedup_strength=speedup_lora_strength, seed_count=max(1, min(4, seeds)),
+                 shift_video=float(shift_video), shift_audio=float(shift_audio))
         log.info("[StubeliusH3Setup] %s", p)
         return (p, MODES.index(mode) + 1)
 
@@ -585,7 +599,7 @@ def _take_identity(takes, w):
                   len(c.get("refmods") or ())) for c in chunks_of(candidate))
     seeds = (takes.get("chunk_seeds") or [])
     return (rows, tuple(seeds[w - 1] or ()) if len(seeds) >= w else (), made.get("seed"), made.get("steps"),
-            hash(made.get("compiled_prompt")))
+            hash(made.get("compiled_prompt")), made.get("shift_video"), made.get("shift_audio"))
 
 
 def _stage(node, stage, **info):
@@ -722,10 +736,11 @@ class StubeliusH3Finish:
             if k == key:
                 log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
                 return v
-        from .stubelius_v2 import StubeliusH3RefineV2, _hold_run_models, _release_held_models
+        from .stubelius_v2 import StubeliusH3RefineV2, _hold_run_models, _release_held_models, with_shift
         _release_held_models()
         lat = takes["latents"]
-        model = models.preview(models.model(takes["kind"]), node_id)
+        made = (lat[w - 1].get("_muse_stage1_settings") or {}) if isinstance(lat[w - 1], dict) else {}
+        model = models.preview(with_shift(models.model(takes["kind"]), made), node_id)
         try:
             images, audio = _unpack_node_result(StubeliusH3RefineV2().execute_v2(
                 model=model, clip=models.clip(), vae=models.vae(),

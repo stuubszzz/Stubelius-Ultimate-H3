@@ -21,7 +21,8 @@ const MODES = [
   ["Hybrid", "Fluid motion with the turbo LoRA. Best for action."],
   ["Quality", "Finals. Polished on the way to 1080p, 2K or 4K."],
 ];
-const SETUP_WIDGETS = ["mode", "seeds", "steps", "sampler", "scheduler", "megapixels", "speedup_lora_strength"];
+const SETUP_WIDGETS = ["mode", "seeds", "steps", "sampler", "scheduler", "megapixels", "speedup_lora_strength",
+  "shift_video", "shift_audio"];
 const MODEL_CARDS = [
   ["fl2va_model", "Video model · first/last frame", "film", ["diffusion_models", "unet_gguf"]],
   ["ref2va_model", "Video model · reference", "users", ["diffusion_models", "unet_gguf"]],
@@ -47,6 +48,17 @@ function precision(name) {
     [/q8_0/, "GGUF Q8"], [/q6/, "GGUF Q6"], [/q5/, "GGUF Q5"], [/q4/, "GGUF Q4"], [/\.gguf$/, "GGUF"]]) {
     if (re.test(n)) return tag;
   }
+  return null;
+}
+
+// The flow shift a speed-up LoRA was trained on (its model card), by its file name: LightX2V's 768p turbo LoRAs on
+// 6 / 3, its 544p ones and PDMD's 4 steps on H3's own 12 / 3. null = nothing known (another LoRA, or none in use).
+export function shiftWanted(mode, turbo, strength) {
+  if (mode === "PDMD") return { v: 12, a: 3, why: "PDMD's 4 steps are set for H3's own 12 / 3" };
+  if (mode === "Quality" || !(Number(strength) > 0)) return null;
+  const n = String(turbo || "").split(/[\\/]/).pop().toLowerCase();
+  if (/turbo/.test(n) && /768p/.test(n)) return { v: 6, a: 3, why: "LightX2V's 768p turbo LoRAs were trained on 6 / 3" };
+  if (/lightx2v|turbo_(4|8)step/.test(n)) return { v: 12, a: 3, why: "LightX2V's 544p turbo LoRAs were trained on 12 / 3" };
   return null;
 }
 
@@ -184,6 +196,13 @@ class SetupWindow {
     this.director()?._sh3?.renderCmd?.();
   }
 
+  setShift(video, audio) {
+    setWidget(this.node, "shift_video", video);
+    setWidget(this.node, "shift_audio", audio);
+    this.render();
+    this.director()?._sh3?.renderCmd?.();
+  }
+
   setS(name, value) {
     setWidget(this.node, name, value);
     this.render();
@@ -274,6 +293,19 @@ class SetupWindow {
       h("div.su-tune", label("Scheduler"), select(scheds, widgetValue(this.node, "scheduler"), (v) => this.setS("scheduler", v))),
       h("div.su-tune.su-seeds", label("Seeds to compare"),
         seg([[1, "1"], [2, "2"], [3, "3"], [4, "4"]], Number(widgetValue(this.node, "seeds", 1)), (v) => this.setS("seeds", v)))));
+
+    // the flow shift: H3's own 12 / 3, or what the speed-up LoRA in use was trained on (a mode puts 12 / 3 back)
+    if (widget(this.node, "shift_video")) {
+      const want = shiftWanted(mode, widgetValue(this.models(), "speedup_lora"), sv("speedup_lora_strength"));
+      const off = want && (sv("shift_video") !== want.v || sv("shift_audio") !== want.a);
+      const fmt = (v) => Number(v).toFixed(1);
+      panel.appendChild(h("div.su-shifts",
+        tune("Video shift", "shift_video", 0.5, 30, 0.5, fmt),
+        tune("Audio shift", "shift_audio", 0.5, 30, 0.5, fmt),
+        h("div.su-shift-hint", { class: off ? "off" : null }, icon(off ? "alert" : "info", 15),
+          h("span", want ? want.why : "H3's own is 12 / 3. Use what your speed-up LoRA or checkpoint was trained on"),
+          off ? button(`Use ${want.v} / ${want.a}`, "check", "small", () => this.setShift(want.v, want.a)) : null)));
+    }
     return panel;
   }
 
@@ -578,6 +610,12 @@ function injectSetupStyles() {
 .sh3-u .su-tune-h b{font-family:var(--fh);font-weight:600}
 .sh3-u .su-tune .sh3-select{width:100%}
 .sh3-u .su-seeds .sh3-seg-opt{padding:7px 4px}
+.sh3-u .su-shifts{display:grid;grid-template-columns:1fr 1fr 2fr;gap:16px;align-items:end;padding:14px 16px;border-radius:16px;
+  background:var(--well);border:1px solid var(--stroke);margin-top:12px}
+.sh3-u .su-shift-hint{display:flex;align-items:center;gap:8px;min-width:0;color:var(--text2);font-size:12.5px;line-height:1.35}
+.sh3-u .su-shift-hint span{flex:1;min-width:0}
+.sh3-u .su-shift-hint.off{color:var(--text)}
+.sh3-u .su-shift-hint.off .sh3-ico{color:rgb(var(--cut))}
 .sh3-u .su-mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .sh3-u .su-mcard{display:flex;gap:12px;border-radius:16px;padding:14px;background:var(--glass);border:1px solid var(--stroke);min-width:0}
 .sh3-u .su-mcard.missing{border-color:rgba(var(--bad),.55)}
