@@ -275,39 +275,51 @@ A character can be made from many pictures of it, saved once and given to every 
 - **What it does.** The pictures ride H3's own reference path, the one a Reference (Omni) picture
   takes, in every chunk and in both modes. In First/Last Frame mode, where H3 otherwise has only the
   first and last frame and the words, a character holds the face that words alone don't. In Reference
-  (Omni) mode it adds to a picture in the cast: use both.
+  (Omni) mode it adds to the cast. The cast goes into the first chunk only (later chunks continue from
+  the frames before them) and the character into every chunk, but in the tests below one good picture
+  in the cast did as well in one chunk and nearly as well past the join, and both together didn't add
+  more.
 - **What it costs.** Each picture adds reference tokens to every sampling step: about 500 at 0.5 MP
-  (the default) and 1,000 at 1 MP. Eight pictures added about 4 s to a 6 s Hybrid chunk at 0.5 MP and
-  13 s at 1 MP, and 0.5 MP held the face as well as 1 MP.
+  (the default) and 1,000 at 1 MP. Eight pictures made a 6 s Hybrid chunk about 15 % slower at 0.5 MP
+  (7 to 8 s) and 28 to 33 % slower at 1 MP (14 to 18 s), and a PDMD chunk at 1 MP 13 % slower (render
+  time, medians on an RTX 5090). 0.5 MP held the face as well as 1 MP, and better past the join.
 
 In tests (one character from 8 pictures, a scene none of them show, a 6 s Hybrid take on each of three
-seeds) each take was scored with face recognition against other footage of the character (1.0 = the
-same face; the character's own footage scores 0.74 by this measure):
+seeds; the [RefMods video](https://youtu.be/oO6WgxdFJOY) shows them) each take was scored with face
+recognition against other footage of the character (1.0 = the same face; the character's own footage
+scores 0.85 by this measure). A score is each take's median over its frames, averaged over the seeds:
 
-| | Median score |
+| | Score |
 |---|---|
-| Reference (Omni), words only | 0.35 |
-| Reference (Omni), one design picture in the cast | 0.51 |
-| Reference (Omni), one frame from a take in the cast | 0.64 |
-| Reference (Omni), a character (8 pictures, 0.5 MP) | 0.66 |
-| Reference (Omni), a design picture + a character (1 MP) | 0.72 |
-| First/Last Frame, words only | 0.40 |
-| First/Last Frame, a character (1 MP) | 0.74 |
+| Reference (Omni), words only | 0.34 |
+| Reference (Omni), one design picture in the cast | 0.77 |
+| Reference (Omni), one of the 8 pictures alone in the cast | 0.69 |
+| Reference (Omni), a character (8 pictures, 0.5 MP) | 0.77 |
+| Reference (Omni), a character (8 pictures, 1 MP) | 0.76 |
+| Reference (Omni), a design picture + a character (1 MP) | 0.73 |
+| First/Last Frame, words only | 0.23 |
+| First/Last Frame, a character (1 MP) | 0.80 |
 
 **Past one chunk.** 12 s in two 6 s chunks in First/Last Frame mode, the character described in words
 in the first chunk only (the second chunk's shot just says "he"), three seeds per row:
 
 | | Chunk 1 | Chunk 2 | Render (12 s) |
 |---|---|---|---|
-| Hybrid, words only | 0.43 | 0.49 | 132 s |
-| Hybrid, a character (0.5 MP) | 0.72 | 0.81 | 155 s |
-| Hybrid, a character (1 MP) | 0.71 | 0.80 | 168 s |
-| PDMD, words only | 0.51 | 0.53 | 158 s |
-| PDMD, a character (1 MP) | 0.75 | 0.79 | 164 s |
+| Hybrid, words only | 0.25 | 0.25 | 113 s |
+| Hybrid, a character (0.5 MP) | 0.81 | 0.75 | 130 s |
+| Hybrid, a character (1 MP) | 0.77 | 0.70 | 149 s |
+| PDMD, words only | 0.28 | 0.27 | 145 s |
+| PDMD, a character (1 MP) | 0.77 | 0.76 | 164 s |
 
-The character holds the face through the join: with it every seed's second chunk scored 0.77 to 0.82,
-with words alone 0.34 to 0.62 (the second chunk scores higher in every row: he turns to the camera
-there). The second chunk's spoken line came out word for word in every take, louder with a character.
+The character holds the face through the join: with it (0.5 MP) every seed's second chunk scored 0.66
+to 0.80, with words alone 0.16 to 0.33. 18 s in three chunks (Hybrid): words alone 0.25, 0.25 and 0.23,
+the character (0.5 MP) 0.81, 0.75 and 0.75. The spoken line came out word for word in all 30 takes with
+a character (23 of 24 without).
+
+In Reference (Omni) mode, 12 s in two chunks set up the same way (Hybrid, the character at 0.5 MP), one
+design picture in the cast scored 0.74 and 0.74 (140 s), the character 0.76 and 0.76 (167 s), both together 0.67 and
+0.74 (180 s): the second chunk continues from the first one's frames, and those carried the cast
+picture's face as well.
 
 The files are [ComfyUI-MiniMaxH3Mod](https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod)'s RefMods:
 ones made with that pack load here, and the other way round. Tuned RefMods (made with shootthesound's
