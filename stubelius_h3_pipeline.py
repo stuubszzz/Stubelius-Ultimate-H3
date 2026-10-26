@@ -8,7 +8,8 @@ Output  decides what comes OUT: final resolution (Speed up to 2K, the other mode
 Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup LoRA, extra
         LoRAs and speed/memory patches. It returns a lazy bundle: a checkpoint is only loaded
         when the Director actually needs it (ref2va for Reference, fl2va for First/Last Frame
-        and for Extend), so no model switch is needed in the graph.
+        and for Extend; FastH3 Omni for every chunk in its own mode), so no model switch is needed
+        in the graph.
 Finish  turns the Director's takes into the final video with the Output settings: picks the
         WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR or
         DLSS5 + Color Lock). WINNER is the only thing left to choose after a seed hunt; the
@@ -33,7 +34,8 @@ from .stubelius_compiler import compiler_paused
 
 log = logging.getLogger(__name__)
 
-MODES = ["Speed", "Hybrid", "Quality", "PDMD"]
+OMNI = "FastH3 Omni"        # the mode, named after its checkpoint ("Reference (Omni)" is the Director's input mode)
+MODES = ["Speed", "Hybrid", "Quality", "PDMD", OMNI]
 # H3's own flow shift (ComfyUI's MiniMax H3 default): every mode starts on it, and picking a mode puts it back.
 # Some speed-up LoRAs are trained on another one: LightX2V's 768p turbo LoRAs on 6 / 3 (their model card).
 SHIFT_VIDEO, SHIFT_AUDIO = 12.0, 3.0
@@ -45,10 +47,23 @@ PRESETS = {
     # PDMD's 4-step student (Projected Distribution Matching Distillation, Apache-2.0): Euler on H3's own
     # 12/3 shift with the simple scheduler is its 4-step grid; H3 has no CFG anyway
     "PDMD":    dict(steps=4,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=1.0, **_SHIFT),
+    # FastH3 Omni (FastVideo, MiniMax-H3 community licence): the Reference model distilled to 8 steps, a checkpoint
+    # of its own (no speedup LoRA). Its template's settings: Euler, simple, H3's 12 / 3, and VSA sparse attention
+    OMNI:      dict(steps=8,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=0.0, **_SHIFT),
 }
 PDMD_LORA_HELP = ("PDMD mode needs the PDMD 4-step LoRA: download lora_model_0.safetensors from "
                   "huggingface.co/pdmd2026/pdmd_4NFE_lora into models/loras (e.g. as pdmd_4nfe_lora.safetensors) "
                   "and pick it as pdmd_lora on the Models node.")
+OMNI_HELP = ("FastH3 Omni mode needs its checkpoint: download fasth3_omniref_8step_pruned_int8_convrot.safetensors "
+             "(22.2 GB) from huggingface.co/FastVideo/FastH3-Omni-Comfy into models/diffusion_models and pick it as "
+             "omni_model on the Models node. It needs ComfyUI 0.42 or newer.")
+OMNI_REF_ONLY = ("FastH3 Omni mode renders in Reference mode only: FastH3 Omni has no first or last frame. Switch the "
+                 "Director to Reference, or pick another mode for First/Last Frame.")
+# The template's "required settings": the checkpoint is trained with VSA (video sparse attention, 10 % of the video
+# cubes) and carries its own gating layers for it. Measured on an RTX 5090 (video 019's test): without it 5 s clips
+# took ~1.3x longer and looked different; with it a 15 s clip rendered ~10 % faster than PDMD.
+OMNI_VSA = dict(keep_percent=10.0, start_percent=0.0, end_percent=1.0, min_tokens=12288,
+                sink_conditioning="exact_kv_and_rows")
 UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock"]
 DLSS5_FACTORS = {1.5: "1.5x (Quality)", 1.724: "1.724x (Balanced)", 2.0: "2x (Performance)",
                  3.0: "3x (Ultra Performance)"}
@@ -70,10 +85,11 @@ SIZES_BY_MODE = {
     "Hybrid":  list(RESOLUTIONS),
     "Quality": ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # native is ~768p already
     "PDMD":    ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the Quality size, no polish
+    OMNI:      ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
 }
 # a size the mode doesn't offer -> the one it gets instead (switching mode, or an older workflow)
 SIZE_FALLBACK = {"Speed": {"4K (2160p)": "2K (1440p)"}, "Quality": {"720p": "native (no upscale)"},
-                 "PDMD": {"720p": "native (no upscale)"}}
+                 "PDMD": {"720p": "native (no upscale)"}, OMNI: {"720p": "native (no upscale)"}}
 
 
 def _cls(name):
@@ -129,7 +145,9 @@ class StubeliusH3Setup:
                     "8 steps, turbo 1.0. Hybrid: 0.5 MP, 10 steps, turbo 0.75. Quality: 0.98 MP, 20 steps, "
                     "no turbo, plus a polish when the Output size is above what it rendered. PDMD: the Quality "
                     "size in 4 steps with the PDMD LoRA (pdmd_lora on the Models node), no polish; the "
-                    "upscaler takes it to the Output size."}),
+                    "upscaler takes it to the Output size. FastH3 Omni: the Quality size in 8 steps on FastH3 Omni "
+                    "(omni_model on the Models node) with its sparse attention, Reference mode only, every "
+                    "chunk on it, no polish."}),
                 "seeds": ("INT", {"default": 1, "min": 1, "max": 4, "tooltip":
                     "How many full videos (with sound) to render. Pick one with WINNER on the Finish node "
                     "(WINNER 0 = hold after the seeds)."}),
@@ -191,8 +209,8 @@ class StubeliusH3Output:
                     "default": "1080p", "per_mode": SIZES_BY_MODE, "fallback": SIZE_FALLBACK, "tooltip":
                     "The sizes follow the Setup mode. Speed: native (≈480p) up to 2K, upscaled. Hybrid: native "
                     "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its polish "
-                    "(and the upscaler for what the polish doesn't reach). PDMD: native (≈768p) up to 4K, "
-                    "upscaled. "
+                    "(and the upscaler for what the polish doesn't reach). PDMD and FastH3 Omni: native (≈768p) up to "
+                    "4K, upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
                     "per frame, so keep 4K clips short, especially at high frame rates."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
@@ -275,12 +293,35 @@ class _Hidden(types.SimpleNamespace):
         return None
 
 
+def _vsa(model):
+    """FastH3 Omni's sparse attention, as its template's Model Sparse Attention node applies it (OMNI_VSA)."""
+    try:
+        from comfy_extras.nodes_sparse_attention import apply_block_sparse_attention, parse_block_list
+    except ImportError as e:
+        raise RuntimeError("[StubeliusH3Models] FastH3 Omni mode needs ComfyUI 0.42 or newer: this ComfyUI has no "
+                           f"Model Sparse Attention (VSA) for FastH3 Omni ({e})") from e
+    v = OMNI_VSA
+    m = apply_block_sparse_attention(
+        model, tau=1.3, topk_ratio=v["keep_percent"] / 100.0, vsa=True, start_percent=v["start_percent"],
+        end_percent=v["end_percent"], min_tokens=v["min_tokens"], dense_blocks=parse_block_list(""),
+        sink_conditioning=v["sink_conditioning"], extra_tokens=0, verbose=False)
+    log.info("[StubeliusH3Models] FastH3 Omni: its sparse attention is on (VSA, %g %% kept)", v["keep_percent"])
+    return m
+
+
 class H3Models:
     """Lazy model bundle. model(kind) loads + patches on first use; results are cached per config."""
 
     def __init__(self, cfg):
         self.cfg = cfg
         self.key = tuple(sorted(cfg.items()))
+
+    @property
+    def ref_only(self):
+        """FastH3 Omni mode: the checkpoint renders every chunk, so a Reference video past one chunk continues in
+        Reference (from the last frame and the sound of the chunk before, and its carried frames) instead of switching
+        to the First/Last model."""
+        return bool(self.cfg.get("omni_model"))
 
     def _base(self, name):
         if name not in _BASE:
@@ -295,7 +336,10 @@ class H3Models:
 
     def model(self, kind):
         c = self.cfg
-        name = c["ref2va_model"] if kind == "ref" else c["fl2va_model"]
+        omni = c.get("omni_model")
+        if omni and kind != "ref":
+            raise ValueError("[StubeliusH3Models] " + OMNI_REF_ONLY)
+        name = omni or (c["ref2va_model"] if kind == "ref" else c["fl2va_model"])
         key = (kind, self.key)
         if key in _PATCHED:
             return _PATCHED[key]
@@ -311,12 +355,21 @@ class H3Models:
                 m, _ = comfy.sd.load_lora_for_models(m, None, _lora_state_dict(path), strength, 0)
         if c["attention"] != "off":
             m = _patch(m, "ModelAttentionBackend", "attention backend", attention=c["attention"])
-        if c["sage_attention"]:
-            m = _patch(m, "MiniMaxH3MemoryEfficientSageAttentionPatch", "sage attention")
-        if c["low_vram_attention"]:
-            m = _patch(m, "MiniMaxLowVRAMAttention", "low VRAM attention", head_chunks=4)
-        if c["chunk_feed_forward"]:
-            m = _patch(m, "MiniMaxChunkFeedForward", "chunk feed-forward", chunks=2, seq_threshold=4096)
+        if omni:
+            # these replace H3's attention or its blocks, which is where Omni's sparse attention sits
+            for flag, label in (("sage_attention", "sage attention"), ("low_vram_attention", "low VRAM attention"),
+                                ("chunk_feed_forward", "chunk feed-forward")):
+                if c[flag]:
+                    log.warning("[StubeliusH3Models] %s skipped in FastH3 Omni mode: the checkpoint runs on its "
+                                "own sparse attention", label)
+            m = _vsa(m)
+        else:
+            if c["sage_attention"]:
+                m = _patch(m, "MiniMaxH3MemoryEfficientSageAttentionPatch", "sage attention")
+            if c["low_vram_attention"]:
+                m = _patch(m, "MiniMaxLowVRAMAttention", "low VRAM attention", head_chunks=4)
+            if c["chunk_feed_forward"]:
+                m = _patch(m, "MiniMaxChunkFeedForward", "chunk feed-forward", chunks=2, seq_threshold=4096)
         if c["spectrum"]:
             m = _patch(m, "SpectrumApplyMiniMaxH3", "Spectrum", enabled=True, blend_weight=0.5, degree=1,
                        ridge_lambda=0.1, window_size=2.0, flex_window=0.75, warmup_steps=1,
@@ -375,7 +428,8 @@ class H3Models:
 
 def _prune(cfg):
     """Drop cached models this config no longer references, so RAM follows the current setup."""
-    names = {cfg["ref2va_model"], cfg["fl2va_model"]}
+    # FastH3 Omni mode renders every chunk on its own checkpoint: the two others (~21 GB each) can go
+    names = {cfg["omni_model"]} if cfg.get("omni_model") else {cfg["ref2va_model"], cfg["fl2va_model"]}
     for k in [k for k in _BASE if k not in names]:
         _BASE.pop(k)
     key = tuple(sorted(cfg.items()))
@@ -430,6 +484,10 @@ class StubeliusH3Models:
                     "Used instead of speedup_lora when the Setup mode is PDMD: the 4-step LoRA from "
                     "huggingface.co/pdmd2026/pdmd_4NFE_lora (lora_model_0.safetensors, any file name). "
                     "The file as published works; the pack converts its Diffusers names on load."}),
+                "omni_model": (["none"] + unets, {"default": _first_match(["none"] + unets, "fasth3_omni", "omniref"),
+                    "tooltip": "Used for every chunk when the Setup mode is FastH3 Omni: the Reference model "
+                               "distilled to 8 steps (huggingface.co/FastVideo/FastH3-Omni-Comfy, "
+                               "fasth3_omniref_8step_pruned_int8_convrot.safetensors). Only loaded in that mode."}),
             },
         }
 
@@ -438,12 +496,18 @@ class StubeliusH3Models:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, setup, pdmd_lora="none", **cfg):
+    def run(self, setup, pdmd_lora="none", omni_model="none", **cfg):
         cfg["speedup_strength"] = float(setup["speedup_strength"])
         if setup.get("mode") == "PDMD":
             if not pdmd_lora or pdmd_lora == "none":
                 raise ValueError("[StubeliusH3Models] " + PDMD_LORA_HELP)
             cfg["speedup_lora"] = pdmd_lora        # the PDMD student replaces the turbo LoRA
+        elif setup.get("mode") == OMNI:
+            if not omni_model or omni_model == "none":
+                raise ValueError("[StubeliusH3Models] " + OMNI_HELP)
+            # a distilled checkpoint of its own: a speedup LoRA on top would distill it twice. Only this mode
+            # puts the key in, so the other modes' settings (and their kept takes) stay as they were
+            cfg["omni_model"], cfg["speedup_lora"] = omni_model, "none"
         _prune(cfg)
         return (H3Models(cfg),)
 
