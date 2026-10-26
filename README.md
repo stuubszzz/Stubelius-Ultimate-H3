@@ -16,6 +16,12 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.15
+
+- **FastH3 Omni mode**: FastVideo's (Hao AI Lab and Nuva Lab) 8-step distilled Reference model, with its sparse
+  attention built in. Reference mode only; every chunk renders on it, so a voice clip reaches every chunk
+  ([FastH3 Omni mode](#fasth3-omni-mode)).
+
 ## What's new in 0.14
 
 - **Flow shift** in the Setup window (video and audio): render on the shift a speed-up LoRA or checkpoint was
@@ -336,7 +342,8 @@ input folder.
 | A voice sample and new words | Reference (Omni) mode: the sample in **Ref Audio N** (Reference audio, under the cast) for the character in **Ref N**, set to **Voice reference: new lines, same voice**; type the new line in the shot | The shot's words, in a voice like the sample's |
 | A voice sample, and the voice has to match closely | Make the line first with a voice-clone TTS (for example the LongCat AudioDiT, Fish Audio S2 or VoxCPM2 nodes), then use it as a recording (first row) | The cloned line |
 
-- **Voice Reference reaches the first chunk only.** Past one chunk, a Reference (Omni) video continues on
+- **Voice Reference reaches the first chunk only** (except in [FastH3 Omni mode](#fasth3-omni-mode), where
+  every chunk renders on the Reference model). Past one chunk, a Reference (Omni) video continues on
   the First/Last Frame checkpoint (hybrid continuation, switched on by itself), which takes no audio; the
   later chunks carry the voice on from the last 1.6 s of the chunk before, not from the sample. For longer
   dialogue, clone the lines and use Lip Sync, which reaches every chunk.
