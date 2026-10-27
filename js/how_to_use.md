@@ -46,7 +46,7 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 
 ## 5 · GOOD TO KNOW
 - **A recorded line on the Sound lane:** type the same words in that shot, in quotes. The recording gives the words; the shot tells H3 someone is talking. A sound doesn't move the picture: for a reaction right on it, pin a middle frame of the reaction just after.
-- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it.
+- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it (every chunk in FastH3 Omni mode).
 - **The voice has to match closely:** make the line first with a voice-clone TTS (LongCat AudioDiT, Fish S2, VoxCPM2), then pin it on the Sound lane or set it as **Lip Sync**, which plays the file itself in every chunk.
 - **The face changes from chunk to chunk:** make the character from 8–16 pictures on the **Characters** lane and keep it on; describe the character in the shots too, since H3 reads the words, not the pictures.
 - **A later chunk sounds dull:** set its join to **Picture, fresh sound**.
@@ -54,4 +54,5 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 - **Fast, small motion smears** (fingers): use PDMD instead of Speed.
 - **Jerky after pinning a line:** check the shot has its exact words, the line stays inside one chunk and the recording has no hard cuts, then try another seed.
 - **Middle frames:** up to eight, half a second apart; eight add about a tenth to the render time. Don't pin fast action in the first half second of a chunk that continues the video: pin the moments around it.
+- **Your own prompt** (from an LLM, for example): paste the whole H3 prompt into the **PROMPT OVERRIDE** node under the Director and every chunk renders with it, as it is. The **Compiled prompt** beside it shows what the Director wrote at the last render: copy one chunk's block, edit it, paste it in.
 - **Turbo modes can mumble dialogue** (measured −31…−39 dB against −14 dB): for talking shots use Quality.

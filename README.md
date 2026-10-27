@@ -23,6 +23,8 @@ Video: [FastH3 Omni vs PDMD on YouTube](https://youtu.be/k5xSKv_cNIQ)
 - **FastH3 Omni mode**: FastVideo's (Hao AI Lab and Nuva Lab) 8-step distilled Reference model, with its sparse
   attention built in. Reference mode only; every chunk renders on it, so a voice clip reaches every chunk
   ([FastH3 Omni mode](#fasth3-omni-mode)).
+- **The prompt override in the open**, under the Director, next to the compiled prompt: paste a whole H3 prompt of
+  your own (written by an LLM, for example) and it renders as it is ([Your own prompt](#your-own-prompt)).
 
 ## What's new in 0.14
 
@@ -63,8 +65,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
-while they sample; the Director's preview shows it too), the prompt override (any text there
-replaces the timeline's prompts), the compiled prompt and the final save. Their wires aren't drawn
+while they sample; the Director's preview shows it too) and the final save. Their wires aren't drawn
 while they're behind a window: move a window to reach them. **Stubelius RIFE to FPS** and
 **Stubelius Color Lock** convert the frame rate (keeping hard cuts clean) and restore the original
 colours after DLSS5.
@@ -73,6 +74,19 @@ Each window sits on its step's panel, drawn in the workflow theme's colours and 
 as it grows; the panel's title row moves the step around. A workflow laid out before (the helper
 nodes under the windows) is tidied once when it opens: the helpers go behind the windows and the
 panels fit them. **Tidy the canvas** under Look in the Setup window does it again any time.
+
+### Your own prompt
+
+Under the Director, in the open, sit the **prompt override** and the **compiled prompt**.
+
+- **Prompt override:** paste a whole MiniMax H3 prompt there, written by hand or by an LLM, and every chunk renders
+  with exactly that text instead of the timeline's prompts. The cast, the reference clips and sounds, the sampling
+  and the chunks work as usual. Leave it empty to use the Director.
+- **The same text goes to every chunk,** so it suits a video of one chunk (up to 15 s) best.
+- **Compiled prompt:** what the Director sent at the last render, one block per chunk under a `--- Chunk 1/2 ---`
+  line. Copy a block (without that line), edit it or hand it to your LLM, and paste it into the prompt override.
+- In a workflow saved before 0.15 both sit behind the Director window: move the window to reach them, or open the
+  new example workflow. **Tidy the canvas** leaves them where they are in the example.
 
 **Render, pick, finish.** **Render** in the Director renders the seeds and stops: pick one in Seeds,
 then **Finish the winner** (or **Finish** in Output). A new Render drops the old pick, since the
