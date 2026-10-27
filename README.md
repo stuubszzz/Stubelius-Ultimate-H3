@@ -1,10 +1,10 @@
 # Stubelius Ultimate H3
 
-[![Watch the Ultimate H3 0.13 video on YouTube](docs/video-0.13.jpg)](https://youtu.be/Xeyb0Y9bvho)
+[![Watch the Ultimate H3 0.15 video on YouTube](docs/video-0.15.jpg)](https://youtu.be/k5xSKv_cNIQ)
 
-**▶ [Watch the 0.13 video on YouTube](https://youtu.be/Xeyb0Y9bvho)** (22 min). It goes through all four windows, from
-the first setting to the finished video, with hunting and retaking one chunk, middle frames and characters from many
-pictures.
+**▶ [Watch the 0.15 video on YouTube](https://youtu.be/k5xSKv_cNIQ)** (10 min). FastH3 Omni against PDMD in 48 clips,
+the one setting that makes Omni fast, and the new FastH3 Omni mode. The [0.13 video](https://youtu.be/Xeyb0Y9bvho)
+(22 min) goes through all four windows, from the first setting to the finished video.
 
 One MiniMax H3 workflow for ComfyUI, in four windows. **Setup** decides **how** the video is made
 (Speed, Hybrid, Quality or PDMD, the models, the speed-ups). The **Director** holds **what the
@@ -17,6 +17,8 @@ The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_work
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
 ## What's new in 0.15
+
+Video: [FastH3 Omni vs PDMD on YouTube](https://youtu.be/k5xSKv_cNIQ)
 
 - **FastH3 Omni mode**: FastVideo's (Hao AI Lab and Nuva Lab) 8-step distilled Reference model, with its sparse
   attention built in. Reference mode only; every chunk renders on it, so a voice clip reaches every chunk
