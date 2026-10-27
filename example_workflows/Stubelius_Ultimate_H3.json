@@ -272,16 +272,14 @@
    "id": 3,
    "type": "PrimitiveStringMultiline",
    "pos": [
-    1968,
-    140
+    1920,
+    1620
    ],
    "size": [
-    469.5728515625,
-    198.34710743801634
+    900,
+    320
    ],
-   "flags": {
-    "collapsed": true
-   },
+   "flags": {},
    "order": 1,
    "mode": 0,
    "inputs": [
@@ -305,7 +303,7 @@
      ]
     }
    ],
-   "title": "PROMPT OVERRIDE (any text here replaces the timeline's prompts)",
+   "title": "PROMPT OVERRIDE: paste a whole H3 prompt here to render it as it is (empty = the Director's own)",
    "properties": {
     "cnr_id": "comfy-core",
     "ver": "0.37.0",
@@ -314,7 +312,8 @@
      "widget_ue_connectable": {},
      "version": "7.8",
      "input_ue_unconnectable": {}
-    }
+    },
+    "sh3_visible": true
    },
    "widgets_values": [
     ""
@@ -327,7 +326,7 @@
    "type": "StubeliusLivePreview",
    "pos": [
     1968,
-    196
+    140
    ],
    "size": [
     620,
@@ -360,16 +359,14 @@
    "id": 6,
    "type": "PreviewAny",
    "pos": [
-    1968,
-    252
+    2860,
+    1620
    ],
    "size": [
-    620,
-    200
+    900,
+    320
    ],
-   "flags": {
-    "collapsed": true
-   },
+   "flags": {},
    "order": 7,
    "mode": 0,
    "inputs": [
@@ -388,7 +385,7 @@
      "links": []
     }
    ],
-   "title": "Compiled prompt",
+   "title": "Compiled prompt: the Director's prompt for the last render (copy it, edit it, paste it on the left)",
    "properties": {
     "cnr_id": "comfy-core",
     "ver": "0.37.0",
@@ -397,7 +394,8 @@
      "widget_ue_connectable": {},
      "version": "7.8",
      "input_ue_unconnectable": {}
-    }
+    },
+    "sh3_visible": true
    },
    "widgets_values": [],
    "color": "#241e2a",

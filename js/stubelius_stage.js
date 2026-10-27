@@ -2,9 +2,10 @@
 //
 // The step groups (1 SETUP, 2 DIRECTOR, 3 SEEDS, 4 OUTPUT) are drawn as panels in the workflow theme's colours
 // instead of ComfyUI's tinted boxes. The small helper nodes the windows edit (models, theme, output settings, the
-// prompt override, the final save) sit behind their window, and the wires of a node that lies behind a window are
-// not drawn: move the window and the node shows again, wires and all. tidy() puts a workflow's helpers there: the
-// Setup window's "Tidy the canvas", and once by itself when a workflow laid out before the step panels opens.
+// final save) sit behind their window, and the wires of a node that lies behind a window are not drawn: move the
+// window and the node shows again, wires and all. tidy() puts a workflow's helpers there: the Setup window's "Tidy the
+// canvas", and once by itself when a workflow laid out before the step panels opens. A node marked
+// properties.sh3_visible stays where it is (0.15: the prompt override and the compiled prompt, under the Director).
 import { app } from "../../scripts/app.js";
 import { themeKey, injectStyles, graphNodes, toast } from "./stubelius_ui.js";
 
@@ -383,6 +384,7 @@ export function tidy(graph = app.graph) {
   let moved = 0;
   for (const n of nodes) {
     if (n._sh3 || WINDOWS.includes(n.comfyClass) || /Note$/.test(n.comfyClass || n.type || "")) continue;
+    if (n.properties?.sh3_visible) continue;     // meant to be seen (the example's prompt override and compiled prompt)
     const home = homeOf(n, windows, graph);
     if (!home) continue;
     const i = slots.get(home) || 0;
