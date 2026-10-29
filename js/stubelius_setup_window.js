@@ -1,6 +1,6 @@
 // Stubelius Ultimate H3: the Setup window (step 1 of 4), on the Setup node.
 //
-// How the video is rendered: the four modes (each fills steps, size and turbo strength), the fine-tuning
+// How the video is rendered: the five modes (each fills steps, size and turbo strength), the fine-tuning
 // under them, the models (the Models node: checkpoints, text encoder, VAEs, live preview), the turbo,
 // PDMD and global LoRAs, the speed and memory switches, the video memory, and the look every window
 // follows (the Theme node). The window edits those nodes' own widgets; nothing is stored twice.
@@ -10,7 +10,7 @@ import {
   THEME_SWATCHES, windowOrCompact,
 } from "./stubelius_ui.js";
 import { tidy } from "./stubelius_stage.js";
-import { SPEEDUP_RE } from "./stubelius_director_shared.js";
+import { SPEEDUP_RE, OMNI } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -20,12 +20,14 @@ const MODES = [
   ["Speed", "Rough drafts and timing checks at a small size."],
   ["Hybrid", "Fluid motion with the turbo LoRA. Best for action."],
   ["Quality", "Finals. Polished on the way to 1080p, 2K or 4K."],
+  [OMNI, "Reference only. Its own 8-step model: smooth motion."],
 ];
 const SETUP_WIDGETS = ["mode", "seeds", "steps", "sampler", "scheduler", "megapixels", "speedup_lora_strength",
   "shift_video", "shift_audio"];
 const MODEL_CARDS = [
   ["fl2va_model", "Video model · first/last frame", "film", ["diffusion_models", "unet_gguf"]],
   ["ref2va_model", "Video model · reference", "users", ["diffusion_models", "unet_gguf"]],
+  ["omni_model", "Video model · FastH3 Omni", "bolt", ["diffusion_models"]],   // its mode only
   ["text_encoder", "Text encoder", "scan", ["text_encoders", "clip_gguf"]],
   ["video_vae", "Video VAE", "aspect", ["vae"]],
   ["audio_vae", "Audio VAE", "wave", ["vae"]],
@@ -40,6 +42,7 @@ const PERF = [
   ["h3_cache", "H3 step cache", "database", "faster, may soften"],
 ];
 const TURBO_RE = SPEEDUP_RE;            // a few-step LoRA by its name (stubelius_director_shared.js)
+const OMNI_LOCK = "FastH3 Omni mode uses no turbo LoRA: the checkpoint is distilled to 8 steps already";
 const LORA_MAX = 9;
 
 function precision(name) {
@@ -55,6 +58,7 @@ function precision(name) {
 // 6 / 3, its 544p ones and PDMD's 4 steps on H3's own 12 / 3. null = nothing known (another LoRA, or none in use).
 export function shiftWanted(mode, turbo, strength) {
   if (mode === "PDMD") return { v: 12, a: 3, why: "PDMD's 4 steps are set for H3's own 12 / 3" };
+  if (mode === OMNI) return { v: 12, a: 3, why: "FastH3 Omni's template runs on H3's own 12 / 3" };
   if (mode === "Quality" || !(Number(strength) > 0)) return null;
   const n = String(turbo || "").split(/[\\/]/).pop().toLowerCase();
   if (/turbo/.test(n) && /768p/.test(n)) return { v: 6, a: 3, why: "LightX2V's 768p turbo LoRAs were trained on 6 / 3" };
@@ -100,6 +104,19 @@ function art(mode) {
     return svg(`<defs>${g("pdg", "ac", "ac2")}<radialGradient id="pdr"><stop offset="0" style="stop-color:#fff"/><stop offset="1" style="stop-color:rgb(var(--ac));stop-opacity:0"/></radialGradient></defs>`
       + `<rect width="280" height="150" fill="url(#pdr)" opacity=".05"/>${streaks}<circle cx="236" cy="76" r="20" fill="url(#pdr)" opacity=".9"/>`
       + `<circle cx="236" cy="76" r="7" style="fill:#fff"/>`);
+  }
+  if (mode === OMNI) {
+    // its sparse attention: each part of the video looks closely at about a tenth of the rest
+    let cubes = "";
+    let k = 0;
+    for (let y = 9; y < 150; y += 16) {
+      for (let x = 6; x < 280; x += 16) {
+        k++;
+        const lit = (k * 73 + 41) % 97 < 10;
+        cubes += `<rect x="${x}" y="${y}" width="11" height="11" rx="2.5" style="fill:${lit ? `rgb(var(--${k % 3 ? "ac" : "ac2"}))` : "rgba(255,255,255,.07)"}"/>`;
+      }
+    }
+    return svg(cubes);
   }
   if (mode === "Speed") {
     let lines = "";
@@ -168,7 +185,7 @@ class SetupWindow {
     const items = [];
     for (const [name, , , folders] of MODEL_CARDS) {
       const v = widgetValue(m, name);
-      if (v && v !== "off") for (const f of folders) items.push([f, v]);
+      if (v && v !== "off" && v !== "none") for (const f of folders) items.push([f, v]);
     }
     for (const name of ["speedup_lora", "extra_lora_1", "extra_lora_2", "pdmd_lora"]) {
       const v = widgetValue(m, name);
@@ -228,9 +245,10 @@ class SetupWindow {
       const w = widget(m, name);
       if (!w) continue;
       if (name === "live_preview" && w.value === "off") continue;
+      if (name === "omni_model" && widgetValue(this.node, "mode") !== OMNI) continue;     // used by its mode only
       total++;
       const opts = w.options?.values || [];
-      if (opts.includes(w.value)) found++;
+      if (opts.includes(w.value) && w.value !== "none") found++;
     }
     return { found, total };
   }
@@ -255,7 +273,9 @@ class SetupWindow {
     const panel = h("div.sh3-panel.su-modes", h("div.su-ph", h("div.sh3-h2", "How do you want to render?"),
       h("span.sh3-muted", "Each mode fills steps, size and turbo strength for you")));
     const cards = h("div.su-cards");
+    const known = widget(this.node, "mode")?.options?.values || [];
     for (const [name, text] of MODES) {
+      if (known.length && !known.includes(name)) continue;      // pulled but not restarted yet: the node can't take it
       const on = name === mode;
       const p = on ? { steps: widgetValue(this.node, "steps"), megapixels: widgetValue(this.node, "megapixels"),
         speedup_strength: widgetValue(this.node, "speedup_lora_strength") } : presets[name] || {};
@@ -264,9 +284,11 @@ class SetupWindow {
         h("div.su-card-b", h("div.su-card-t", text),
           h("div.su-kv", icon("stairs", 14), h("span", "Steps"), h("b", String(p.steps ?? "–"))),
           h("div.su-kv", icon("aspect", 14), h("span", "Size"), h("b", p.megapixels ? sizeFor(p.megapixels, aspect) : "–")),
-          h("div.su-kv", icon("sparkles", 14), h("span", name === "PDMD" ? "PDMD LoRA" : "Turbo"),
-            h("b", name === "PDMD" ? "4-step" : p.speedup_strength ? Number(p.speedup_strength).toFixed(2) : "off")))));
+          h("div.su-kv", icon("sparkles", 14), h("span", name === "PDMD" ? "PDMD LoRA" : name === OMNI ? "Speed-up" : "Turbo"),
+            h("b", name === "PDMD" ? "4-step" : name === OMNI ? "built in"
+              : p.speedup_strength ? Number(p.speedup_strength).toFixed(2) : "off")))));
     }
+    cards.style.gridTemplateColumns = `repeat(${cards.childNodes.length}, 1fr)`;   // 5, or 4 on a node from before
     panel.appendChild(cards);
 
     // fine-tuning
@@ -280,15 +302,17 @@ class SetupWindow {
       if (locked) { s.disabled = true; s.title = locked; }
       return h("div.su-tune", { class: locked ? "locked" : null, title: locked || null }, h("div.su-tune-h", label(lab), val), s);
     };
-    // PDMD runs its own LoRA at this strength (stubelius_h3_pipeline: the mode sets 1.00); a lower one under-samples
+    // PDMD runs its own LoRA at this strength (stubelius_h3_pipeline: the mode sets 1.00); a lower one under-samples.
+    // FastH3 Omni has no LoRA to set
     const pdmdMode = mode === "PDMD";
+    const omniMode = mode === OMNI;
     const samplers = widget(this.node, "sampler")?.options?.values || [];
     const scheds = widget(this.node, "scheduler")?.options?.values || [];
     panel.appendChild(h("div.su-tunes",
       tune("Steps", "steps", 1, 40, 1, (v) => String(Math.round(v))),
       tune("Size", "megapixels", 0.1, 2, 0.02, (v) => `${Number(v).toFixed(2)} MP`),
       tune(pdmdMode ? "PDMD LoRA strength" : "Turbo strength", "speedup_lora_strength", 0, 2, 0.05, (v) => Number(v).toFixed(2),
-        pdmdMode ? "PDMD mode sets it: its 4-step LoRA runs at full strength" : ""),
+        pdmdMode ? "PDMD mode sets it: its 4-step LoRA runs at full strength" : omniMode ? OMNI_LOCK : ""),
       h("div.su-tune", label("Sampler"), select(samplers, widgetValue(this.node, "sampler"), (v) => this.setS("sampler", v))),
       h("div.su-tune", label("Scheduler"), select(scheds, widgetValue(this.node, "scheduler"), (v) => this.setS("scheduler", v))),
       h("div.su-tune.su-seeds", label("Seeds to compare"),
@@ -328,8 +352,14 @@ class SetupWindow {
       const isPreview = name === "live_preview";
       const sel = select(opts, v, (x) => this.setM(name, x), "su-file");
       sel.title = String(v || "");
-      const state = isPreview && v === "off" ? "Off" : !found ? "Missing" : isPreview ? "On" : name === "text_encoder" ? "Runs first" : "On disk";
-      grid.appendChild(h("div.su-mcard", { class: found || (isPreview && v === "off") ? null : "missing" },
+      // FastH3 Omni's checkpoint: only its own mode needs one
+      const omniCard = name === "omni_model", omniOn = widgetValue(this.node, "mode") === OMNI;
+      const state = isPreview && v === "off" ? "Off"
+        : omniCard && v === "none" ? (omniOn ? "Missing" : "Off")
+        : !found ? "Missing" : isPreview ? "On" : name === "text_encoder" ? "Runs first"
+        : omniCard && !omniOn ? "Its mode only" : "On disk";
+      const quiet = (isPreview && v === "off") || (omniCard && state !== "Missing");
+      grid.appendChild(h("div.su-mcard", { class: (found && state !== "Missing") || quiet ? null : "missing" },
         h("span.sh3-ico.ac.su-mic", icon(ic, 18)),
         h("div.su-mbody", h("b", title), sel,
           h("div.su-mbadges", tag ? badge(tag, "ac") : null, size ? badge(fmtBytes(size)) : null, isPreview && v !== "off" ? badge("while sampling") : null,
@@ -371,13 +401,16 @@ class SetupWindow {
     if (sw && current && current !== "none") {
       const o = sw.options || {};
       const pdmd = widgetValue(this.node, "mode") === "PDMD";
+      const omni = widgetValue(this.node, "mode") === OMNI;
       const val = h("b.su-tstr-v", Number(sw.value ?? 1).toFixed(2));
       const s = slider({ min: Number.isFinite(o.min) ? o.min : 0, max: Number.isFinite(o.max) ? o.max : 2, step: 0.05, value: Number(sw.value ?? 1),
         title: "Turbo LoRA strength", onInput: (v) => { val.textContent = Number(v).toFixed(2); },
         onChange: (v) => this.setS("speedup_lora_strength", v) });
       if (pdmd) { s.disabled = true; s.title = "PDMD mode sets it: its 4-step LoRA runs at full strength"; }
-      left.appendChild(h("div.su-tstr", { class: pdmd ? "off" : null },
-        h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "PDMD mode uses its own LoRA here, at the strength the mode sets" : "each mode sets it; slide to change"),
+      if (omni) { s.disabled = true; s.title = OMNI_LOCK; }
+      left.appendChild(h("div.su-tstr", { class: pdmd || omni ? "off" : null },
+        h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "PDMD mode uses its own LoRA here, at the strength the mode sets"
+          : omni ? "FastH3 Omni mode leaves the turbo LoRA out" : "each mode sets it; slide to change"),
           h("div.sh3-spacer"), val), s));
     }
     left.appendChild(this.speedupPicker(all, turbos, current));
@@ -585,7 +618,7 @@ function injectSetupStyles() {
   border:1px solid var(--stroke);color:var(--text2)}
 .sh3-u .su-tidy .su-ptxt{flex:1;min-width:0}
 .sh3-u .su-tidy b{color:var(--text);font-weight:600}
-.sh3-u .su-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.sh3-u .su-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 .sh3-u .su-card{border-radius:20px;overflow:hidden;background:var(--glass);border:1px solid var(--stroke);padding:0;text-align:left;display:flex;flex-direction:column;
   color:var(--text)}
 .sh3-u .su-card:hover{border-color:var(--stroke2)}

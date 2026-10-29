@@ -23,18 +23,18 @@ import { buildRefs } from "./stubelius_director_refs.js";
 import { characterTokens, fmtTokens } from "./stubelius_director_characters.js";
 import { openSettings, openFileMenu } from "./stubelius_director_settings.js";
 import {
-  MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed,
+  MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed, OMNI,
 } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
-export const VERSION = "0.14";
+export const VERSION = "0.15";
 export { MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed };
 const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration_seconds", "seed",
   "control_after_generate", "timeline_data"];
-const MODES = [   // display order; the Setup node's mode values
-  ["PDMD", "fastest"], ["Speed", "drafts"], ["Hybrid", "fluid"], ["Quality", "finals"],
+const MODES = [   // display order; the Setup node's mode values (and a shorter name where it doesn't fit)
+  ["PDMD", "fastest"], ["Speed", "drafts"], ["Hybrid", "fluid"], ["Quality", "finals"], [OMNI, "reference", "Omni"],
 ];
 const SIZE_LABEL = { "native (no upscale)": "Native", "720p": "720p", "1080p": "1080p", "2K (1440p)": "2K", "4K (2160p)": "4K" };
 
@@ -625,7 +625,8 @@ export class DirectorWindow {
     const NAMES = { speedup_lora_strength: "Turbo strength", speedup_lora: "Speed-up LoRA", megapixels: "Size", steps: "Steps",
       sampler: "Sampler", scheduler: "Scheduler", mode: "Mode", seeds: "Seeds to compare", extra_lora_1: "Global LoRA 1",
       extra_lora_2: "Global LoRA 2", extra_lora_1_strength: "Global LoRA 1 strength", extra_lora_2_strength: "Global LoRA 2 strength",
-      fl2va_model: "First/Last model", ref2va_model: "Reference model", text_encoder: "Text encoder", pdmd_lora: "PDMD LoRA" };
+      fl2va_model: "First/Last model", ref2va_model: "Reference model", text_encoder: "Text encoder", pdmd_lora: "PDMD LoRA",
+      omni_model: "FastH3 Omni model" };
     const name = (k) => { const n = k.split(":")[1]; return NAMES[n] || n.replace(/_/g, " "); };
     const val = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(2)) : String(v).split(/[\\/]/).pop().replace(/\.safetensors$/i, ""));
     // two numbers side by side with the same decimals (0.75 → 1.00, not 0.75 → 1)
@@ -902,12 +903,13 @@ export class DirectorWindow {
       const presets = setup.constructor?.nodeData?.input?.required?.mode?.[1]?.presets || {};
       const mode = widgetValue(setup, "mode");
       const cards = h("div.d-modes");
-      for (const [name, tag] of MODES) {
+      for (const [name, tag, short] of MODES) {
+        if (!presets[name] && name !== mode) continue;        // a pack from before this mode: not offered
         const steps = name === mode ? widgetValue(setup, "steps") : presets[name]?.steps;
         cards.appendChild(h("button.d-mode", {
           type: "button", class: name === mode ? "on" : null, title: `${name} mode (Setup): click to switch`,
           onclick: () => { setWidget(setup, "mode", name); this.renderCmd(); },
-        }, h("b", name), h("i", `${steps ?? "?"} steps · ${tag}`)));
+        }, h("b", short || name), h("i", `${steps ?? "?"} steps · ${tag}`)));
       }
       c.appendChild(h("div.sh3-grp", cards));
     }
@@ -918,6 +920,13 @@ export class DirectorWindow {
     if (models) {
       chips.appendChild(h("button.sh3-chip", { type: "button", title: "Turbo LoRA (Setup)", onclick: () => goToStep(1) },
         h("div.sh3-ico.ac", icon("sparkles", 16)), h("div", label("Turbo"), h("div.d-chipval", this.turboLabel(setup, models)))));
+    }
+    // FastH3 Omni renders Reference only: say so before the render does
+    if (setup && widgetValue(setup, "mode") === OMNI && !this.isReference) {
+      chips.appendChild(h("button.sh3-chip.d-warnchip", { type: "button", onclick: () => this.setInputMode(true),
+        title: "FastH3 Omni mode renders in Reference mode only: it has no first or last frame. Click to switch the "
+          + "Director to Reference, or pick another mode in Setup for First/Last Frame." },
+      h("div.sh3-ico", icon("alert", 16)), h("div", label("FastH3 Omni"), h("div.d-chipval", "Reference only"))));
     }
     const output = this.outputNode();
     if (output) {
@@ -943,6 +952,7 @@ export class DirectorWindow {
   turboLabel(setup, models) {
     const mode = widgetValue(setup, "mode");
     if (mode === "PDMD") return "PDMD 4-step";
+    if (mode === OMNI) return "built in";
     const strength = Number(widgetValue(setup, "speedup_lora_strength", 1));
     if (!strength) return "off";
     const name = String(widgetValue(models, "speedup_lora", "") || "");
@@ -1169,6 +1179,8 @@ const DIRECTOR_CSS = `
 .sh3-d .d-unit{color:var(--text2);font-size:12px;margin-left:-2px}
 .sh3-d .d-vsep{width:1px;height:40px;background:var(--stroke)}
 .sh3-d .d-modes{display:flex;gap:6px}
+.sh3-d .d-warnchip{border-color:rgba(var(--cut),.55)}
+.sh3-d .d-warnchip .sh3-ico{color:rgb(var(--cut))}
 .sh3-d .d-mode{width:108px;height:56px;border-radius:13px;padding:9px 12px;background:var(--glass);border:1px solid var(--stroke);
   display:flex;flex-direction:column;justify-content:center;align-items:flex-start;text-align:left}
 .sh3-d .d-mode:hover{border-color:var(--stroke2)}

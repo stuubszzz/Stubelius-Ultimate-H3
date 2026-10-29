@@ -83,6 +83,11 @@ models/loras/              lora_model_0.safetensors from pdmd2026/pdmd_4NFE_lora
   https://huggingface.co/pdmd2026/pdmd_4NFE_lora/resolve/main/lora_model_0.safetensors
   then pick it as "pdmd lora" on the Models node. Use the file as published; the pack converts it on load.
 
+Optional, for FastH3 Omni mode (Reference mode in 8 steps on its own checkpoint; ComfyUI 0.42 or newer):
+models/diffusion_models/   fasth3_omniref_8step_pruned_int8_convrot.safetensors   (22.2 GB, FastVideo)
+  https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors
+  then pick it as "omni model" on the Models node (or as FastH3 Omni in the Setup window).
+
 Optional live preview (watch the video form while it samples):
 models/vae_approx/         taeh3.safetensors
   https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)

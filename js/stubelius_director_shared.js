@@ -3,6 +3,8 @@ export const MAX_CHARACTER_SLOTS = 9;
 export const REF_AV_SLOTS = 3;
 export const MIN_CUT_SECONDS = 0.3;           // a typed shot length never goes under this
 export const MODE_REFERENCE_PREFIX = "Reference (Omni)";
+// The Setup mode on FastH3 Omni's checkpoint (stubelius_h3_pipeline.OMNI), not the Director's "Reference (Omni)" input
+export const OMNI = "FastH3 Omni";
 
 // How a chunk follows the one before it (muse_minimax_director.py CARRY_MODES): [id, name, icon, what it does]
 export const CARRY = [

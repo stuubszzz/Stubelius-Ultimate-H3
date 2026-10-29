@@ -216,9 +216,13 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             shift_audio = float(setup.get("shift_audio", SHIFT_AUDIO))
         if models is not None:
             clip, vae, audio_vae = models.clip(), models.vae(), models.audio_vae()
+            # FastH3 Omni mode: one Reference checkpoint for every chunk, so later chunks continue in Reference (from
+            # the last frame and the sound of the chunk before) and First/Last Frame mode stops with the reason
+            ref_only = getattr(models, "ref_only", False)
             if mode == MODE_REFERENCE:
                 model = models.model("ref")
-                model_fl2va = models.model("fl2va") if duration_seconds > chunk_duration_seconds else None
+                model_fl2va = (models.model("fl2va")
+                               if duration_seconds > chunk_duration_seconds and not ref_only else None)
             else:
                 model, model_fl2va = None, models.model("fl2va")
             model, model_fl2va = models.preview(model, unique_id), models.preview(model_fl2va, unique_id)

@@ -5,7 +5,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 **Updates:** [github.com/stuubszzz/Stubelius-Ultimate-H3](https://github.com/stuubszzz/Stubelius-Ultimate-H3) · ComfyUI Manager → Update All, or `git pull` in custom_nodes/Stubelius-Ultimate-H3. **Live preview:** put `taeh3.safetensors` in models/vae_approx and pick it under Models in Setup.
 
 ## 1 · SETUP — how it's rendered
-- **Mode** — PDMD, Speed, Hybrid or Quality: *how* the video is made. A card fills steps, size and turbo strength; fine-tune them under the cards. The size that comes out is picked in Output.
+- **Mode** — PDMD, Speed, Hybrid, Quality or FastH3 Omni: *how* the video is made. A card fills steps, size and turbo strength; fine-tune them under the cards. The size that comes out is picked in Output.
 
 | | MP | steps | sampler | turbo | to your Output size |
 |---|---|---|---|---|---|
@@ -13,10 +13,11 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 | Hybrid | 0.5 | 10 | euler / beta | 0.75 | renders ≈540p, upscales up to 4K |
 | Quality | 0.98 | 20 | euler / beta | off | native ≈768p; from 1080p a polish (1.5×) re-renders it bigger, up to 4K |
 | PDMD | 0.98 | 4 | euler / simple | PDMD LoRA | native ≈768p in 4 steps, upscales up to 4K |
+| FastH3 Omni | 0.98 | 8 | euler / simple | built in | Reference mode only, every chunk on its own checkpoint; native ≈768p, upscales up to 4K |
 
 - **Video / Audio shift** — where the sampler spends its steps (H3's own: 12 / 3, what every mode starts on). Use what your speed-up LoRA was trained on: LightX2V's 768p turbo LoRAs want **6 / 3**, and the window offers it when one is picked.
 - **Seeds to compare** — how many full videos, with sound, to render: 1–4. With every chunk picked (after **Pick by chunk** or a hunt) the first seed is your picks and the others try new seeds for the last chunk.
-- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
+- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's checkpoint (its mode only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
 - **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Two **global LoRAs** for every chunk (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
 - **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (six themes, **Tidy the canvas**).
 - Changing anything here **re-renders**.
@@ -45,7 +46,7 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 
 ## 5 · GOOD TO KNOW
 - **A recorded line on the Sound lane:** type the same words in that shot, in quotes. The recording gives the words; the shot tells H3 someone is talking. A sound doesn't move the picture: for a reaction right on it, pin a middle frame of the reaction just after.
-- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it.
+- **A voice sample, new words:** Reference (Omni) mode → the sample in **Ref Audio** for the character in **Ref** → **Voice reference: new lines, same voice** → type the new line in the shot. A similar voice, not a clone, and only the first chunk hears it (every chunk in FastH3 Omni mode).
 - **The voice has to match closely:** make the line first with a voice-clone TTS (LongCat AudioDiT, Fish S2, VoxCPM2), then pin it on the Sound lane or set it as **Lip Sync**, which plays the file itself in every chunk.
 - **The face changes from chunk to chunk:** make the character from 8–16 pictures on the **Characters** lane and keep it on; describe the character in the shots too, since H3 reads the words, not the pictures.
 - **A later chunk sounds dull:** set its join to **Picture, fresh sound**.
@@ -53,4 +54,5 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 - **Fast, small motion smears** (fingers): use PDMD instead of Speed.
 - **Jerky after pinning a line:** check the shot has its exact words, the line stays inside one chunk and the recording has no hard cuts, then try another seed.
 - **Middle frames:** up to eight, half a second apart; eight add about a tenth to the render time. Don't pin fast action in the first half second of a chunk that continues the video: pin the moments around it.
+- **Your own prompt** (from an LLM, for example): paste the whole H3 prompt into the **PROMPT OVERRIDE** node under the Director and every chunk renders with it, as it is. The **Compiled prompt** beside it shows what the Director wrote at the last render: copy one chunk's block, edit it, paste it in.
 - **Turbo modes can mumble dialogue** (measured −31…−39 dB against −14 dB): for talking shots use Quality.

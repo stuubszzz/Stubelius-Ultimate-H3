@@ -1,10 +1,10 @@
 # Stubelius Ultimate H3
 
-[![Watch the Ultimate H3 0.13 video on YouTube](docs/video-0.13.jpg)](https://youtu.be/Xeyb0Y9bvho)
+[![Watch the Ultimate H3 0.15 video on YouTube](docs/video-0.15.jpg)](https://youtu.be/k5xSKv_cNIQ)
 
-**▶ [Watch the 0.13 video on YouTube](https://youtu.be/Xeyb0Y9bvho)** (22 min). It goes through all four windows, from
-the first setting to the finished video, with hunting and retaking one chunk, middle frames and characters from many
-pictures.
+**▶ [Watch the 0.15 video on YouTube](https://youtu.be/k5xSKv_cNIQ)** (10 min). FastH3 Omni against PDMD in 48 clips,
+the one setting that makes Omni fast, and the new FastH3 Omni mode. The [0.13 video](https://youtu.be/Xeyb0Y9bvho)
+(22 min) goes through all four windows, from the first setting to the finished video.
 
 One MiniMax H3 workflow for ComfyUI, in four windows. **Setup** decides **how** the video is made
 (Speed, Hybrid, Quality or PDMD, the models, the speed-ups). The **Director** holds **what the
@@ -15,6 +15,16 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
+
+## What's new in 0.15
+
+Video: [FastH3 Omni vs PDMD on YouTube](https://youtu.be/k5xSKv_cNIQ)
+
+- **FastH3 Omni mode**: FastVideo's (Hao AI Lab and Nuva Lab) 8-step distilled Reference model, with its sparse
+  attention built in. Reference mode only; every chunk renders on it, so a voice clip reaches every chunk
+  ([FastH3 Omni mode](#fasth3-omni-mode)).
+- **The prompt override in the open**, under the Director, next to the compiled prompt: paste a whole H3 prompt of
+  your own (written by an LLM, for example) and it renders as it is ([Your own prompt](#your-own-prompt)).
 
 ## What's new in 0.14
 
@@ -48,15 +58,14 @@ A workflow with the older How to use note gets the window in its place once, whe
 
 | Window | Node | What it holds |
 |---|---|---|
-| **1 Setup** | Stubelius H3 Setup | The four modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
+| **1 Setup** | Stubelius H3 Setup | The five modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
 | **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
-while they sample; the Director's preview shows it too), the prompt override (any text there
-replaces the timeline's prompts), the compiled prompt and the final save. Their wires aren't drawn
+while they sample; the Director's preview shows it too) and the final save. Their wires aren't drawn
 while they're behind a window: move a window to reach them. **Stubelius RIFE to FPS** and
 **Stubelius Color Lock** convert the frame rate (keeping hard cuts clean) and restore the original
 colours after DLSS5.
@@ -65,6 +74,19 @@ Each window sits on its step's panel, drawn in the workflow theme's colours and 
 as it grows; the panel's title row moves the step around. A workflow laid out before (the helper
 nodes under the windows) is tidied once when it opens: the helpers go behind the windows and the
 panels fit them. **Tidy the canvas** under Look in the Setup window does it again any time.
+
+### Your own prompt
+
+Under the Director, in the open, sit the **prompt override** and the **compiled prompt**.
+
+- **Prompt override:** paste a whole MiniMax H3 prompt there, written by hand or by an LLM, and every chunk renders
+  with exactly that text instead of the timeline's prompts. The cast, the reference clips and sounds, the sampling
+  and the chunks work as usual. Leave it empty to use the Director.
+- **The same text goes to every chunk,** so it suits a video of one chunk (up to 15 s) best.
+- **Compiled prompt:** what the Director sent at the last render, one block per chunk under a `--- Chunk 1/2 ---`
+  line. Copy a block (without that line), edit it or hand it to your LLM, and paste it into the prompt override.
+- In a workflow saved before 0.15 both sit behind the Director window: move the window to reach them, or open the
+  new example workflow. **Tidy the canvas** leaves them where they are in the example.
 
 **Render, pick, finish.** **Render** in the Director renders the seeds and stops: pick one in Seeds,
 then **Finish the winner** (or **Finish** in Output). A new Render drops the old pick, since the
@@ -336,7 +358,8 @@ input folder.
 | A voice sample and new words | Reference (Omni) mode: the sample in **Ref Audio N** (Reference audio, under the cast) for the character in **Ref N**, set to **Voice reference: new lines, same voice**; type the new line in the shot | The shot's words, in a voice like the sample's |
 | A voice sample, and the voice has to match closely | Make the line first with a voice-clone TTS (for example the LongCat AudioDiT, Fish Audio S2 or VoxCPM2 nodes), then use it as a recording (first row) | The cloned line |
 
-- **Voice Reference reaches the first chunk only.** Past one chunk, a Reference (Omni) video continues on
+- **Voice Reference reaches the first chunk only** (except in [FastH3 Omni mode](#fasth3-omni-mode), where
+  every chunk renders on the Reference model). Past one chunk, a Reference (Omni) video continues on
   the First/Last Frame checkpoint (hybrid continuation, switched on by itself), which takes no audio; the
   later chunks carry the voice on from the last 1.6 s of the chunk before, not from the sample. For longer
   dialogue, clone the lines and use Lip Sync, which reaches every chunk.
@@ -393,6 +416,33 @@ Measured on an RTX 5090, 6.6 s clips at 1344x768 finished to 2K with DLSS5 + Col
 (67 s of it the 4-step render), Hybrid 85-99 s (at half the pixels), Quality with its 1.5x polish
 715-800 s.
 
+## FastH3 Omni mode
+
+**FastH3 Omni** renders on [FastH3 Omni](https://huggingface.co/FastVideo/FastH3-Omni-Comfy), FastVideo's (Hao AI Lab and
+Nuva Lab) MiniMax H3 Reference model distilled to 8 steps: a checkpoint of its own, so no speedup LoRA goes on top.
+It renders at the Quality size (≈768p), and the Output upscaler takes it to 1080p, 2K or 4K. There is no polish in
+this mode.
+
+- **Reference mode only.** FastH3 Omni has no first or last frame, so the Director tells you to switch to Reference
+  (or pick another mode for First/Last Frame).
+- **Every chunk renders on it.** Past one chunk the video continues in Reference mode, from the last frame and the
+  sound of the chunk before, instead of switching to the First/Last model. So a voice clip reaches every chunk:
+  in 24 s videos made of two chunks (3 seeds), the second chunk's voice matched the clip at 0.88, against 0.75 in
+  PDMD mode, whose later chunks run on the First/Last model, which takes no voice clip.
+- **Its sparse attention is built in.** The checkpoint is trained with VSA (video sparse attention, 10 %), which its
+  template says it must run with; the mode applies it the same way. Sage attention, low-VRAM attention and chunked
+  feed-forward replace the attention it sits in, so this mode leaves them out.
+- **Setup:** download `fasth3_omniref_8step_pruned_int8_convrot.safetensors` (22.2 GB) from
+  [FastVideo/FastH3-Omni-Comfy](https://huggingface.co/FastVideo/FastH3-Omni-Comfy) into `models/diffusion_models` and
+  pick it as the **FastH3 Omni** model in the Setup window. It needs ComfyUI 0.42 or newer.
+
+Measured on an RTX 5090 against PDMD in Reference mode (1344x768, 8 shots, 3 seeds each, the same prompts, pictures
+and seeds): about 1.3x PDMD's render time for a 5 s clip, about the same
+at 10 s, and about 10 % faster at 15 s. Every line was spoken word for word in both (30 of 30). PDMD kept a
+character's face a little closer (face match 0.74 against 0.71); a voice clip was followed as closely (0.94 and
+0.95). FastH3 Omni held still frames (a stutter) in 2 of 21 takes, PDMD in 8, most of all in fast motion. Without
+its sparse attention the same clips took about 1.8x PDMD's time.
+
 ## Flow shift
 
 **Video shift** and **Audio shift**, under the fine-tuning in the Setup window, decide where the sampler spends its
@@ -400,7 +450,7 @@ steps: a higher shift spends more of them on the rough shapes and motion, a lowe
 H3's own is 12 / 3, and every mode starts there: picking a mode puts it back.
 
 Render on the shift a speed-up LoRA or checkpoint was trained on. LightX2V's 768p turbo LoRAs were trained on 6 / 3;
-its 544p turbo LoRAs and PDMD's 4 steps on 12 / 3. When the turbo LoRA in use is one of LightX2V's, the window says
+its 544p turbo LoRAs, PDMD's 4 steps and FastH3 Omni on 12 / 3. When the turbo LoRA in use is one of LightX2V's, the window says
 which shift it was trained on and offers it in one click.
 
 - A take made on another shift is a new take: the ones made before stay in Takes.
@@ -460,6 +510,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/vae` | `minimax_h3_video_vae_fp16.safetensors`, `minimax_h3_audio_vae_fp32.safetensors` |
 | `models/loras` | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
 | `models/loras` | for PDMD mode: [`lora_model_0.safetensors`](https://huggingface.co/pdmd2026/pdmd_4NFE_lora/resolve/main/lora_model_0.safetensors) from pdmd2026/pdmd_4NFE_lora, any name |
+| `models/diffusion_models` | for FastH3 Omni mode: [`fasth3_omniref_8step_pruned_int8_convrot.safetensors`](https://huggingface.co/FastVideo/FastH3-Omni-Comfy) (22.2 GB, FastVideo) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
 
@@ -481,5 +532,7 @@ The windows use the Inter, Space Grotesk and JetBrains Mono fonts (SIL Open Font
 [`js/fonts`](js/fonts) with their licence texts).
 PDMD mode uses the 4-step LoRA by Zimo Wang et al. ([paper](https://arxiv.org/abs/2609.35768),
 [code](https://github.com/ZeamoxWang/pdmd), Apache-2.0), which is not included here.
+FastH3 Omni mode uses [FastH3 Omni](https://huggingface.co/FastVideo/FastH3-Omni-Comfy) by FastVideo (Hao AI Lab) and
+Nuva Lab, under the MiniMax H3 Community License, which is not included here.
 **Powered by MiniMax H3**: the model is MiniMax's and is used under the
 [MiniMax H3 Community License](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).
