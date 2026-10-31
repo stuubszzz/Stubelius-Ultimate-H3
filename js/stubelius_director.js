@@ -23,7 +23,7 @@ import { buildRefs } from "./stubelius_director_refs.js";
 import { characterTokens, fmtTokens } from "./stubelius_director_characters.js";
 import { openSettings, openFileMenu } from "./stubelius_director_settings.js";
 import {
-  MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed, OMNI,
+  MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed, OMNI, FLEX,
 } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
@@ -35,6 +35,7 @@ const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration
   "control_after_generate", "timeline_data"];
 const MODES = [   // display order; the Setup node's mode values (and a shorter name where it doesn't fit)
   ["PDMD", "fastest"], ["Speed", "drafts"], ["Hybrid", "fluid"], ["Quality", "finals"], [OMNI, "reference", "Omni"],
+  [FLEX, "sound", "Flex"],
 ];
 const SIZE_LABEL = { "native (no upscale)": "Native", "720p": "720p", "1080p": "1080p", "2K (1440p)": "2K", "4K (2160p)": "4K" };
 
@@ -626,7 +627,7 @@ export class DirectorWindow {
       sampler: "Sampler", scheduler: "Scheduler", mode: "Mode", seeds: "Seeds to compare", extra_lora_1: "Global LoRA 1",
       extra_lora_2: "Global LoRA 2", extra_lora_1_strength: "Global LoRA 1 strength", extra_lora_2_strength: "Global LoRA 2 strength",
       fl2va_model: "First/Last model", ref2va_model: "Reference model", text_encoder: "Text encoder", pdmd_lora: "PDMD LoRA",
-      omni_model: "FastH3 Omni model" };
+      omni_model: "FastH3 Omni model", flex_ref_lora: "Pika H3 Flex LoRA, Reference", flex_fl_lora: "Pika H3 Flex LoRA, First/Last" };
     const name = (k) => { const n = k.split(":")[1]; return NAMES[n] || n.replace(/_/g, " "); };
     const val = (v) => (typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(2)) : String(v).split(/[\\/]/).pop().replace(/\.safetensors$/i, ""));
     // two numbers side by side with the same decimals (0.75 → 1.00, not 0.75 → 1)
@@ -953,6 +954,7 @@ export class DirectorWindow {
     const mode = widgetValue(setup, "mode");
     if (mode === "PDMD") return "PDMD 4-step";
     if (mode === OMNI) return "built in";
+    if (mode === FLEX) return "Pika 6-step";
     const strength = Number(widgetValue(setup, "speedup_lora_strength", 1));
     if (!strength) return "off";
     const name = String(widgetValue(models, "speedup_lora", "") || "");

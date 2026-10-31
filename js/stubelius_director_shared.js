@@ -5,6 +5,8 @@ export const MIN_CUT_SECONDS = 0.3;           // a typed shot length never goes 
 export const MODE_REFERENCE_PREFIX = "Reference (Omni)";
 // The Setup mode on FastH3 Omni's checkpoint (stubelius_h3_pipeline.OMNI), not the Director's "Reference (Omni)" input
 export const OMNI = "FastH3 Omni";
+// The Setup mode on Pika's two LoRAs (stubelius_h3_pipeline.FLEX)
+export const FLEX = "Pika H3 Flex";
 
 // How a chunk follows the one before it (muse_minimax_director.py CARRY_MODES): [id, name, icon, what it does]
 export const CARRY = [
@@ -19,10 +21,11 @@ export const CARRY_IDS = new Set(CARRY.map((c) => c[0]));
 // One rule for the Setup window's speed-up list and the per-chunk LoRA lists (which leave speed-ups and PDMD out).
 export const SPEEDUP_RE = /turbo|lightx2v|taomate|fasth3|distill|lightning|motion.?enhancer|(^|[^0-9])([1-9]|1[0-6])[-_ ]?steps?(?![0-9])/i;
 export const PDMD_RE = /pdmd|[0-9]nfe/i;
+export const FLEX_RE = /pika.?h3.?flex/i;
 
 export function isSpeedupLora(name) {
   const file = String(name || "").split(/[\\/]/).pop();
-  return SPEEDUP_RE.test(file) || PDMD_RE.test(file);
+  return SPEEDUP_RE.test(file) || PDMD_RE.test(file) || FLEX_RE.test(file);
 }
 
 export function newSeed() {
