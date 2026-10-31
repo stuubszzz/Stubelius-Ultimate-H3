@@ -16,6 +16,11 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.15.1
+
+- **Pika H3 Flex mode**: Pika's tuned MiniMax H3, distilled to 6 steps, as one LoRA for each of H3's two models. The
+  clearest sound of the fast modes, in about 1.5x PDMD's render time ([Pika H3 Flex mode](#pika-h3-flex-mode)).
+
 ## What's new in 0.15
 
 Video: [FastH3 Omni vs PDMD on YouTube](https://youtu.be/k5xSKv_cNIQ)
@@ -58,7 +63,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 
 | Window | Node | What it holds |
 |---|---|---|
-| **1 Setup** | Stubelius H3 Setup | The five modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
+| **1 Setup** | Stubelius H3 Setup | The six modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), Pika H3 Flex (≈768p in 6 steps with its own two LoRAs), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
 | **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
@@ -443,6 +448,40 @@ character's face a little closer (face match 0.74 against 0.71); a voice clip wa
 0.95). FastH3 Omni held still frames (a stutter) in 2 of 21 takes, PDMD in 8, most of all in fast motion. Without
 its sparse attention the same clips took about 1.8x PDMD's time.
 
+## Pika H3 Flex mode
+
+**Pika H3 Flex** renders with [Pika H3 Flex](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras), Pika's
+MiniMax H3: fine-tuned, distilled to 6 steps and tuned further for picture and sound, all in one LoRA for each of H3's
+two models. It takes the turbo LoRA's place, at the Quality size (≈768p), and the Output upscaler takes it to 1080p, 2K
+or 4K. There is no polish in this mode.
+
+- **The clearest sound of the fast modes, by ear,** with a picture close behind them. It takes longer than PDMD or
+  FastH3 Omni and moves more calmly, so it suits speech more than action.
+- **Reference and First/Last Frame both work,** each on its own file. The two files have the same keys and different
+  weights, so the mode stops if they are swapped.
+- **A Reference video stays in Reference past one chunk,** from the last frame and the sound of the chunk before, so a
+  voice clip reaches every chunk, as in FastH3 Omni mode.
+- **Its settings are fixed:** LCM on its own list of 6 steps, its LoRAs at full strength, H3's 12 / 3. The window locks
+  them. The size and the seeds stay yours, and the turbo LoRA isn't used.
+- **Setup:** download `pika_h3_flex_ref2va_v1_bf16.safetensors` and `pika_h3_flex_fl2va_v1_bf16.safetensors` (1.96 GB
+  each) from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras) into `models/loras`.
+  The Setup window finds them by name; pick them under Models if you renamed them.
+
+Measured on an RTX 5090 in Reference mode, against PDMD and FastH3 Omni (1344x768, 7 shots of 8 or 15 s and a 24 s video
+in two chunks, 3 seeds each, the same prompts, pictures, voice clip and seeds):
+
+| | Pika H3 Flex | PDMD | FastH3 Omni |
+|---|---|---|---|
+| 15 s clip, fastest per shot | 238-252 s | 167-172 s | 149-157 s |
+| 24 s in two chunks | 428-437 s | 289-297 s | 319-324 s |
+| Voice in the second chunk, match to the clip | 0.89-0.91 | 0.72-0.75 | 0.90-0.96 |
+| Held frames, 12 takes of 15 s | 233, in 6 takes | 91 | 1 |
+| Motion in a run and jump (optical flow) | 5.1 | 8.2 | 8.2 |
+
+32 of its 33 lines were spoken word for word. The [de-stutter](#de-stutter) would fire on 4 of its 12 takes of 15 s, 1 of
+PDMD's and none of FastH3 Omni's. On a Finish it cleared them: 71 held frames down to 1 in a 24 s video, 18 down to 0 in an
+8 s First/Last Frame take. Three other First/Last Frame takes, of 15 s, held none.
+
 ## Flow shift
 
 **Video shift** and **Audio shift**, under the fine-tuning in the Setup window, decide where the sampler spends its
@@ -450,7 +489,7 @@ steps: a higher shift spends more of them on the rough shapes and motion, a lowe
 H3's own is 12 / 3, and every mode starts there: picking a mode puts it back.
 
 Render on the shift a speed-up LoRA or checkpoint was trained on. LightX2V's 768p turbo LoRAs were trained on 6 / 3;
-its 544p turbo LoRAs, PDMD's 4 steps and FastH3 Omni on 12 / 3. When the turbo LoRA in use is one of LightX2V's, the window says
+its 544p turbo LoRAs, PDMD's 4 steps, FastH3 Omni and Pika H3 Flex on 12 / 3. When the turbo LoRA in use is one of LightX2V's, the window says
 which shift it was trained on and offers it in one click.
 
 - A take made on another shift is a new take: the ones made before stay in Takes.
@@ -511,6 +550,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/loras` | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` |
 | `models/loras` | for PDMD mode: [`lora_model_0.safetensors`](https://huggingface.co/pdmd2026/pdmd_4NFE_lora/resolve/main/lora_model_0.safetensors) from pdmd2026/pdmd_4NFE_lora, any name |
 | `models/diffusion_models` | for FastH3 Omni mode: [`fasth3_omniref_8step_pruned_int8_convrot.safetensors`](https://huggingface.co/FastVideo/FastH3-Omni-Comfy) (22.2 GB, FastVideo) |
+| `models/loras` | for Pika H3 Flex mode: [`pika_h3_flex_ref2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors) and [`pika_h3_flex_fl2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors) (1.96 GB each, Pika) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
 
@@ -534,5 +574,7 @@ PDMD mode uses the 4-step LoRA by Zimo Wang et al. ([paper](https://arxiv.org/ab
 [code](https://github.com/ZeamoxWang/pdmd), Apache-2.0), which is not included here.
 FastH3 Omni mode uses [FastH3 Omni](https://huggingface.co/FastVideo/FastH3-Omni-Comfy) by FastVideo (Hao AI Lab) and
 Nuva Lab, under the MiniMax H3 Community License, which is not included here.
+Pika H3 Flex mode uses Pika H3 Flex by Pika (Mellis, Inc.), under the MiniMax H3 Community License, which is not
+included here.
 **Powered by MiniMax H3**: the model is MiniMax's and is used under the
 [MiniMax H3 Community License](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE).

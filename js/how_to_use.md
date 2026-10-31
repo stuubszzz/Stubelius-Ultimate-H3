@@ -5,7 +5,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 **Updates:** [github.com/stuubszzz/Stubelius-Ultimate-H3](https://github.com/stuubszzz/Stubelius-Ultimate-H3) · ComfyUI Manager → Update All, or `git pull` in custom_nodes/Stubelius-Ultimate-H3. **Live preview:** put `taeh3.safetensors` in models/vae_approx and pick it under Models in Setup.
 
 ## 1 · SETUP — how it's rendered
-- **Mode** — PDMD, Speed, Hybrid, Quality or FastH3 Omni: *how* the video is made. A card fills steps, size and turbo strength; fine-tune them under the cards. The size that comes out is picked in Output.
+- **Mode** — PDMD, Speed, Hybrid, Quality, FastH3 Omni or Pika H3 Flex: *how* the video is made. A card fills steps, size and turbo strength; fine-tune them under the cards. The size that comes out is picked in Output.
 
 | | MP | steps | sampler | turbo | to your Output size |
 |---|---|---|---|---|---|
@@ -14,10 +14,11 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 | Quality | 0.98 | 20 | euler / beta | off | native ≈768p; from 1080p a polish (1.5×) re-renders it bigger, up to 4K |
 | PDMD | 0.98 | 4 | euler / simple | PDMD LoRA | native ≈768p in 4 steps, upscales up to 4K |
 | FastH3 Omni | 0.98 | 8 | euler / simple | built in | Reference mode only, every chunk on its own checkpoint; native ≈768p, upscales up to 4K |
+| Pika H3 Flex | 0.98 | 6 | lcm, its own 6 steps | its own two LoRAs | the clearest sound, about 1.5x PDMD's time; steps, sampler, strength and shift locked; native ≈768p, upscales up to 4K |
 
 - **Video / Audio shift** — where the sampler spends its steps (H3's own: 12 / 3, what every mode starts on). Use what your speed-up LoRA was trained on: LightX2V's 768p turbo LoRAs want **6 / 3**, and the window offers it when one is picked.
 - **Seeds to compare** — how many full videos, with sound, to render: 1–4. With every chunk picked (after **Pick by chunk** or a hunt) the first seed is your picks and the others try new seeds for the last chunk.
-- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's checkpoint (its mode only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
+- **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's checkpoint and Pika H3 Flex's two LoRAs (their modes only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
 - **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Two **global LoRAs** for every chunk (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
 - **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (six themes, **Tidy the canvas**).
 - Changing anything here **re-renders**.

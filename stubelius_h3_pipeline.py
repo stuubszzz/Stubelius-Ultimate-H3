@@ -8,8 +8,8 @@ Output  decides what comes OUT: final resolution (Speed up to 2K, the other mode
 Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup LoRA, extra
         LoRAs and speed/memory patches. It returns a lazy bundle: a checkpoint is only loaded
         when the Director actually needs it (ref2va for Reference, fl2va for First/Last Frame
-        and for Extend; FastH3 Omni for every chunk in its own mode), so no model switch is needed
-        in the graph.
+        and for Extend; FastH3 Omni for every chunk in its own mode; in Pika H3 Flex mode a Reference
+        video stays on ref2va), so no model switch is needed in the graph.
 Finish  turns the Director's takes into the final video with the Output settings: picks the
         WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR or
         DLSS5 + Color Lock). WINNER is the only thing left to choose after a seed hunt; the
@@ -35,7 +35,8 @@ from .stubelius_compiler import compiler_paused
 log = logging.getLogger(__name__)
 
 OMNI = "FastH3 Omni"        # the mode, named after its checkpoint ("Reference (Omni)" is the Director's input mode)
-MODES = ["Speed", "Hybrid", "Quality", "PDMD", OMNI]
+FLEX = "Pika H3 Flex"       # one LoRA per branch (ref2va, fl2va) on H3's own models
+MODES = ["Speed", "Hybrid", "Quality", "PDMD", OMNI, FLEX]
 # H3's own flow shift (ComfyUI's MiniMax H3 default): every mode starts on it, and picking a mode puts it back.
 # Some speed-up LoRAs are trained on another one: LightX2V's 768p turbo LoRAs on 6 / 3 (their model card).
 SHIFT_VIDEO, SHIFT_AUDIO = 12.0, 3.0
@@ -50,7 +51,12 @@ PRESETS = {
     # FastH3 Omni (FastVideo, MiniMax-H3 community licence): the Reference model distilled to 8 steps, a checkpoint
     # of its own (no speedup LoRA). Its template's settings: Euler, simple, H3's 12 / 3, and VSA sparse attention
     OMNI:      dict(steps=8,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=0.0, **_SHIFT),
+    # Pika H3 Flex (Pika, MiniMax-H3 community licence): H3 tuned and distilled to 6 steps, as a LoRA per branch. Its
+    # templates' settings: LCM on the 6 steps of FLEX_SIGMAS (the scheduler isn't used), H3's 12 / 3, strength 1
+    FLEX:      dict(steps=6,  sampler="lcm",           scheduler="simple", megapixels=0.98, speedup_strength=1.0, **_SHIFT),
 }
+# Comfy's Flex templates (ManualSigmas): Pika's knots 1000/750/500/250/100/40/0 on shift 12. Every chunk samples on these
+FLEX_SIGMAS = [1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0]
 PDMD_LORA_HELP = ("PDMD mode needs the PDMD 4-step LoRA: download lora_model_0.safetensors from "
                   "huggingface.co/pdmd2026/pdmd_4NFE_lora into models/loras (e.g. as pdmd_4nfe_lora.safetensors) "
                   "and pick it as pdmd_lora on the Models node.")
@@ -59,6 +65,11 @@ OMNI_HELP = ("FastH3 Omni mode needs its checkpoint: download fasth3_omniref_8st
              "omni_model on the Models node. It needs ComfyUI 0.42 or newer.")
 OMNI_REF_ONLY = ("FastH3 Omni mode renders in Reference mode only: FastH3 Omni has no first or last frame. Switch the "
                  "Director to Reference, or pick another mode for First/Last Frame.")
+FLEX_HELP = ("Pika H3 Flex mode needs its two LoRAs, one per branch: download pika_h3_flex_ref2va_v1_bf16.safetensors "
+             "and pika_h3_flex_fl2va_v1_bf16.safetensors (1.96 GB each) from huggingface.co/Comfy-Org/MiniMax-H3 (the loras "
+             "folder) into models/loras and pick them as flex_ref_lora and flex_fl_lora on the Models node.")
+FLEX_SWAPPED = ("Pika H3 Flex mode: flex_ref_lora and flex_fl_lora are swapped. The two files have the same keys and "
+                "different weights, so each has to go on its own branch: ref2va on flex_ref_lora, fl2va on flex_fl_lora.")
 # The template's "required settings": the checkpoint is trained with VSA (video sparse attention, 10 % of the video
 # cubes) and carries its own gating layers for it. Measured on an RTX 5090 (video 019's test): without it 5 s clips
 # took ~1.3x longer and looked different; with it a 15 s clip rendered ~10 % faster than PDMD.
@@ -86,10 +97,12 @@ SIZES_BY_MODE = {
     "Quality": ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # native is ~768p already
     "PDMD":    ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the Quality size, no polish
     OMNI:      ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
+    FLEX:      ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
 }
 # a size the mode doesn't offer -> the one it gets instead (switching mode, or an older workflow)
 SIZE_FALLBACK = {"Speed": {"4K (2160p)": "2K (1440p)"}, "Quality": {"720p": "native (no upscale)"},
-                 "PDMD": {"720p": "native (no upscale)"}, OMNI: {"720p": "native (no upscale)"}}
+                 "PDMD": {"720p": "native (no upscale)"}, OMNI: {"720p": "native (no upscale)"},
+                 FLEX: {"720p": "native (no upscale)"}}
 
 
 def _cls(name):
@@ -147,7 +160,9 @@ class StubeliusH3Setup:
                     "size in 4 steps with the PDMD LoRA (pdmd_lora on the Models node), no polish; the "
                     "upscaler takes it to the Output size. FastH3 Omni: the Quality size in 8 steps on FastH3 Omni "
                     "(omni_model on the Models node) with its sparse attention, Reference mode only, every "
-                    "chunk on it, no polish."}),
+                    "chunk on it, no polish. Pika H3 Flex: the Quality size in 6 steps with its two LoRAs "
+                    "(flex_ref_lora and flex_fl_lora on the Models node), no polish; its steps, sampler, "
+                    "strength and shift are fixed."}),
                 "seeds": ("INT", {"default": 1, "min": 1, "max": 4, "tooltip":
                     "How many full videos (with sound) to render. Pick one with WINNER on the Finish node "
                     "(WINNER 0 = hold after the seeds)."}),
@@ -177,6 +192,10 @@ class StubeliusH3Setup:
 
     def run(self, mode, seeds, steps, sampler, scheduler, megapixels, speedup_lora_strength,
             shift_video=SHIFT_VIDEO, shift_audio=SHIFT_AUDIO):
+        if mode == FLEX:        # its sigma list goes with these settings: the window locks them, this covers the rest
+            f = PRESETS[FLEX]
+            steps, sampler, scheduler = f["steps"], f["sampler"], f["scheduler"]
+            speedup_lora_strength, shift_video, shift_audio = f["speedup_strength"], f["shift_video"], f["shift_audio"]
         p = dict(mode=mode, steps=steps, sampler=sampler, scheduler=scheduler, megapixels=megapixels,
                  speedup_strength=speedup_lora_strength, seed_count=max(1, min(4, seeds)),
                  shift_video=float(shift_video), shift_audio=float(shift_audio))
@@ -209,8 +228,8 @@ class StubeliusH3Output:
                     "default": "1080p", "per_mode": SIZES_BY_MODE, "fallback": SIZE_FALLBACK, "tooltip":
                     "The sizes follow the Setup mode. Speed: native (≈480p) up to 2K, upscaled. Hybrid: native "
                     "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its polish "
-                    "(and the upscaler for what the polish doesn't reach). PDMD and FastH3 Omni: native (≈768p) up to "
-                    "4K, upscaled. "
+                    "(and the upscaler for what the polish doesn't reach). PDMD, FastH3 Omni and Pika H3 Flex: native "
+                    "(≈768p) up to 4K, upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
                     "per frame, so keep 4K clips short, especially at high frame rates."}),
                 "final_fps": ("FLOAT", {"default": 24.0, "min": 24.0, "max": 120.0, "step": 1.0, "tooltip":
@@ -318,10 +337,11 @@ class H3Models:
 
     @property
     def ref_only(self):
-        """FastH3 Omni mode: the checkpoint renders every chunk, so a Reference video past one chunk continues in
-        Reference (from the last frame and the sound of the chunk before, and its carried frames) instead of switching
-        to the First/Last model."""
-        return bool(self.cfg.get("omni_model"))
+        """FastH3 Omni and Pika H3 Flex modes: a Reference video past one chunk continues in Reference (from the last
+        frame and the sound of the chunk before, and its carried frames) instead of switching to the First/Last model.
+        Omni has nothing else to render on. Flex keeps a voice clip that way (second chunk 0.89-0.91 against 0.66-0.72 on
+        First/Last), and its First/Last input still renders on the First/Last model."""
+        return bool(self.cfg.get("omni_model") or self.cfg.get("flex_ref_lora"))
 
     def _base(self, name):
         if name not in _BASE:
@@ -345,7 +365,9 @@ class H3Models:
             return _PATCHED[key]
         from .stubelius_v2 import _resolve_lora, _lora_state_dict
         m = self._base(name)
-        loras = [(c["speedup_lora"], c["speedup_strength"])]
+        # Pika H3 Flex: the branches' files have the same keys and different weights, so each gets its own
+        speedup = c.get("flex_ref_lora" if kind == "ref" else "flex_fl_lora") or c["speedup_lora"]
+        loras = [(speedup, c["speedup_strength"])]
         loras += [(c["extra_lora_1"], c["extra_lora_1_strength"]), (c["extra_lora_2"], c["extra_lora_2_strength"])]
         for lname, strength in loras:
             if lname and lname != "none" and strength != 0:
@@ -488,6 +510,12 @@ class StubeliusH3Models:
                     "tooltip": "Used for every chunk when the Setup mode is FastH3 Omni: the Reference model "
                                "distilled to 8 steps (huggingface.co/FastVideo/FastH3-Omni-Comfy, "
                                "fasth3_omniref_8step_pruned_int8_convrot.safetensors). Only loaded in that mode."}),
+                "flex_ref_lora": (loras, {"default": _first_match(loras, "pika_h3_flex_ref2va"), "tooltip":
+                    "Used for Reference chunks when the Setup mode is Pika H3 Flex: "
+                    "pika_h3_flex_ref2va_v1_bf16.safetensors from huggingface.co/Comfy-Org/MiniMax-H3 (loras)."}),
+                "flex_fl_lora": (loras, {"default": _first_match(loras, "pika_h3_flex_fl2va"), "tooltip":
+                    "Used for First/Last Frame chunks when the Setup mode is Pika H3 Flex: "
+                    "pika_h3_flex_fl2va_v1_bf16.safetensors from huggingface.co/Comfy-Org/MiniMax-H3 (loras)."}),
             },
         }
 
@@ -496,7 +524,7 @@ class StubeliusH3Models:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, setup, pdmd_lora="none", omni_model="none", **cfg):
+    def run(self, setup, pdmd_lora="none", omni_model="none", flex_ref_lora="none", flex_fl_lora="none", **cfg):
         cfg["speedup_strength"] = float(setup["speedup_strength"])
         if setup.get("mode") == "PDMD":
             if not pdmd_lora or pdmd_lora == "none":
@@ -508,6 +536,13 @@ class StubeliusH3Models:
             # a distilled checkpoint of its own: a speedup LoRA on top would distill it twice. Only this mode
             # puts the key in, so the other modes' settings (and their kept takes) stay as they were
             cfg["omni_model"], cfg["speedup_lora"] = omni_model, "none"
+        elif setup.get("mode") == FLEX:
+            if not flex_ref_lora or flex_ref_lora == "none" or not flex_fl_lora or flex_fl_lora == "none":
+                raise ValueError("[StubeliusH3Models] " + FLEX_HELP)
+            if "fl2va" in os.path.basename(flex_ref_lora).lower() or "ref2va" in os.path.basename(flex_fl_lora).lower():
+                raise ValueError("[StubeliusH3Models] " + FLEX_SWAPPED)
+            # they replace the turbo LoRA. Only this mode puts the keys in, as with Omni's
+            cfg.update(flex_ref_lora=flex_ref_lora, flex_fl_lora=flex_fl_lora, speedup_lora="none")
         _prune(cfg)
         return (H3Models(cfg),)
 

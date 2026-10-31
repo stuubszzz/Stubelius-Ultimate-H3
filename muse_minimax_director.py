@@ -2295,7 +2295,9 @@ class MuseMinimaxDirector:
                     # stitched multi-shot sequence. Seed Hunt is unaffected — it already varies
                     # pass_seed itself per whole pass (see SEED_HUNT_SEED_STRIDE), not per chunk.
                     guider = _unpack_node_result(_execute_comfy_node(BasicGuider, model=chunk_shifted_model, conditioning=positive))[0]
-                    full_sigmas = _unpack_node_result(_execute_comfy_node(
+                    # Stubelius: a mode with a sigma list of its own (Pika H3 Flex, stubelius_v2) brings it instead
+                    manual_sigmas = getattr(self, "_manual_sigmas", None)
+                    full_sigmas = torch.FloatTensor(manual_sigmas) if manual_sigmas else _unpack_node_result(_execute_comfy_node(
                         BasicScheduler, model=chunk_shifted_model, scheduler=scheduler, steps=steps, denoise=1.0,
                     ))[0]
 
