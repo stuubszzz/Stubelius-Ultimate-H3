@@ -23,7 +23,7 @@ import folder_paths
 from .muse_minimax_director import MuseMinimaxDirector, MODE_REFERENCE, _bucket_segments_into_chunks
 from .muse_minimax_refine import MuseMinimaxRefine
 from .stubelius_compiler import compiler_paused
-from .stubelius_h3_pipeline import SHIFT_AUDIO, SHIFT_VIDEO
+from .stubelius_h3_pipeline import FLEX, FLEX_SIGMAS, SHIFT_AUDIO, SHIFT_VIDEO
 from .stubelius_lora_convert import convert as convert_diffusers_h3, is_diffusers_h3
 from . import stubelius_takes as _takes
 
@@ -217,7 +217,8 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
         if models is not None:
             clip, vae, audio_vae = models.clip(), models.vae(), models.audio_vae()
             # FastH3 Omni mode: one Reference checkpoint for every chunk, so later chunks continue in Reference (from
-            # the last frame and the sound of the chunk before) and First/Last Frame mode stops with the reason
+            # the last frame and the sound of the chunk before) and First/Last Frame mode stops with the reason.
+            # Pika H3 Flex: the same continuation, and First/Last Frame mode renders on its own LoRA
             ref_only = getattr(models, "ref_only", False)
             if mode == MODE_REFERENCE:
                 model = models.model("ref")
@@ -255,6 +256,8 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
         # the Models node's settings are part of every take's key (stubelius_takes.py)
         self._takes_models = _takes.bundle_key(models)
         self._takes_node = unique_id           # the window that shows this render's progress
+        # Pika H3 Flex samples every chunk on its own list instead of the scheduler's
+        self._manual_sigmas = FLEX_SIGMAS if setup is not None and setup.get("mode") == FLEX else None
         try:
             out = self._execute_v1(mode, model, clip, vae, audio_vae, aspect_ratio, megapixels,
                                    duration_seconds, chunk_duration_seconds, hybrid, carry, seed,
@@ -265,6 +268,7 @@ class StubeliusH3DirectorV2(MuseMinimaxDirector):
             raise
         finally:
             self._lora_plan, self._lora_models, self._takes_models = {}, {}, None
+            self._manual_sigmas = None
         out[0], out[1] = out[4], out[5]
         plan = getattr(self, "_takes_plan", None)
         takes = {
