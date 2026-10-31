@@ -1,9 +1,9 @@
 # Stubelius Ultimate H3
 
-[![Watch the Ultimate H3 0.15 video on YouTube](docs/video-0.15.jpg)](https://youtu.be/k5xSKv_cNIQ)
+[![Watch the Ultimate H3 0.15.1 video on YouTube](docs/video-0.15.1.jpg)](https://youtu.be/Cj0ltCCZhhk)
 
-**▶ [Watch the 0.15 video on YouTube](https://youtu.be/k5xSKv_cNIQ)** (10 min). FastH3 Omni against PDMD in 48 clips,
-the one setting that makes Omni fast, and the new FastH3 Omni mode. The [0.13 video](https://youtu.be/Xeyb0Y9bvho)
+**▶ [Watch the 0.15.1 video on YouTube](https://youtu.be/Cj0ltCCZhhk)** (9 min). Pika H3 Flex against PDMD and FastH3 Omni
+in 75 clips, and the new Pika H3 Flex mode. The [0.13 video](https://youtu.be/Xeyb0Y9bvho)
 (22 min) goes through all four windows, from the first setting to the finished video.
 
 One MiniMax H3 workflow for ComfyUI, in four windows. **Setup** decides **how** the video is made
@@ -17,6 +17,8 @@ The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_work
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
 ## What's new in 0.15.1
+
+Video: [Pika H3 Flex vs PDMD and FastH3 Omni on YouTube](https://youtu.be/Cj0ltCCZhhk)
 
 - **Pika H3 Flex mode**: Pika's tuned MiniMax H3, distilled to 6 steps, as one LoRA for each of H3's two models. The
   clearest sound of the fast modes, in about 1.5x PDMD's render time ([Pika H3 Flex mode](#pika-h3-flex-mode)).
