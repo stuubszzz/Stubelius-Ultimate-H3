@@ -88,6 +88,13 @@ models/diffusion_models/   fasth3_omniref_8step_pruned_int8_convrot.safetensors 
   https://huggingface.co/FastVideo/FastH3-Omni-Comfy/resolve/main/diffusion_models/fasth3_omniref_8step_pruned_int8_convrot.safetensors
   then pick it as "omni model" on the Models node (or as FastH3 Omni in the Setup window).
 
+Optional, for Pika H3 Flex mode (6 steps with the clearest sound, in Reference and First/Last Frame):
+models/loras/              pika_h3_flex_ref2va_v1_bf16.safetensors   (1.96 GB, Pika)
+  https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors
+models/loras/              pika_h3_flex_fl2va_v1_bf16.safetensors    (1.96 GB, Pika)
+  https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors
+  the Setup window finds them by name; each goes on its own slot on the Models node ("flex ref lora", "flex fl lora").
+
 Optional live preview (watch the video form while it samples):
 models/vae_approx/         taeh3.safetensors
   https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)
