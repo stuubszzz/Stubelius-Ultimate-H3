@@ -29,7 +29,7 @@ import {
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
-export const VERSION = "0.15";
+export const VERSION = "0.15.1";
 export { MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed };
 const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration_seconds", "seed",
   "control_after_generate", "timeline_data"];
