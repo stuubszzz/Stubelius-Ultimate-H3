@@ -479,7 +479,8 @@ in two chunks, 3 seeds each, the same prompts, pictures, voice clip and seeds):
 | Motion in a run and jump (optical flow) | 5.1 | 8.2 | 8.2 |
 
 32 of its 33 lines were spoken word for word. The [de-stutter](#de-stutter) would fire on 4 of its 12 takes of 15 s, 1 of
-PDMD's and none of FastH3 Omni's. In First/Last Frame mode it held no frames in 3 takes of 15 s.
+PDMD's and none of FastH3 Omni's. On a Finish it cleared them: 71 held frames down to 1 in a 24 s video, 18 down to 0 in an
+8 s First/Last Frame take. Three other First/Last Frame takes, of 15 s, held none.
 
 ## Flow shift
 
