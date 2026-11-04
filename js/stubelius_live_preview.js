@@ -46,6 +46,7 @@ app.registerExtension({
       const fit = () => Math.max(120, (node.size?.[1] ?? 400) - 40);
       this.addDOMWidget("live_preview", "stubelius_live_preview", root, {
         serialize: false,
+        hideInPanel: true,          // the right-hand panel would squeeze it to its own width (see mountWindow)
         getMinHeight: () => 120,
         getHeight: fit,
         getMaxHeight: fit,

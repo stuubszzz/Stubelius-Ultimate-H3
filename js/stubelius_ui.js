@@ -643,10 +643,14 @@ export function hideWidget(w) {
 }
 
 // Mount a window on a node as its DOM widget, sized to the window's height. The window starts right under
-// the title and covers the node's socket rows (the links still attach there).
+// the title and covers the node's socket rows (the links still attach there). hideInPanel: the right-hand panel of
+// frontends 1.55-1.58 lists a selected node's widgets, a window included, so in classic mode a click in a window
+// (which selects its node) squeezed it to the panel's width (~420 px, one column) and grew the node thousands of px
+// tall. Nodes 2.0 wasn't affected; 1.42 neither, and it ignores the option.
 export function mountWindow(node, name, root, { minWidth = 1200, minHeight = 600 } = {}) {
   node.widgets_start_y = 0;
-  const w = node.addDOMWidget(name, name, root, { serialize: false, hideOnZoom: false, getMinHeight: () => minHeight });
+  const w = node.addDOMWidget(name, name, root, { serialize: false, hideOnZoom: false, hideInPanel: true,
+    getMinHeight: () => minHeight });
   w.computeSize = (width) => [Math.max(node.size?.[0] || width || minWidth, minWidth),
     Math.max(windowHeight(root), minHeight)];
   return w;
