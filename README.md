@@ -16,6 +16,15 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.15.3
+
+- **De-stutter fixes takes drawn "on twos".** H3 draws anime and 2D styles the way anime is drawn, each pose held
+  for two frames, so the motion runs at 12 poses a second and looks choppy. De-stutter caught those holds only
+  where things moved fast; the slow movement stayed held. A take that holds on 30% or more of its moving steps is
+  now searched again down to slow movement, and the whole take moves evenly. Measured on four takes on twos: the
+  held frames left after de-stutter went from 15-59% to 0-7%; takes that hold less than that are treated exactly
+  as before.
+
 ## What's new in 0.15.2
 
 - **The windows keep their size with ComfyUI's right-hand panel open.** On frontends 1.55 to 1.58 in classic mode
@@ -400,10 +409,14 @@ were, and nothing is drawn across a hard cut.
   video. Changing the switch re-runs only the previews and the Finish, never the seeds.
 - On the Speed take above: roughness (how unevenly the picture moves from frame to frame) 0.83 before, 0.23
   after, against 0.27 for PDMD.
+- **Takes "on twos"** (anime and 2D styles: H3 holds each pose for two frames, like anime): when a take holds on
+  30% or more of its moving steps, the slow movement is searched too, so slow parts don't stay choppy. On a
+  take that held 90% of its moving steps: 59% still held with the fast parts only, none with the slow ones too.
 
 ## Jagged or smeared motion
 
-- **Judder** (a held frame every second or third frame): Speed mode's takes do it most. **de-stutter**
+- **Judder** (a held frame every second or third frame): Speed mode's takes do it most, and anime or 2D styles in
+  any mode (H3 draws them on twos, like anime). **de-stutter**
   (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. A higher frame rate
   alone doesn't fix it.
 - **Fast, small motion smears** (fingers, hands): render in PDMD instead of Speed. At Speed's ≈480p a
