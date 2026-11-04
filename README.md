@@ -16,6 +16,13 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.15.2
+
+- **The windows keep their size with ComfyUI's right-hand panel open.** On frontends 1.55 to 1.58 in classic mode
+  (not Nodes 2.0), a click in a window selected its node, the panel listed the window as one of the node's settings,
+  and the window shrank into a narrow column with an empty frame beside it. The panel now leaves the windows and the
+  live preview out.
+
 ## What's new in 0.15.1
 
 Video: [Pika H3 Flex vs PDMD and FastH3 Omni on YouTube](https://youtu.be/Cj0ltCCZhhk)
