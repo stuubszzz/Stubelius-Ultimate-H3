@@ -54,16 +54,15 @@ def steps(images, device=None):
     return [float(v) for v in (g[1:] - g[:-1]).abs().mean(dim=(1, 2))]
 
 
-def find_holds(d, cuts=(), floor=MOTION_FLOOR, both=False):
+def find_holds(d, cuts=(), floor=MOTION_FLOOR):
     """Steps j (frame j -> j+1) where the picture held: much smaller than both neighbours, which move at least
-    `floor` on average (both=True: each of them, so a step where the motion only comes to a stop isn't one).
-    Returns (holds, moving steps)."""
+    `floor` on average. Returns (holds, moving steps)."""
     holds, moving = [], 0
     for j in range(1, len(d) - 1):
         if j in cuts or (j - 1) in cuts or (j + 1) in cuts:
             continue
         around = (d[j - 1] + d[j + 1]) / 2
-        if around < floor or (both and min(d[j - 1], d[j + 1]) < floor):
+        if around < floor:
             continue
         moving += 1
         if d[j] < HOLD_RATIO * around:
@@ -124,10 +123,11 @@ def destutter(images, mode="auto", label="", ckpt_name="rife47.pth", slow=True):
     steady = bool(rhythm) and gaps.count(rhythm) >= len(gaps) / 2
     slow_note = ""
     if slow and share >= RHYTHM_SHARE:              # a take on twos (or threes): its slow movement holds too
-        more, more_moving = find_holds(d, cuts, SLOW_FLOOR, both=True)
-        if len(more) > len(holds):
-            slow_note = f", {len(more) - len(holds)} more in its slow movement"
-            holds, moving = more, more_moving
+        more, more_moving = find_holds(d, cuts, SLOW_FLOOR)
+        extra = sorted(set(more) - set(holds))
+        if extra:                                   # added to the holds found first
+            slow_note = f", {len(extra)} more in its slow movement"
+            holds, moving = sorted(set(holds) | set(extra)), more_moving
     tasks = plan(n, holds, cuts)
     out = images.clone()
     for k, frame in draw_between(images, [(a, b, t) for _, a, b, t in tasks], ckpt_name).items():
