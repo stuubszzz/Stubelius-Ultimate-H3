@@ -94,13 +94,16 @@ def save_vram(model, tokens):
     return model
 
 
-def _model(models, chunk, node_id, scale, made=None):
+def _model(models, chunk, node_id, scale, made=None, refiner=None):
     """The checkpoint that made this chunk, with the chunk's own LoRAs and the take's flow shift, as the
-    Director had it."""
+    Director had it. `refiner` = Regenerate 2K's LoRA (stubelius_regen.state_dict()), on top of them."""
     from .stubelius_v2 import _lora_state_dict, with_shift
     model = with_shift(models.model(chunk["model"]), made)
     for _, path, strength in chunk.get("loras") or []:
         model, _ = comfy.sd.load_lora_for_models(model, None, _lora_state_dict(path), strength, 0)
+    if refiner is not None:
+        from .stubelius_regen import with_lora
+        model = with_lora(model, refiner)
     return models.preview(save_vram(model, polish_tokens(chunk["latent"], scale)), node_id)
 
 
@@ -226,12 +229,13 @@ def _ram_note(frames, candidate, scale):
         pass
 
 
-def polish(candidate, models, strength, steps, method, frames=None, node_id=None, scale=2.0):
+def polish(candidate, models, strength, steps, method, frames=None, node_id=None, scale=2.0, regen=False):
     """The whole take, polished chunk by chunk: IMAGE [frames, height, width, 3].
 
     candidate = the take's latent as the Director returned it (takes["latents"][n]); frames =
     how many frames the take has, which is what the chunks add up to; scale = how much bigger
-    than the take the polish renders (1.5 or 2)."""
+    than the take the polish renders (1.5 or 2). regen = Regenerate 2K (stubelius_regen.py): the
+    refiner LoRA on every chunk, its three Euler steps in place of strength / steps."""
     bundle = candidate[KEY]
     chunks = bundle["chunks"]
     made = candidate.get("_muse_stage1_settings") or {}
@@ -239,6 +243,10 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     clip, vae, audio_vae = models.clip(), models.vae(), models.audio_vae()
     if frames:
         _ram_note(int(frames), candidate, scale)
+    refiner, schedule, sampler = None, None, made.get("sampler_name", "euler")
+    if regen:
+        from . import stubelius_regen as _regen
+        refiner, schedule, sampler = _regen.state_dict(), _regen.sigmas(), _regen.SAMPLER
 
     # The frames the next chunk reads from this one (its carry-over, anchor and seam), kept as
     # they came out; the rest of the video waits in 8 bits.
@@ -259,14 +267,15 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
         carry = carry_length if follows in ("picture_sound", "picture") else 0
         refs, positive = _conditioning(chunk, bundle, clip, vae, previous)
         images, audio = _refine_one_chunk(
-            _model(models, chunk, node_id, scale, made), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
+            _model(models, chunk, node_id, scale, made, refiner), clip, vae, audio_vae, chunk["prompt"], chunk["latent"],
             made.get("ref_image_size", "match"), int(chunk.get("seed", made.get("seed", 0))), int(made.get("steps", 8)),
-            int(made.get("first_pass_steps", 2)), made.get("sampler_name", "euler"), made.get("scheduler", "beta"),
+            int(made.get("first_pass_steps", 2)), sampler, made.get("scheduler", "beta"),
             float(scale), method, refs,
             previous if carry else None, previous_audio if carry else None, carry,
             log_label=f"chunk {index + 1}/{len(chunks)}", audio_lock=True,
             refine_denoise=strength, polish_steps=steps, two_stage_strategy="complete then polish (stubelius)",
-            positive=positive, trim_frames=int(chunk.get("trim") or 0), extra_refs=chunk.get("refmods"))
+            positive=positive, trim_frames=int(chunk.get("trim") or 0), extra_refs=chunk.get("refmods"),
+            sigmas=schedule)
         if previous is not None and follows != "new_shot":
             seam_from = _fit_image_to_target(previous[-1:], int(images.shape[2]), int(images.shape[1]), "stretch")
             _smooth_seam(seam_from, images, bundle.get("seam_frames"))

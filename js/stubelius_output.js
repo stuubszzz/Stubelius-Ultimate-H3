@@ -19,6 +19,7 @@ const { api } = window.comfyAPI.api;
 const SIZES = [["native (no upscale)", "Native"], ["720p", "720p"], ["1080p", "1080p"], ["2K (1440p)", "2K"], ["4K (2160p)", "4K"]];
 const SHORT = { "native (no upscale)": 0, "720p": 720, "1080p": 1080, "2K (1440p)": 1440, "4K (2160p)": 2160 };
 const STAGES = ["start", "polish", "destutter", "fps", "upscale", "clip", "done"];
+const REGEN = "Regenerate 2K";    // the Output node's third upscaler (stubelius_regen.py)
 
 class OutputWindow {
   constructor(node) {
@@ -196,7 +197,7 @@ class OutputWindow {
       cls = "warn";
     } else if (st && st.stage !== "done" && STAGES.includes(st.stage)) {
       const pct = this.progress ? ` · ${Math.round((this.progress.value / Math.max(1, this.progress.max)) * 100)}%` : "";
-      text = `Finishing · ${stageName(st.stage)}${pct}`;
+      text = `Finishing · ${st.regen && st.stage === "polish" ? "Regenerate 2K" : stageName(st.stage)}${pct}`;
       cls = "busy";
     } else if (st?.stage === "done" && this.final) {
       text = `Finished · ${st.width}×${st.height} · ${Math.round(st.fps)} fps` + (st.lufs != null ? ` · ${st.lufs.toFixed(1)} LUFS` : "");
@@ -213,7 +214,8 @@ class OutputWindow {
     const out = this.output();
     const st = this.stage?.stage === "done" ? this.stage : this.node.properties?.sh3_done;
     v.setSources(fin ? viewUrl(fin) : null, win ? viewUrl(win) : (fin ? viewUrl(fin) : null));
-    const upLabel = String(widgetValue(out, "upscaler", "RTX VSR")).startsWith("DLSS") ? "DLSS 5 + Color Lock" : "RTX VSR";
+    const upName = String(widgetValue(out, "upscaler", "RTX VSR"));
+    const upLabel = upName.startsWith("DLSS") ? "DLSS 5 + Color Lock" : upName === REGEN ? "Regenerate 2K" : "RTX VSR";
     v.setLabels(st ? `${SIZES.find((x) => SHORT[x[0]] && SHORT[x[0]] === Math.min(st.width, st.height))?.[1] || `${st.width}×${st.height}`} · ${st.upscaler ? upLabel : "native"}` : "Finished",
       win ? `Render · ${win.width}×${win.height}` : "Render");
     v.setMode(fin && win ? this.mode : "single");
@@ -282,12 +284,17 @@ class OutputWindow {
     const steps = [];
     steps.push({ ic: "crown", name: "Winner", text: win ? `Seed ${this.winner()}, ${(win.chunk_seeds || []).length || 1} chunk${(win.chunk_seeds || []).length === 1 ? "" : "s"}, its own sound` : "Pick one in Seeds",
       state: win ? "done" : "wait" });
-    if (mode === "Quality" && res !== "native (no upscale)") {
+    const regen = up === REGEN && res !== "native (no upscale)";
+    if (regen) {
+      steps.push({ ic: "wand", name: "Regenerate 2K", text: "Rendered again at 1440p in 3 steps by the refiner LoRA, its own sound",
+        state: running("polish") ? "run" : passed("polish") ? "done" : "next" });
+    } else if (mode === "Quality" && res !== "native (no upscale)") {
       steps.push({ ic: "diamond", name: "Quality polish", text: `Rendered again ${widgetValue(out, "quality_polish_scale", "1.5x")} bigger, ${widgetValue(out, "quality_polish_steps", 12)} steps`,
         state: running("polish") ? "run" : passed("polish") ? "done" : "next" });
     }
-    steps.push({ ic: "aspect", name: res === "native (no upscale)" ? "Native size" : `Upscale to ${size}`,
-      text: res === "native (no upscale)" ? "No upscale: the render's own size" : up.startsWith("DLSS") ? "DLSS 5 with Color Lock holds the colours" : "RTX VSR: fast and clean",
+    steps.push({ ic: "aspect", name: res === "native (no upscale)" ? "Native size" : regen && SHORT[res] <= 1440 ? `Fit to ${size}` : `Upscale to ${size}`,
+      text: res === "native (no upscale)" ? "No upscale: the render's own size" : up.startsWith("DLSS") ? "DLSS 5 with Color Lock holds the colours"
+        : regen ? (SHORT[res] > 1440 ? "RTX VSR from the regenerated 1440p" : "The regenerated 1440p, at this size") : "RTX VSR: fast and clean",
       state: res === "native (no upscale)" ? "skip" : running("upscale") ? "run" : passed("upscale") ? "done" : "next" });
     steps.push({ ic: "wave", name: fps > 24 ? `Smooth to ${fps} fps` : "24 fps", text: fps > 24 ? "RIFE in-betweens, de-stutter first if needed" : "Frames as rendered, de-stutter if needed",
       state: running("fps") || running("destutter") ? "run" : passed("fps") ? "done" : "next" });
@@ -361,9 +368,11 @@ class OutputWindow {
     const card = (value, name, ic, text) => h("button.o-card", { type: "button", class: up === value ? "on" : null,
       onclick: () => set("upscaler", value) }, h("div.o-card-h", icon(ic, 16), h("b", name)), h("div.sh3-muted", text));
     const dlss = !!window.LiteGraph?.registered_node_types?.DLSS5EnhanceImages;
+    const offers = w("upscaler")?.options?.values || [];
     panel.appendChild(h("div.o-sec", label("Upscaler"), h("div.o-cards",
       card("DLSS5 + Color Lock", "DLSS 5 + Color Lock", "sparkles", dlss ? "Sharpest; Color Lock keeps the colours the render had" : "Needs ComfyUI-DLSS5-Enhancer"),
-      card("RTX VSR", "RTX VSR", "bolt", "Fast and clean, a little softer"))));
+      card("RTX VSR", "RTX VSR", "bolt", "Fast and clean, a little softer"),
+      offers.includes(REGEN) ? card(REGEN, "Regenerate 2K", "wand", "Renders the take again at 1440p in 3 steps; needs the refiner LoRA") : null)));
     panel.appendChild(h("div.o-sec", label("De-stutter"),
       seg([["auto", "Auto"], ["on", "On"], ["off", "Off"]], w("de_stutter")?.value || "auto", (v) => set("de_stutter", v))));
     // the Director's Render waits for a pick in Seeds; with one seed it can go straight on to the finish
@@ -374,11 +383,11 @@ class OutputWindow {
         this.render();
       })));
     const mode = this.setupMode();
-    const polishOn = mode === "Quality";
+    const polishOn = mode === "Quality" && up !== REGEN;
     const pol = h("div.o-polish", h("span.sh3-ico.k", icon("diamond", 16)),
       h("div.o-polish-t", h("b", "Quality polish"), h("div.sh3-muted",
         `Runs in Quality mode · ${w("quality_polish_scale")?.value || "1.5x"} · ${w("quality_polish_steps")?.value ?? 12} steps · strength ${Number(w("quality_polish_strength")?.value ?? 0.3).toFixed(2)}`)),
-      polishOn ? null : badge(`off in ${mode}`));
+      polishOn ? null : badge(up === REGEN ? "Regenerate 2K instead" : `off in ${mode}`));
     panel.appendChild(pol);
     if (polishOn) {
       const strength = slider({ min: 0.05, max: 1, step: 0.05, value: Number(w("quality_polish_strength")?.value ?? 0.3),
@@ -708,7 +717,7 @@ function injectOutputStyles() {
   color:var(--text2);font-family:var(--fh);font-size:12px}
 .sh3-o .o-fps-pick:hover{color:var(--text);border-color:var(--stroke2)}
 .sh3-o .o-fps-pick.on{color:var(--text);border-color:rgba(var(--ac),.7);background:rgba(var(--ac),.15)}
-.sh3-o .o-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sh3-o .o-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .sh3-o .o-card{border-radius:14px;padding:12px;background:var(--glass);border:1px solid var(--stroke);text-align:left;display:flex;flex-direction:column;gap:5px}
 .sh3-o .o-card:hover{border-color:var(--stroke2)}
 .sh3-o .o-card.on{background:linear-gradient(160deg,rgba(var(--ac),.22),rgba(var(--ac2),.08));border-color:rgba(var(--ac),.7);box-shadow:0 0 22px rgba(var(--ac),.2)}

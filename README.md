@@ -84,7 +84,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 | **1 Setup** | Stubelius H3 Setup | The six modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), Pika H3 Flex (≈768p in 6 steps with its own two LoRAs), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
-| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
+| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR, DLSS5 + Color Lock or Regenerate 2K, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
@@ -187,6 +187,15 @@ same sound as the take it came from.
   or 10 s for a video's first chunk (one that continues a video also re-renders the frames it
   carries over). A longer chunk spills out of the card and takes hours. A 2x step takes 2 to 4
   minutes.
+
+**Regenerate 2K.** The third upscaler in the Output window, in any mode: the take rendered again at
+1440p by NVlabs' [Open-H3-Regenerate-2K](https://nvlabs.github.io/Sana/Open-H3-Regenerate-2K/)
+refiner LoRA, in place of the Quality polish. Its recipe: the take's latent made 2K by zhangccccc's
+H3 latent upscaler, then three Euler steps from sigma 0.91 at CFG 1 with the LoRA on top of the
+checkpoint and LoRAs that made each chunk. Chunk by chunk like the polish, so the video keeps its
+length and its sound. 1080p is the 1440p fitted down; 4K is RTX VSR from 1440p. The LoRA
+([8.3 GB](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA)) goes anywhere
+in `models/loras` and is under the MiniMax H3 Community License, like H3 itself.
 
 The polish runs 12 steps by default. A large polish turns on KJNodes' low-VRAM patches
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
@@ -575,6 +584,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/loras` | for Pika H3 Flex mode: [`pika_h3_flex_ref2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors) and [`pika_h3_flex_fl2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors) (1.96 GB each, Pika) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
+| `models/loras` | for Regenerate 2K: [`open_h3_regenerate_2k_refiner_lora.safetensors`](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA/resolve/main/open_h3_regenerate_2k_refiner_lora.safetensors) (8.3 GB, NVlabs, any subfolder) |
 
 RIFE downloads its checkpoint the first time you pick a frame rate above 24. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).

@@ -370,12 +370,15 @@ def _refine_one_chunk(
     positive=None,
     trim_frames=None,
     extra_refs=None,
+    sigmas=None,
 ):
     """Stubelius, for a take polished chunk by chunk (stubelius_polish.py), both off by default:
     `positive` is the chunk's own conditioning, or a function (width, height) -> conditioning
     that is called once the size it is sampled at is known (a chunk made from keyframes needs
     them at that size); `trim_frames` is how many opening frames to cut from the result, which
     then replaces the carry-over's own count (the Director's cut, carry-over pack or not).
+    `sigmas` (off by default) is a fixed schedule for the polish of a complete take in place of
+    polish_steps / refine_denoise: Regenerate 2K's three steps (stubelius_regen.py).
 
     Runs exactly the single-chunk Stage 2 pipeline this node has always run
     (upscale, priming pass, recombine, final DisableNoise pass, decode) — the
@@ -463,7 +466,12 @@ def _refine_one_chunk(
         # Complete candidate (Director ran full schedule, Two-Stage OFF): this is a
         # POLISH pass, not a continuation. Re-run only the low-noise tail of the same
         # schedule on the 2x-upscaled video - refine_denoise sets how much.
-        if int(polish_steps) > 0:
+        if sigmas is not None:
+            low_sigmas = sigmas
+            log.info("[MuseMinimaxRefineV1_2] %s complete-candidate polish: a fixed %d-step schedule "
+                     "from sigma %.4g on the upscaled video.", log_label, max(int(sigmas.shape[0]) - 1, 0),
+                     float(sigmas[0]))
+        elif int(polish_steps) > 0:
             low_sigmas = _unpack_node_result(_execute_comfy_node(
                 BasicScheduler, model=model, scheduler=scheduler,
                 steps=int(polish_steps), denoise=float(refine_denoise),
@@ -531,6 +539,7 @@ def _refine_one_chunk(
             two_stage_strategy=two_stage_strategy,
             positive=given_positive,
             trim_frames=trim_frames,
+            sigmas=sigmas,
         )
 
     if two_stage_upscale_method == H3_ANY_SCALE or (
