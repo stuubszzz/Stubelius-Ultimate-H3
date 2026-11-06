@@ -566,14 +566,14 @@ def _target_size(images, short_side):
     return max(8, round(w * k / 8) * 8), max(8, round(h * k / 8) * 8)
 
 
-def _fit(images, short_side, inplace=False, batch=8):
-    """Bring an IMAGE batch to _target_size; no-op when it already fits. A frame at most 2% too
-    big (DLSS5 gives 1920x1088 for 1080p) is centre-cropped rather than resampled; otherwise
-    bicubic, antialiased. inplace=True (a private tensor only, e.g. Finish's own DLSS5 output)
-    writes a smaller result back into the same memory, so no second full-size copy is made:
-    frame i lands at or before where frame i was, never over a frame not yet read."""
+def _fit(images, short_side, inplace=False, batch=8, size=None):
+    """Bring an IMAGE batch to _target_size (or to `size`, (width, height)); no-op when it already fits.
+    A frame at most 2% too big (DLSS5 gives 1920x1088 for 1080p) is centre-cropped rather than
+    resampled; otherwise bicubic, antialiased. inplace=True (a private tensor only, e.g. Finish's own
+    DLSS5 output) writes a smaller result back into the same memory, so no second full-size copy is
+    made: frame i lands at or before where frame i was, never over a frame not yet read."""
     n, h, w, c = images.shape
-    width, height = _target_size(images, short_side)
+    width, height = size or _target_size(images, short_side)
     if (w, h) == (width, height):
         return images
     shrink = width <= w and height <= h
@@ -783,7 +783,12 @@ class StubeliusH3Finish:
             from .stubelius_regen import plan
             _stage(unique_id, "polish", regen=True)
             how, scale = plan(_short(images))
+            take = images
             images = self._polish_chunks(takes, models, w, 0.0, 0, how, unique_id, scale=scale, regen=True)[0]
+            # the latent grid can't always hold the take's shape at 1440p (1344x768 is 157.5 cells wide there and
+            # renders 156, 1% narrow): back to the take's own shape
+            images = _fit(images, _short(images), size=_target_size(take, _short(images)))
+            del take
         elif polishing:
             _stage(unique_id, "polish")
             # Quality re-renders the take 1.5x or 2x bigger (the polish) when the size picked is
