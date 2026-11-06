@@ -33,6 +33,7 @@ import torch
 from .muse_minimax_director import _execute_comfy_node, _unpack_node_result
 from .stubelius_compiler import compiler_paused
 from .stubelius_regen import NAME as REGEN
+from .stubelius_regen import LORAS as REGEN_LORAS, STRENGTH as REGEN_STRENGTH, STRENGTHS as REGEN_STRENGTHS
 
 log = logging.getLogger(__name__)
 
@@ -274,6 +275,14 @@ class StubeliusH3Output:
                     "length and the sound stay as they were. auto = only takes that judder; on = every held "
                     "frame found; off = never. It applies to the seed previews and the Finish, and changing "
                     "it re-runs only those."}),
+                "regen_strength": (list(REGEN_STRENGTHS), {"default": REGEN_STRENGTH, "tooltip":
+                    "Regenerate 2K only: how far the take is rendered again. full = the refiner's own three "
+                    "steps, the most new detail; gentle and light start lower and keep more of the take (its "
+                    "motion, expressions and small props) for less new detail, in two steps."}),
+                "regen_lora": (list(REGEN_LORAS), {"default": "auto", "tooltip":
+                    "Regenerate 2K only: which refiner LoRA in models/loras. full = NVlabs' published one "
+                    "(8.3 GB); small = a smaller extract of it (Kijai's rank 16, 155 MB); auto = the biggest one "
+                    "found."}),
             }
         }
 
@@ -284,7 +293,7 @@ class StubeliusH3Output:
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
             quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
-            de_stutter="auto"):
+            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto"):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -295,7 +304,9 @@ class StubeliusH3Output:
                  polish_strength=quality_polish_strength, polish_steps=quality_polish_steps,
                  polish_method=_polish_methods().get(quality_polish_method, quality_polish_method),
                  polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output),
-                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto")
+                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto",
+                 regen_strength=regen_strength if regen_strength in REGEN_STRENGTHS else REGEN_STRENGTH,
+                 regen_lora=regen_lora if regen_lora in REGEN_LORAS else "auto")
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -784,7 +795,9 @@ class StubeliusH3Finish:
             _stage(unique_id, "polish", regen=True)
             how, scale = plan(_short(images))
             take = images
-            images = self._polish_chunks(takes, models, w, 0.0, 0, how, unique_id, scale=scale, regen=True)[0]
+            images = self._polish_chunks(takes, models, w, 0.0, 0, how, unique_id, scale=scale,
+                                         regen=(o.get("regen_strength", REGEN_STRENGTH),
+                                                o.get("regen_lora", "auto")))[0]
             # the latent grid can't always hold the take's shape at 1440p (1344x768 is 157.5 cells wide there and
             # renders 156, 1% narrow): back to the take's own shape
             images = _fit(images, _short(images), size=_target_size(take, _short(images)))

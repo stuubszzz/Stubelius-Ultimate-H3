@@ -22,26 +22,61 @@ log = logging.getLogger(__name__)
 
 NAME = "Regenerate 2K"          # the Output node's upscaler choice
 SIGMAS = (0.909375, 0.857143, 0.666667, 0.0)
+# How far the take is rendered again: the refiner's own schedule (full), or one that starts lower and keeps more
+# of the take (its motion, expressions, small props) for less new detail. gentle = NVlabs' schedule from its
+# 0.667 point; light = the two steps from 0.7 that the rank-16 extract was shown with.
+STRENGTHS = {
+    "full (0.91)": SIGMAS,
+    "gentle (0.8)": (0.8, 0.666667, 0.0),
+    "light (0.7)": (0.7, 0.494118, 0.0),
+}
+STRENGTH = "full (0.91)"
+# Which refiner file: NVlabs' published one (8.3 GB) or a smaller extract of it (Kijai's rank 16, 155 MB).
+LORAS = ["auto", "full", "small"]   # auto = the biggest one found, which is the full one when it is there
 SAMPLER = "euler"
 SHORT_SIDE = 1440
 MAX_SCALE = 3.0                 # Speed's ~480p to 1440p; the any-scale upscaler makes the latent at any size
 SOURCE = "huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA"
 
 
-def lora_name():
-    """The refiner LoRA's name in models/loras, or None."""
+def lora_names():
+    """The refiner LoRAs in models/loras, biggest first: [(name, bytes)]."""
+    import os
     import folder_paths
-    names = sorted(n for n in folder_paths.get_filename_list("loras")
-                   if "regenerate_2k" in n.lower().replace("-", "_") and n.lower().endswith(".safetensors"))
-    return next((n for n in names if "refiner" in n.lower()), names[0] if names else None)
+    found = []
+    for n in folder_paths.get_filename_list("loras"):
+        low = n.lower().replace("-", "_")
+        if "regenerate_2k" in low and low.endswith(".safetensors"):
+            path = folder_paths.get_full_path("loras", n)
+            found.append((n, os.path.getsize(path) if path and os.path.exists(path) else 0, "refiner" in low))
+    found.sort(key=lambda f: (not f[2], -f[1], f[0]))   # the refiner files first, then by size
+    return [(n, size) for n, size, _ in found]
+
+
+def lora_name(which="auto"):
+    """The refiner LoRA's name in models/loras, or None. full/auto = the biggest one, small = the smallest."""
+    names = lora_names()
+    if not names:
+        return None
+    if which == "small":
+        return min(names, key=lambda f: f[1])[0]
+    return names[0][0]
 
 
 def ready():
     return lora_name() is not None
 
 
-def sigmas():
-    return torch.tensor(SIGMAS, dtype=torch.float32)
+def sigmas(strength=STRENGTH):
+    return torch.tensor(STRENGTHS.get(strength, SIGMAS), dtype=torch.float32)
+
+
+def options(regen):
+    """(strength, lora) from the Finish's regen value: True (the defaults) or (strength, lora)."""
+    if isinstance(regen, (tuple, list)) and len(regen) == 2:
+        strength, which = regen
+        return (strength if strength in STRENGTHS else STRENGTH), (which if which in LORAS else "auto")
+    return STRENGTH, "auto"
 
 
 def scale_for(short_px):
@@ -69,7 +104,7 @@ def plan(short_px):
     return how, (scale_for(short_px) if how == H3_ANY_SCALE else 2.0)
 
 
-def state_dict():
+def state_dict(which="auto"):
     """The refiner LoRA in ComfyUI's H3 names, as bf16.
 
     As published it is 8.3 GB of FP32 (rank 384 on 312 linears); with q/k/v fused for ComfyUI (A stacked, B
@@ -78,7 +113,7 @@ def state_dict():
     import folder_paths
     import comfy.utils
     from .stubelius_lora_convert import convert, is_diffusers_h3
-    name = lora_name()
+    name = lora_name(which)
     if name is None:
         raise RuntimeError(f"[StubeliusRegen] '{NAME}' needs NVlabs' refiner LoRA in models/loras: "
                            f"open_h3_regenerate_2k_refiner_lora.safetensors from {SOURCE}. Download it there, "

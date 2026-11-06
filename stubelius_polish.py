@@ -246,7 +246,10 @@ def polish(candidate, models, strength, steps, method, frames=None, node_id=None
     refiner, schedule, sampler = None, None, made.get("sampler_name", "euler")
     if regen:
         from . import stubelius_regen as _regen
-        refiner, schedule, sampler = _regen.state_dict(), _regen.sigmas(), _regen.SAMPLER
+        regen_strength, which = _regen.options(regen)
+        refiner, schedule, sampler = _regen.state_dict(which), _regen.sigmas(regen_strength), _regen.SAMPLER
+        log.info("[StubeliusPolish] Regenerate 2K: %s, %s LoRA, sigmas %s", regen_strength, which,
+                 [round(float(s), 6) for s in schedule])
 
     # The frames the next chunk reads from this one (its carry-over, anchor and seam), kept as
     # they came out; the rest of the video waits in 8 bits.
