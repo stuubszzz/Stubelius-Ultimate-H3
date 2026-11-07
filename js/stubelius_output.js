@@ -20,6 +20,13 @@ const SIZES = [["native (no upscale)", "Native"], ["720p", "720p"], ["1080p", "1
 const SHORT = { "native (no upscale)": 0, "720p": 720, "1080p": 1080, "2K (1440p)": 1440, "4K (2160p)": 2160 };
 const STAGES = ["start", "polish", "destutter", "fps", "upscale", "clip", "done"];
 const REGEN = "Regenerate 2K";    // the Output node's third upscaler (stubelius_regen.py)
+// its strengths (stubelius_regen.STRENGTHS): where the 3- or 2-step schedule starts; lower keeps more of the take
+const REGEN_STRENGTH = {
+  "full (0.91)": { label: "Full", steps: 3, from: "0.91", text: "NVIDIA's own 3 steps: the sharpest, redraws the most" },
+  "gentle (0.8)": { label: "Gentle", steps: 2, from: "0.8", text: "2 steps from 0.8: keeps more of the take" },
+  "light (0.7)": { label: "Light", steps: 2, from: "0.7", text: "2 steps from 0.7: keeps the most of the take" },
+};
+const REGEN_LORA = [["auto", "Auto"], ["full", "Full · 8.3 GB"], ["small", "Small · 155 MB"]];
 
 class OutputWindow {
   constructor(node) {
@@ -286,7 +293,9 @@ class OutputWindow {
       state: win ? "done" : "wait" });
     const regen = up === REGEN && res !== "native (no upscale)";
     if (regen) {
-      steps.push({ ic: "wand", name: "Regenerate 2K", text: "Rendered again at 1440p in 3 steps by the refiner LoRA, its own sound",
+      const rs = REGEN_STRENGTH[widgetValue(out, "regen_strength", "full (0.91)")] || REGEN_STRENGTH["full (0.91)"];
+      const small = widgetValue(out, "regen_lora", "auto") === "small";
+      steps.push({ ic: "wand", name: "Regenerate 2K", text: `Rendered again at 1440p in ${rs.steps} steps from ${rs.from} by the ${small ? "small " : ""}refiner LoRA, its own sound`,
         state: running("polish") ? "run" : passed("polish") ? "done" : "next" });
     } else if (mode === "Quality" && res !== "native (no upscale)") {
       steps.push({ ic: "diamond", name: "Quality polish", text: `Rendered again ${widgetValue(out, "quality_polish_scale", "1.5x")} bigger, ${widgetValue(out, "quality_polish_steps", 12)} steps`,
@@ -372,7 +381,18 @@ class OutputWindow {
     panel.appendChild(h("div.o-sec", label("Upscaler"), h("div.o-cards",
       card("DLSS5 + Color Lock", "DLSS 5 + Color Lock", "sparkles", dlss ? "Sharpest; Color Lock keeps the colours the render had" : "Needs ComfyUI-DLSS5-Enhancer"),
       card("RTX VSR", "RTX VSR", "bolt", "Fast and clean, a little softer"),
-      offers.includes(REGEN) ? card(REGEN, "Regenerate 2K", "wand", "Renders the take again at 1440p in 3 steps; needs the refiner LoRA") : null)));
+      offers.includes(REGEN) ? card(REGEN, "Regenerate 2K", "wand", "Renders the take again at 1440p in 2-3 steps; needs the refiner LoRA") : null)));
+    // Regenerate 2K's two settings (optional inputs, so older Output nodes simply don't show them)
+    if (up === REGEN && (w("regen_strength") || w("regen_lora"))) {
+      const rsW = w("regen_strength");
+      const rs = String(rsW?.value || "full (0.91)");
+      const strengths = Object.entries(REGEN_STRENGTH).filter(([v]) => (rsW?.options?.values || [v]).includes(v));
+      panel.appendChild(h("div.o-polish-ed.o-regen",
+        rsW ? h("div.o-row", h("span.sh3-muted", "Strength"), seg(strengths.map(([v, s]) => [v, s.label]), rs, (v) => set("regen_strength", v))) : null,
+        rsW ? h("div.sh3-muted.o-regen-hint", (REGEN_STRENGTH[rs] || REGEN_STRENGTH["full (0.91)"]).text) : null,
+        w("regen_lora") ? h("div.o-row", h("span.sh3-muted", "LoRA"), seg(REGEN_LORA, String(w("regen_lora").value || "auto"), (v) => set("regen_lora", v))) : null,
+        w("regen_lora") ? h("div.sh3-muted.o-regen-hint", "Auto takes the biggest refiner LoRA in models/loras; the small one is Kijai's rank-16 extract") : null));
+    }
     panel.appendChild(h("div.o-sec", label("De-stutter"),
       seg([["auto", "Auto"], ["on", "On"], ["off", "Off"]], w("de_stutter")?.value || "auto", (v) => set("de_stutter", v))));
     // the Director's Render waits for a pick in Seeds; with one seed it can go straight on to the finish
@@ -730,6 +750,7 @@ function injectOutputStyles() {
 .sh3-o .o-row{display:grid;grid-template-columns:80px 1fr auto;align-items:center;gap:12px}
 .sh3-o .o-row .sh3-seg{grid-column:2 / 4}
 .sh3-o .o-row .sh3-select{grid-column:2 / 4;width:110px}
+.sh3-o .o-regen-hint{font-size:12px;margin:-4px 0 2px 92px}
 .sh3-o .o-name{width:100%;font-family:var(--fm);font-size:13px}
 .sh3-o .o-tags{display:flex;gap:6px;flex-wrap:wrap}
 .sh3-o .o-loud{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
