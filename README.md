@@ -152,7 +152,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 | **1 Setup** | Stubelius H3 Setup | The seven modes, those that render the Director's input: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), Pika H3 Flex (≈768p in 6 steps with its own two LoRAs), TurboH3 (≈768p in 4 steps on its own checkpoint, First/Last Frame mode only), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and up to four global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
-| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR, DLSS5 + Color Lock, Regenerate 2K or RelayVSR 2x / 4x, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
+| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE or RTX Frame Gen draws the in-between frames), RTX VSR, DLSS5 + Color Lock, Regenerate 2K or RelayVSR 2x / 4x, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
@@ -478,6 +478,20 @@ input folder.
   chunk follows it and the finished video plays the file itself, with nothing generated under it.
   **Transcribe → Insert as timed shots** types its words into the shots. A line on the Sound lane is one
   sound at its second, in a video whose other sound H3 makes.
+
+## Frame generation: RIFE or RTX Frame Gen
+
+Above 24 fps, and for de-stutter, the in-between frames are drawn by **RIFE 4.7** or by NVIDIA's **RTX Frame Gen**
+(the Video Frame Generation effect of NVIDIA's VFX SDK, in the same `nvidia-vfx` package as RTX VSR). Pick it in the
+Output window under **Frame generation**: RIFE, RTX High, RTX Medium or RTX Low.
+
+- **RTX Frame Gen runs on RTX 40 series cards and newer.** Chosen anywhere else, or without `nvidia-vfx` 0.2, RIFE
+  draws the frames and the log says why. The pack keeps hard cuts clean itself for both.
+- **Measured** on an RTX 5090: real 24 fps clips with every 2nd (or 4th) frame left out, each drawer drawing the missing
+  frames, compared with the real ones. RTX High came out as close as RIFE or closer on live action (up to 0.7 dB PSNR),
+  at about RIFE's speed; RTX Medium about 1 dB closer than RIFE on a 2.5D clip; RTX Low three to four times faster
+  than RIFE, a little further off. 24 to 60 fps on a 8 s clip at 1344x768: RIFE 10.7 s, RTX High 11.4 s, RTX Low 3.9 s.
+- NVIDIA's models are under the NVIDIA Open Model License (commercially usable; NVIDIA claims no rights in the output).
 
 ## De-stutter
 
