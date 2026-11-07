@@ -490,7 +490,7 @@ Output window under **Frame generation**: RIFE, RTX High, RTX Medium or RTX Low.
 - **Measured** on an RTX 5090: real 24 fps clips with every 2nd (or 4th) frame left out, each drawer drawing the missing
   frames, compared with the real ones. RTX High came out as close as RIFE or closer on live action (up to 0.7 dB PSNR),
   at about RIFE's speed; RTX Medium about 1 dB closer than RIFE on a 2.5D clip; RTX Low three to four times faster
-  than RIFE, a little further off. 24 to 60 fps on a 8 s clip at 1344x768: RIFE 10.7 s, RTX High 11.4 s, RTX Low 3.9 s.
+  than RIFE, a little further off. 24 to 60 fps on an 8 s clip at 1344x768: RIFE 10.7 s, RTX High 11.4 s, RTX Low 3.9 s.
 - NVIDIA's models are under the NVIDIA Open Model License (commercially usable; NVIDIA claims no rights in the output).
 
 ## De-stutter
