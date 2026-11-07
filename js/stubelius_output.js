@@ -26,6 +26,9 @@ const REGEN_STRENGTH = {
   "gentle (0.8)": { label: "Gentle", steps: 2, from: "0.8", text: "2 steps from 0.8: keeps more of the take" },
   "light (0.7)": { label: "Light", steps: 2, from: "0.7", text: "2 steps from 0.7: keeps the most of the take" },
 };
+// what draws the in-between frames (the Output node's frame_generation)
+const FRAME_GEN = [["RIFE 4.7", "RIFE"], ["RTX Frame Gen HIGH", "RTX High"], ["RTX Frame Gen MEDIUM", "RTX Medium"], ["RTX Frame Gen LOW", "RTX Low"]];
+const frameGenName = (v) => String(v || "").startsWith("RTX") ? "RTX Frame Gen" : "RIFE";
 const REGEN_LORA = [["auto", "Auto"], ["full", "Full · 8.3 GB"], ["small", "Small · 155 MB"]];
 // RelayVSR (stubelius_relayvsr.NAMES): the take upscaled as it is, 2x or 4x, before RIFE and in place of the polish
 const RELAY = { "RelayVSR 2x": 2, "RelayVSR 4x": 4 };
@@ -319,7 +322,8 @@ class OutputWindow {
         : regen ? (SHORT[res] > 1440 ? "RTX VSR from the regenerated 1440p" : "The regenerated 1440p, at this size")
         : relay ? relayText : "RTX VSR: fast and clean",
       state: res === "native (no upscale)" ? "skip" : running("upscale") ? "run" : passed("upscale") ? "done" : "next" });
-    steps.push({ ic: "wave", name: fps > 24 ? `Smooth to ${fps} fps` : "24 fps", text: fps > 24 ? "RIFE in-betweens, de-stutter first if needed" : "Frames as rendered, de-stutter if needed",
+    const drawer = frameGenName(widgetValue(out, "frame_generation", "RIFE 4.7"));
+    steps.push({ ic: "wave", name: fps > 24 ? `Smooth to ${fps} fps` : "24 fps", text: fps > 24 ? `${drawer} in-betweens, de-stutter first if needed` : "Frames as rendered, de-stutter if needed",
       state: running("fps") || running("destutter") ? "run" : passed("fps") ? "done" : "next" });
     const fmt = String(widgetValue(saver, "format", "video/h264-mp4"));
     const crf = widgetValue(saver, "crf", null);
@@ -369,8 +373,11 @@ class OutputWindow {
     const offered = w("final_resolution")?.options?.values || SIZES.map((x) => x[0]);
     panel.appendChild(h("div.o-sec", label("Final size"),
       seg(SIZES.filter(([v]) => offered.includes(v)), w("final_resolution")?.value, (v) => set("final_resolution", v))));
-    // any rate from 24 up (the node's own range): above 24 RIFE draws the frames in between, length and sync kept
+    // any rate from 24 up (the node's own range): above 24 RIFE (or RTX Frame Gen) draws the frames in between,
+    // length and sync kept
     const fpsW = w("final_fps");
+    const fgW = w("frame_generation");          // optional input: an older Output node has none (RIFE)
+    const fg = String(fgW?.value || "RIFE 4.7");
     const lo = Number.isFinite(fpsW?.options?.min) ? fpsW.options.min : 24;
     const hi = Number.isFinite(fpsW?.options?.max) ? fpsW.options.max : 120;
     const fps = Math.round(Number(fpsW?.value ?? 24));
@@ -378,7 +385,7 @@ class OutputWindow {
     const fpsHint = h("span.sh3-muted.o-fps-hint");
     const showFps = (v) => {
       fpsVal.textContent = `${Math.round(v)} fps`;
-      fpsHint.textContent = v > 24 ? "RIFE draws the frames in between" : "untouched, as rendered";
+      fpsHint.textContent = v > 24 ? `${frameGenName(fg)} draws the frames in between` : "untouched, as rendered";
     };
     showFps(fps);
     const picks = h("div.o-fps-picks", ...[24, 30, 48, 60, 120].filter((v) => v >= lo && v <= hi).map((v) =>
@@ -387,6 +394,13 @@ class OutputWindow {
       slider({ min: lo, max: hi, step: 1, value: fps, title: "Frame rate of the finished video", onInput: showFps,
         onChange: (v) => set("final_fps", v) }),
       h("div.o-fps-foot", fpsHint, picks)));
+    if (fgW) {
+      panel.appendChild(h("div.o-sec", label("Frame generation"),
+        seg(FRAME_GEN.filter(([v]) => (fgW.options?.values || [v]).includes(v)), fg, (v) => set("frame_generation", v)),
+        h("div.sh3-muted.o-fg-hint", fg.startsWith("RTX")
+          ? "NVIDIA's RTX Frame Generation, RTX 40 series and newer (RIFE where it can't run). High = closest to real frames, Low = fastest. It draws de-stutter's frames too"
+          : "Runs on any GPU. It draws de-stutter's frames too")));
+    }
     const up = String(w("upscaler")?.value || "RTX VSR");
     const card = (value, name, ic, text) => h("button.o-card", { type: "button", class: up === value ? "on" : null,
       onclick: () => set("upscaler", value) }, h("div.o-card-h", icon(ic, 16), h("b", name)), h("div.sh3-muted", text));
@@ -781,6 +795,7 @@ function injectOutputStyles() {
 .sh3-o .o-row .sh3-seg{grid-column:2 / 4}
 .sh3-o .o-row .sh3-select{grid-column:2 / 4;width:110px}
 .sh3-o .o-regen-hint{font-size:12px;margin:-4px 0 2px 92px}
+.sh3-o .o-fg-hint{font-size:12px;margin-top:6px}
 .sh3-o .o-name{width:100%;font-family:var(--fm);font-size:13px}
 .sh3-o .o-tags{display:flex;gap:6px;flex-wrap:wrap}
 .sh3-o .o-loud{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}

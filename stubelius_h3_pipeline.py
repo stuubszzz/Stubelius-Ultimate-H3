@@ -36,6 +36,7 @@ from .stubelius_compiler import compiler_paused
 from .stubelius_regen import NAME as REGEN
 from .stubelius_regen import LORAS as REGEN_LORAS, STRENGTH as REGEN_STRENGTH, STRENGTHS as REGEN_STRENGTHS
 from .stubelius_relayvsr import DETAIL as RELAY_DETAIL, NAMES as RELAY
+from .stubelius_rtx_framegen import DEFAULT as FRAME_DEFAULT, ENGINES as FRAME_ENGINES
 
 log = logging.getLogger(__name__)
 
@@ -303,6 +304,11 @@ class StubeliusH3Output:
                     "Regenerate 2K only: how far the take is rendered again. full = the refiner's own three "
                     "steps, the most new detail; gentle and light start lower and keep more of the take (its "
                     "motion, expressions and small props) for less new detail, in two steps."}),
+                "frame_generation": (FRAME_ENGINES, {"default": FRAME_DEFAULT, "tooltip":
+                    "What draws the in-between frames, for a frame rate above 24 and for de-stutter: RIFE 4.7 "
+                    "(any GPU), or NVIDIA's RTX Frame Generation (the VFX SDK effect in nvidia-vfx, as RTX VSR; RTX "
+                    "40 series and newer). HIGH is the closest to real frames, LOW the fastest. Where RTX can't run, "
+                    "RIFE draws them."}),
                 "regen_lora": (list(REGEN_LORAS), {"default": "auto", "tooltip":
                     "Regenerate 2K only: which refiner LoRA in models/loras. full = NVlabs' published one "
                     "(8.3 GB); small = a smaller extract of it (Kijai's rank 16, 155 MB); auto = the biggest one "
@@ -321,7 +327,8 @@ class StubeliusH3Output:
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
             quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
-            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto", relayvsr_detail=RELAY_DETAIL):
+            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto", relayvsr_detail=RELAY_DETAIL,
+            frame_generation=FRAME_DEFAULT):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -335,7 +342,8 @@ class StubeliusH3Output:
                  de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto",
                  regen_strength=regen_strength if regen_strength in REGEN_STRENGTHS else REGEN_STRENGTH,
                  regen_lora=regen_lora if regen_lora in REGEN_LORAS else "auto",
-                 relay_detail=max(0.0, min(1.0, float(relayvsr_detail))))
+                 relay_detail=max(0.0, min(1.0, float(relayvsr_detail))),
+                 frame_gen=frame_generation if frame_generation in FRAME_ENGINES else FRAME_DEFAULT)
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -722,11 +730,12 @@ def _ram_check(images, target, fps, extra_frames=0, upscaled_first=False):
                     "resolution avoids it.", frames, width, height, need / 1e9, total / 1e9)
 
 
-def _to_fps(images, fps):
-    """24 fps frames -> (frames at `fps`, fps): RIFE draws the in-betweens; 24 leaves them as they are."""
+def _to_fps(images, fps, engine=FRAME_DEFAULT):
+    """24 fps frames -> (frames at `fps`, fps): RIFE (or the Output's RTX Frame Gen) draws the in-betweens; 24
+    leaves them as they are."""
     if fps > SOURCE_FPS + 1e-6:
         from .stubelius_rife_fps import StubeliusRIFEToFPS
-        return StubeliusRIFEToFPS().run(images, SOURCE_FPS, fps, "rife47.pth", True, True, 8)
+        return StubeliusRIFEToFPS().run(images, SOURCE_FPS, fps, "rife47.pth", True, True, 8, frame_generation=engine)
     return images, SOURCE_FPS
 
 
@@ -900,7 +909,8 @@ class StubeliusH3Finish:
         # held frames drawn again (stubelius_destutter.py): the take only, before RIFE and the upscale
         from .stubelius_destutter import destutter
         _stage(unique_id, "destutter")
-        images, stutter = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")
+        images, stutter = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ",
+                                    engine=o.get("frame_gen", FRAME_DEFAULT))
 
         detail = o.get("relay_detail", RELAY_DETAIL)
         fps = SOURCE_FPS
@@ -914,7 +924,7 @@ class StubeliusH3Finish:
         if clip is None:
             if o["fps"] > SOURCE_FPS + 1e-6:
                 _stage(unique_id, "fps")
-            images, fps = _to_fps(images, o["fps"])
+            images, fps = _to_fps(images, o["fps"], o.get("frame_gen", FRAME_DEFAULT))
 
         upscaled = bool(target and target / _short(images) > 1.02)
         if upscaled:
@@ -931,7 +941,7 @@ class StubeliusH3Finish:
                        if target else None)
             _stage(unique_id, "clip")
             images, audio = _with_clip(clip, images, audio, enlarge)
-            images, fps = _to_fps(images, o["fps"])
+            images, fps = _to_fps(images, o["fps"], o.get("frame_gen", FRAME_DEFAULT))
         used = (o["upscaler"] + (" + RTX VSR" if upscaled and early else "") if relaying
                 else ("RTX VSR" if regenerating else o["upscaler"]) if upscaled else "none")
         log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s%s",
@@ -1121,6 +1131,7 @@ class StubeliusSeedPreviews:
         from .stubelius_destutter import destutter
         from .stubelius_takes import write_mp4
         mode = output.get("de_stutter", "auto")
+        engine = output.get("frame_gen", FRAME_DEFAULT)
         out_dir = folder_paths.get_output_directory()
         folder = os.environ.get("STUBELIUS_PREVIEWS_DIR") or os.path.join(out_dir, *PREVIEWS)
         # the windows play the previews through ComfyUI's /view, which serves the output folder only
@@ -1142,7 +1153,7 @@ class StubeliusSeedPreviews:
             if images is None or i >= takes["count"] or images.shape[0] < 4:
                 out.append(images)            # a seed that wasn't rendered: its empty frames, as before
                 continue
-            frames, report = destutter(images, mode, label=f"seed {i + 1}: ")
+            frames, report = destutter(images, mode, label=f"seed {i + 1}: ", engine=engine)
             out.append(frames)
             name = f"{prefix}_seed{i + 1}.mp4"
             try:

@@ -103,9 +103,10 @@ def plan(n, holds, cuts=()):
     return tasks
 
 
-def destutter(images, mode="auto", label="", ckpt_name="rife47.pth", slow=True):
+def destutter(images, mode="auto", label="", ckpt_name="rife47.pth", slow=True, engine=None):
     """(images, report): the frames with their holds drawn again, or as they were. slow=False keeps the
-    motion floor for every take (the rule before 0.15.3)."""
+    motion floor for every take (the rule before 0.15.3). engine: what draws them (stubelius_rtx_framegen
+    ENGINES; None = RIFE)."""
     n = images.shape[0]
     if mode == "off" or n < 4:
         return images, "off"
@@ -130,7 +131,7 @@ def destutter(images, mode="auto", label="", ckpt_name="rife47.pth", slow=True):
             holds, moving = sorted(set(holds) | set(extra)), more_moving
     tasks = plan(n, holds, cuts)
     out = images.clone()
-    for k, frame in draw_between(images, [(a, b, t) for _, a, b, t in tasks], ckpt_name).items():
+    for k, frame in draw_between(images, [(a, b, t) for _, a, b, t in tasks], ckpt_name, engine=engine).items():
         out[tasks[k][0]] = frame
     soft_empty_cache()
     report = (f"{len(holds)} held frame(s) in {moving} moving steps"

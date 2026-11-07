@@ -9,6 +9,9 @@ straight into the output, so only the final frames are held in memory. Hard cuts
 interpolated: in-between frames there take the nearest source frame, so a cut stays a clean
 cut instead of a two-frame morph between the shots. Output length matches the input
 duration, so audio stays in sync. Reuses ComfyUI-Frame-Interpolation's RIFE checkpoints and loader.
+
+frame_generation: RIFE 4.7 (default) or RTX Frame Gen HIGH / MEDIUM / LOW (stubelius_rtx_framegen.py) draws the
+in-between frames; the same plan, the same cuts, only the drawer changes.
 """
 import glob
 import logging
@@ -20,6 +23,8 @@ import torch
 
 import folder_paths
 from comfy.model_management import get_torch_device, soft_empty_cache
+
+from .stubelius_rtx_framegen import DEFAULT, ENGINES, draw_between as rtx_draw, usable
 
 log = logging.getLogger(__name__)
 
@@ -75,11 +80,15 @@ def _hard_cuts(images, device):
     return {int(j) for j in torch.nonzero((d > threshold) & (d > CUT_X_NEIGHBOUR * neighbours)).flatten()}
 
 
-def draw_between(images, pairs, ckpt_name="rife47.pth", fast_mode=True, ensemble=True, batch_size=8):
+def draw_between(images, pairs, ckpt_name="rife47.pth", fast_mode=True, ensemble=True, batch_size=8, engine=None):
     """RIFE frames between any two source frames: pairs = [(a, b, t)] -> {pair index: frame [H, W, C]}.
-    The frame at t (0..1) on the way from images[a] to images[b]; used by the de-stutter."""
+    The frame at t (0..1) on the way from images[a] to images[b]; used by the de-stutter. engine = an RTX Frame
+    Gen choice draws them with NVIDIA's frame generation instead, where it can run."""
     if not pairs:
         return {}
+    rtx = usable(engine)
+    if rtx:
+        return rtx_draw(images, pairs, rtx)
     device = get_torch_device()
     net, arch_ver = _model(ckpt_name)
     if arch_ver == "4.26":
@@ -120,6 +129,11 @@ class StubeliusRIFEToFPS:
                 "ensemble": ("BOOLEAN", {"default": True}),
                 "batch_size": ("INT", {"default": 8, "min": 1, "max": 64,
                     "tooltip": "In-between frames drawn per GPU call."}),
+            },
+            "optional": {
+                "frame_generation": (ENGINES, {"default": DEFAULT, "tooltip":
+                    "What draws the in-between frames: RIFE 4.7 (any GPU), or NVIDIA's RTX Frame Generation "
+                    "(RTX 40 series and newer; HIGH = closest, LOW = fastest). Without one, RIFE."}),
             }
         }
 
@@ -128,7 +142,7 @@ class StubeliusRIFEToFPS:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, images, source_fps, target_fps, ckpt_name, fast_mode, ensemble, batch_size):
+    def run(self, images, source_fps, target_fps, ckpt_name, fast_mode, ensemble, batch_size, frame_generation=DEFAULT):
         n_in = images.shape[0]
         if target_fps <= source_fps + 1e-6 or n_in < 2:
             return (images, float(source_fps))
@@ -150,6 +164,20 @@ class StubeliusRIFEToFPS:
                 plan.append(("mid", i, t))
         tasks = [(k, e[1], e[2]) for k, e in enumerate(plan) if e[0] == "mid"]
 
+        _, h, w, c = images.shape
+        rtx = usable(frame_generation)
+        if rtx:                                     # the same plan, NVIDIA's frame generation draws the frames
+            out = torch.empty((n_out, h, w, c), dtype=torch.float32)
+            for k, e in enumerate(plan):
+                if e[0] == "src":
+                    out[k] = images[e[1]]
+            drawn = rtx_draw(images, [(i, i + 1, t) for _, i, t in tasks], rtx)
+            for j, (k, _, _) in enumerate(tasks):
+                out[k] = drawn[j][..., :c]
+            soft_empty_cache()
+            self._log(n_in, source_fps, n_out, target_fps, len(tasks), cuts, f"RTX Frame Gen {rtx}")
+            return (out, float(target_fps))
+
         net, arch_ver = _model(ckpt_name)
         if arch_ver == "4.26":
             ensemble = False
@@ -157,7 +185,6 @@ class StubeliusRIFEToFPS:
         else:
             scale_list = [8, 4, 2, 1]
 
-        _, h, w, c = images.shape
         out = torch.empty((n_out, h, w, c), dtype=torch.float32)
         for k, e in enumerate(plan):
             if e[0] == "src":
@@ -178,12 +205,15 @@ class StubeliusRIFEToFPS:
                 for (k, _, _), m in zip(chunk, mid):
                     out[k] = m
         soft_empty_cache()
+        self._log(n_in, source_fps, n_out, target_fps, len(tasks), cuts, "RIFE")
+        return (out, float(target_fps))
 
-        log.info("[StubeliusRIFEToFPS] %d frames @ %.3g fps -> %d frames @ %.3g fps (%d drawn by RIFE)%s",
-                 n_in, source_fps, n_out, target_fps, len(tasks),
+    @staticmethod
+    def _log(n_in, source_fps, n_out, target_fps, drawn, cuts, by):
+        log.info("[StubeliusRIFEToFPS] %d frames @ %.3g fps -> %d frames @ %.3g fps (%d drawn by %s)%s",
+                 n_in, source_fps, n_out, target_fps, drawn, by,
                  "; hard cut(s) kept clean at " + ", ".join(f"{(j + 1) / source_fps:.2f}s" for j in sorted(cuts))
                  if cuts else "")
-        return (out, float(target_fps))
 
 
 NODE_CLASS_MAPPINGS = {"StubeliusRIFEToFPS": StubeliusRIFEToFPS}
