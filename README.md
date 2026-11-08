@@ -16,6 +16,25 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.16
+
+- **Regenerate 2K, a third upscaler in the Output window** (any mode, Hybrid too; in Quality mode it takes the place
+  of the polish). NVlabs' Open-H3-Regenerate-2K refiner LoRA renders the take again at 1440p, chunk by chunk, so the
+  video keeps its length and its sound. Two settings under the card:
+  - **Strength:** Full (NVIDIA's own 3 steps from 0.91), Gentle (2 steps from 0.8) or Light (2 steps from 0.7). The
+    lower it starts, the more of the take it keeps.
+  - **LoRA:** Auto (the biggest refiner LoRA in `models/loras`), Full (8.3 GB) or Small (Kijai's rank-16 extract,
+    155 MB).
+- **Measured** on six Quality clips at 768p on an RTX 5090 (the finish only):
+  - Full gives 2 to 2.6x the face detail of the Quality polish in about 35% less time (4.9 vs 7.5 min), but it
+    redraws small things: the same-face score (ArcFace) fell to 0.71 and 0.54 where the polish kept 0.83 and 0.75,
+    one runner got glasses and the gulls in a wide shot were gone.
+  - Gentle stays sharper than the polish (detail 48 vs 28), keeps the face about as well (0.84) and takes half the
+    time (3.6 min). Light keeps the most (0.88).
+  - The small LoRA gives practically the same picture as the full one (44-47 dB against it), up to 20 s faster with
+    3-5 GB less RAM. With the card limited to 16 GB: 7.7 min against 10.8.
+  - For faces and characters use Gentle (or Light); Full where no small detail matters.
+
 ## What's new in 0.15.3
 
 - **De-stutter fixes takes drawn "on twos".** H3 draws anime and 2D styles the way anime is drawn, each pose held
@@ -191,11 +210,15 @@ same sound as the take it came from.
 **Regenerate 2K.** The third upscaler in the Output window, in any mode: the take rendered again at
 1440p by NVlabs' [Open-H3-Regenerate-2K](https://nvlabs.github.io/Sana/Open-H3-Regenerate-2K/)
 refiner LoRA, in place of the Quality polish. Its recipe: the take's latent made 2K by zhangccccc's
-H3 latent upscaler, then three Euler steps from sigma 0.91 at CFG 1 with the LoRA on top of the
-checkpoint and LoRAs that made each chunk. Chunk by chunk like the polish, so the video keeps its
-length and its sound. 1080p is the 1440p fitted down; 4K is RTX VSR from 1440p. The LoRA
-([8.3 GB](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA)) goes anywhere
-in `models/loras` and is under the MiniMax H3 Community License, like H3 itself.
+H3 latent upscaler, then Euler steps at CFG 1 with the LoRA on top of the checkpoint and LoRAs that
+made each chunk: three from sigma 0.91 at Full strength, two from 0.8 at Gentle, two from 0.7 at
+Light. Chunk by chunk like the polish, so the video keeps its length and its sound. 1080p is the
+1440p fitted down; 4K is RTX VSR from 1440p. The LoRA goes anywhere in `models/loras`: the full one
+([8.3 GB](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA), NVlabs) or Kijai's
+small rank-16 extract
+([155 MB](https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors)),
+which gives practically the same picture. Both are under the MiniMax H3 Community License, like H3
+itself.
 
 The polish runs 12 steps by default. A large polish turns on KJNodes' low-VRAM patches
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
@@ -584,7 +607,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/loras` | for Pika H3 Flex mode: [`pika_h3_flex_ref2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors) and [`pika_h3_flex_fl2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors) (1.96 GB each, Pika) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
-| `models/loras` | for Regenerate 2K: [`open_h3_regenerate_2k_refiner_lora.safetensors`](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA/resolve/main/open_h3_regenerate_2k_refiner_lora.safetensors) (8.3 GB, NVlabs, any subfolder) |
+| `models/loras` | for Regenerate 2K: [`minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors) (155 MB, Kijai) or [`open_h3_regenerate_2k_refiner_lora.safetensors`](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA/resolve/main/open_h3_regenerate_2k_refiner_lora.safetensors) (8.3 GB, NVlabs), any subfolder |
 
 RIFE downloads its checkpoint the first time you pick a frame rate above 24. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).
