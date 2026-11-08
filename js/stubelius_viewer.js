@@ -121,8 +121,10 @@ export function splitViewer({ labelA = "A", labelB = "B" } = {}) {
     setMuted(muted) { b.muted = muted; },
     setSound(which) { a.muted = which !== "a"; b.muted = which !== "b"; },     // whose sound plays: "a", "b" or null
     play() { b.play().catch(() => {}); },
-    pause() { b.pause(); },
-    toggle() { if (b.paused) b.play().catch(() => {}); else b.pause(); },
+    pause() { b.pause(); a.pause(); },
+    // either one playing (A is the one heard beside the render) counts: the button always stops the sound
+    get playing() { return !a.paused || !b.paused; },
+    toggle() { if (!a.paused || !b.paused) { b.pause(); a.pause(); } else b.play().catch(() => {}); },
     seek(t) { b.currentTime = Math.max(0, t); },
   };
 }

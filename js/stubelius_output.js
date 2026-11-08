@@ -8,7 +8,7 @@
 import {
   h, icon, clear, seg, button, iconButton, label, badge, toast, select, slider, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtClock, fmtBytes, refreshThemes,
-  windowOrCompact, queueRun,
+  windowOrCompact, queueRun, stopMedia,
 } from "./stubelius_ui.js";
 import { viewUrl } from "./stubelius_director_media.js";
 import { splitViewer } from "./stubelius_viewer.js";
@@ -238,10 +238,12 @@ class OutputWindow {
     const play = h("button.o-play", { type: "button", title: "Play / pause" });
     const time = h("div.d-time.o-time");
     const bar = h("div.o-bar", h("span"));
-    const drawPlay = () => { clear(play); play.appendChild(icon(v.b.paused ? "play" : "pause", 22)); };
+    const drawPlay = () => { clear(play); play.appendChild(icon(v.playing ? "pause" : "play", 22)); };
     play.addEventListener("click", () => { v.toggle(); setTimeout(drawPlay, 30); });
     v.b.onplay = drawPlay;
     v.b.onpause = drawPlay;
+    v.a.onplay = drawPlay;
+    v.a.onpause = drawPlay;
     v.b.ontimeupdate = () => {
       clear(time);
       time.append(fmtClock(v.b.currentTime), h("span", ` / ${fmtClock(v.b.duration || 0)}`));
@@ -677,6 +679,7 @@ class OutputWindow {
 
   dispose() {
     for (const off of this._off || []) off();
+    stopMedia(this.root);          // the render and the finished video loop: they stop with the window
   }
 }
 

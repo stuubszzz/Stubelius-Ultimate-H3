@@ -169,6 +169,31 @@ export function clear(el) {
   return el;
 }
 
+// Every video and sound a window plays stops with it: pause them all (the node is deleted, the workflow closed or
+// another loaded). A window whose node has left the graph but whose page element ComfyUI keeps around (hidden, or
+// for an undo) must not keep playing with nobody able to reach its controls.
+export function stopMedia(root) {
+  for (const m of root?.querySelectorAll?.("video, audio") || []) {
+    try { if (!m.paused) m.pause(); } catch (e) { /* not ready */ }
+  }
+}
+
+// ... and a safety net for anything that slips past dispose: a video in one of the windows that plays (or goes on
+// playing) after its node left the graph is paused on the spot
+let mediaGuard = false;
+function guardMedia() {
+  if (mediaGuard) return;
+  mediaGuard = true;
+  const check = (e) => {
+    const m = e.target;
+    if (!(m instanceof HTMLMediaElement) || m.paused) return;
+    const node = m.closest?.(".sh3-window")?.__sh3node;
+    if (node && !node.graph) m.pause();
+  };
+  document.addEventListener("play", check, true);
+  document.addEventListener("timeupdate", check, true);
+}
+
 // Keep pointer and key events inside a window from reaching the canvas (dragging, shortcuts),
 // except a wheel over plain surfaces, which still zooms the canvas.
 export function isolate(el) {
@@ -649,6 +674,8 @@ export function hideWidget(w) {
 // tall. Nodes 2.0 wasn't affected; 1.42 neither, and it ignores the option.
 export function mountWindow(node, name, root, { minWidth = 1200, minHeight = 600 } = {}) {
   node.widgets_start_y = 0;
+  root.__sh3node = node;           // the media guard: a window whose node has left the graph plays nothing
+  guardMedia();
   const w = node.addDOMWidget(name, name, root, { serialize: false, hideOnZoom: false, hideInPanel: true,
     getMinHeight: () => minHeight });
   w.computeSize = (width) => [Math.max(node.size?.[0] || width || minWidth, minWidth),

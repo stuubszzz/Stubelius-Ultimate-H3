@@ -12,7 +12,7 @@
 import {
   h, icon, clear, seg, button, iconButton, badge, label, menu, closeMenus, toast, windowFrame, markSteps, goToStep,
   injectStyles, widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, hideWidget, mountWindow,
-  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn, queueRun,
+  autoHeight, fmtSeconds, fmtBytes, refreshThemes, confirmIn, chooseIn, queueRun, stopMedia,
 } from "./stubelius_ui.js";
 import { normalizeMiddleFrames, MIDDLE_GAP } from "./stubelius_middle_frames.js";
 import { normalizeCues } from "./stubelius_cues.js";
@@ -29,7 +29,7 @@ import {
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
-export const VERSION = "0.16.0";
+export const VERSION = "0.16.1";
 export { MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed };
 const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration_seconds", "seed",
   "control_after_generate", "timeline_data"];
@@ -1145,6 +1145,7 @@ export class DirectorWindow {
     for (const off of this._off || []) off();
     this._off = [];
     closeMenus();
+    stopMedia(this.root);          // the preview, a reference clip or sound: nothing plays on without the window
   }
 }
 
