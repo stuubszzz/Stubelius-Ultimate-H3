@@ -40,7 +40,7 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 - The winner against the finished video: drag the divider, **Loupe** for the detail; the finish step by step.
 - **Final size** — Speed up to 2K, the other modes up to 4K. The short side lands exactly on the number, portrait too. 4K holds ≈100 MB of RAM per frame: keep 4K clips short.
 - **Frame rate** — a slider from 24 (untouched) up to 120; above 24 RIFE draws the frames in between, length and sync kept.
-- **Upscaler** — RTX VSR, or DLSS5 + Color Lock. **De-stutter** — auto, on or off. **Quality polish** — Quality mode at 1080p and up.
+- **Upscaler** — RTX VSR, DLSS5 + Color Lock, or Regenerate 2K (the take rendered again at 1440p in 3 steps by NVlabs' refiner LoRA, in place of the Quality polish). **De-stutter** — auto, on or off. **Quality polish** — Quality mode at 1080p and up.
 - **Export** — the file (in output/UltimateH3: type another name to change it), its size and loudness, **Open folder**.
 - **Last frame** — the frame the finished video ends on: click it to see it big, **Save** it to start the next video from it.
 - Changing anything here **never re-renders** the seeds: only the finish runs again. **Render** in the Director always stops after the seeds: pick in Seeds, then **Finish the winner**.

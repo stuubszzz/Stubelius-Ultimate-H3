@@ -12,6 +12,12 @@ its two frames, and both frames are drawn again by RIFE on the way between that 
 the motion advances evenly. Every other frame is left as it was rendered, the frame count stays the same
 (the sound stays in sync), and hard cuts are never drawn across.
 
+Takes "on twos": H3 draws anime and 2D styles the way anime is drawn, each pose held for two frames, so the
+motion runs at 12 poses a second (measured 2026-11-05: 84-90% of the moving steps held, every 2nd frame, with
+and without style LoRAs). Their slow movement holds too, under the motion floor, so a take that holds on a
+large share of its moving steps is searched again down to SLOW_FLOOR: its slow parts are drawn again as well,
+and the whole take moves as evenly as a smooth one.
+
   mode "auto": only takes that judder (holds on at least 8% of the moving steps); "on": every hold found;
   "off": nothing.
 """
@@ -30,6 +36,8 @@ HOLD_RATIO = 0.5        # a step under half the mean of its two neighbours is a 
 MOTION_FLOOR = 1.5      # ... where those neighbours move: mean luma change (0-255 at 128x72) above this
 AUTO_SHARE = 0.08       # auto: holds on at least 8% of the moving steps
 AUTO_MIN = 3
+RHYTHM_SHARE = 0.3      # a take holding on at least this share of its moving steps (never by chance) ...
+SLOW_FLOOR = 0.4        # ... is searched again down to this motion (its slow movement holds too)
 
 
 def steps(images, device=None):
@@ -46,15 +54,15 @@ def steps(images, device=None):
     return [float(v) for v in (g[1:] - g[:-1]).abs().mean(dim=(1, 2))]
 
 
-def find_holds(d, cuts=()):
-    """Steps j (frame j -> j+1) where the picture held: much smaller than both neighbours, in motion.
-    Returns (holds, moving steps)."""
+def find_holds(d, cuts=(), floor=MOTION_FLOOR):
+    """Steps j (frame j -> j+1) where the picture held: much smaller than both neighbours, which move at least
+    `floor` on average. Returns (holds, moving steps)."""
     holds, moving = [], 0
     for j in range(1, len(d) - 1):
         if j in cuts or (j - 1) in cuts or (j + 1) in cuts:
             continue
         around = (d[j - 1] + d[j + 1]) / 2
-        if around < MOTION_FLOOR:
+        if around < floor:
             continue
         moving += 1
         if d[j] < HOLD_RATIO * around:
@@ -95,8 +103,9 @@ def plan(n, holds, cuts=()):
     return tasks
 
 
-def destutter(images, mode="auto", label="", ckpt_name="rife47.pth"):
-    """(images, report): the frames with their holds drawn again, or as they were."""
+def destutter(images, mode="auto", label="", ckpt_name="rife47.pth", slow=True):
+    """(images, report): the frames with their holds drawn again, or as they were. slow=False keeps the
+    motion floor for every take (the rule before 0.15.3)."""
     n = images.shape[0]
     if mode == "off" or n < 4:
         return images, "off"
@@ -109,15 +118,23 @@ def destutter(images, mode="auto", label="", ckpt_name="rife47.pth"):
         report = f"smooth already ({len(holds)} held frame(s) in {moving} moving steps)"
         log.info("[StubeliusDeStutter] %s%s", label, report)
         return images, report
+    gaps = [b - a for a, b in zip(holds, holds[1:])]
+    rhythm = max(set(gaps), key=gaps.count) if gaps else 0
+    steady = bool(rhythm) and gaps.count(rhythm) >= len(gaps) / 2
+    slow_note = ""
+    if slow and share >= RHYTHM_SHARE:              # a take on twos (or threes): its slow movement holds too
+        more, more_moving = find_holds(d, cuts, SLOW_FLOOR)
+        extra = sorted(set(more) - set(holds))
+        if extra:                                   # added to the holds found first
+            slow_note = f", {len(extra)} more in its slow movement"
+            holds, moving = sorted(set(holds) | set(extra)), more_moving
     tasks = plan(n, holds, cuts)
     out = images.clone()
     for k, frame in draw_between(images, [(a, b, t) for _, a, b, t in tasks], ckpt_name).items():
         out[tasks[k][0]] = frame
     soft_empty_cache()
-    gaps = [b - a for a, b in zip(holds, holds[1:])]
-    rhythm = max(set(gaps), key=gaps.count) if gaps else 0
     report = (f"{len(holds)} held frame(s) in {moving} moving steps"
-              + (f", one every {rhythm} frames" if rhythm and gaps.count(rhythm) >= len(gaps) / 2 else "")
+              + (f", one every {rhythm} frames" if steady else "") + slow_note
               + f": {len(tasks)} frames drawn again")
     log.info("[StubeliusDeStutter] %s%s", label, report)
     return out, report

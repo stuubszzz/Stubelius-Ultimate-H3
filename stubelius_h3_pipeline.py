@@ -11,8 +11,9 @@ Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup
         and for Extend; FastH3 Omni for every chunk in its own mode; in Pika H3 Flex mode a Reference
         video stays on ref2va), so no model switch is needed in the graph.
 Finish  turns the Director's takes into the final video with the Output settings: picks the
-        WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR or
-        DLSS5 + Color Lock). WINNER is the only thing left to choose after a seed hunt; the
+        WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR,
+        DLSS5 + Color Lock, or Regenerate 2K, which renders the take again at 1440p in place of
+        the polish). WINNER is the only thing left to choose after a seed hunt; the
         Quality polish is memoised, so FPS/upscaler changes don't repeat it either.
 Speed/memory patches and the DLSS5/VSR/GGUF loaders are called by class name at runtime and
 are skipped (or reported clearly) when their pack isn't installed.
@@ -31,6 +32,8 @@ import torch
 
 from .muse_minimax_director import _execute_comfy_node, _unpack_node_result
 from .stubelius_compiler import compiler_paused
+from .stubelius_regen import NAME as REGEN
+from .stubelius_regen import LORAS as REGEN_LORAS, STRENGTH as REGEN_STRENGTH, STRENGTHS as REGEN_STRENGTHS
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +78,7 @@ FLEX_SWAPPED = ("Pika H3 Flex mode: flex_ref_lora and flex_fl_lora are swapped. 
 # took ~1.3x longer and looked different; with it a 15 s clip rendered ~10 % faster than PDMD.
 OMNI_VSA = dict(keep_percent=10.0, start_percent=0.0, end_percent=1.0, min_tokens=12288,
                 sink_conditioning="exact_kv_and_rows")
-UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock"]
+UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock", REGEN]     # REGEN: the take rendered again at 1440p
 DLSS5_FACTORS = {1.5: "1.5x (Quality)", 1.724: "1.724x (Balanced)", 2.0: "2x (Performance)",
                  3.0: "3x (Ultra Performance)"}
 VSR_MAX_SCALE = 4.0     # RTX VSR per pass; more (Speed to 4K = 4.5x) runs in two passes
@@ -236,7 +239,10 @@ class StubeliusH3Output:
                     "24 = untouched. Above 24, any rate up to 120: RIFE draws the in-between frames; length and sync kept."}),
                 "upscaler": (UPSCALERS, {"default": "RTX VSR", "tooltip":
                     "Used when the final resolution needs an upscale. DLSS5 adds far more detail; Color Lock "
-                    "then restores the original colours. Needs ComfyUI-DLSS5-Enhancer."}),
+                    "then restores the original colours. Needs ComfyUI-DLSS5-Enhancer. Regenerate 2K renders the "
+                    "take again at 1440p in three steps with NVlabs' Open-H3-Regenerate-2K refiner LoRA (in "
+                    "models/loras), in any mode and in place of the Quality polish; the sound stays the take's. "
+                    "4K: RTX VSR from 1440p."}),
                 "quality_polish_strength": ("FLOAT", {"default": 0.3, "min": 0.05, "max": 1.0, "step": 0.05,
                     "tooltip": "Quality mode at 1080p and up. 0.3 faithful, 0.45-0.55 cleaner but freer."}),
                 "quality_polish_steps": ("INT", {"default": 12, "min": 1, "max": 100,
@@ -269,6 +275,14 @@ class StubeliusH3Output:
                     "length and the sound stay as they were. auto = only takes that judder; on = every held "
                     "frame found; off = never. It applies to the seed previews and the Finish, and changing "
                     "it re-runs only those."}),
+                "regen_strength": (list(REGEN_STRENGTHS), {"default": REGEN_STRENGTH, "tooltip":
+                    "Regenerate 2K only: how far the take is rendered again. full = the refiner's own three "
+                    "steps, the most new detail; gentle and light start lower and keep more of the take (its "
+                    "motion, expressions and small props) for less new detail, in two steps."}),
+                "regen_lora": (list(REGEN_LORAS), {"default": "auto", "tooltip":
+                    "Regenerate 2K only: which refiner LoRA in models/loras. full = NVlabs' published one "
+                    "(8.3 GB); small = a smaller extract of it (Kijai's rank 16, 155 MB); auto = the biggest one "
+                    "found."}),
             }
         }
 
@@ -279,7 +293,7 @@ class StubeliusH3Output:
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
             quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
-            de_stutter="auto"):
+            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto"):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -290,7 +304,9 @@ class StubeliusH3Output:
                  polish_strength=quality_polish_strength, polish_steps=quality_polish_steps,
                  polish_method=_polish_methods().get(quality_polish_method, quality_polish_method),
                  polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output),
-                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto")
+                 de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto",
+                 regen_strength=regen_strength if regen_strength in REGEN_STRENGTHS else REGEN_STRENGTH,
+                 regen_lora=regen_lora if regen_lora in REGEN_LORAS else "auto")
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -561,14 +577,14 @@ def _target_size(images, short_side):
     return max(8, round(w * k / 8) * 8), max(8, round(h * k / 8) * 8)
 
 
-def _fit(images, short_side, inplace=False, batch=8):
-    """Bring an IMAGE batch to _target_size; no-op when it already fits. A frame at most 2% too
-    big (DLSS5 gives 1920x1088 for 1080p) is centre-cropped rather than resampled; otherwise
-    bicubic, antialiased. inplace=True (a private tensor only, e.g. Finish's own DLSS5 output)
-    writes a smaller result back into the same memory, so no second full-size copy is made:
-    frame i lands at or before where frame i was, never over a frame not yet read."""
+def _fit(images, short_side, inplace=False, batch=8, size=None):
+    """Bring an IMAGE batch to _target_size (or to `size`, (width, height)); no-op when it already fits.
+    A frame at most 2% too big (DLSS5 gives 1920x1088 for 1080p) is centre-cropped rather than
+    resampled; otherwise bicubic, antialiased. inplace=True (a private tensor only, e.g. Finish's own
+    DLSS5 output) writes a smaller result back into the same memory, so no second full-size copy is
+    made: frame i lands at or before where frame i was, never over a frame not yet read."""
     n, h, w, c = images.shape
-    width, height = _target_size(images, short_side)
+    width, height = size or _target_size(images, short_side)
     if (w, h) == (width, height):
         return images
     shrink = width <= w and height <= h
@@ -763,11 +779,30 @@ class StubeliusH3Finish:
         candidate = (takes.get("latents") or [None] * w)[w - 1]
         # the clip this take continues (First/Last Frame mode), to go in front of it (stubelius_clip.py)
         clip = source_of(candidate) if o.get("clip_in_output", True) else None
-        polishing = bool(o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images))
+        # Regenerate 2K (stubelius_regen.py): in any mode, the take rendered again at 1440p, chunk by chunk, in
+        # place of the Quality polish
+        regenerating = bool(o["upscaler"] == REGEN and target and target / _short(images) > 1.02)
+        if regenerating and not chunks_of(candidate):
+            log.warning("[StubeliusH3Finish] Regenerate 2K renders the take again from its chunks, and this take "
+                        "doesn't carry them (made by an older version of the pack): RTX VSR upscales it instead.")
+            regenerating = False
+        polishing = bool(not regenerating and o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images))
         _stage(unique_id, "start", winner=w, frames=int(images.shape[0]), width=int(images.shape[2]),
-               height=int(images.shape[1]), polish=polishing, resolution=o["resolution"], fps=float(o["fps"]),
-               upscaler=o["upscaler"])
-        if polishing:
+               height=int(images.shape[1]), polish=polishing, regen=regenerating, resolution=o["resolution"],
+               fps=float(o["fps"]), upscaler=o["upscaler"])
+        if regenerating:
+            from .stubelius_regen import plan
+            _stage(unique_id, "polish", regen=True)
+            how, scale = plan(_short(images))
+            take = images
+            images = self._polish_chunks(takes, models, w, 0.0, 0, how, unique_id, scale=scale,
+                                         regen=(o.get("regen_strength", REGEN_STRENGTH),
+                                                o.get("regen_lora", "auto")))[0]
+            # the latent grid can't always hold the take's shape at 1440p (1344x768 is 157.5 cells wide there and
+            # renders 156, 1% narrow): back to the take's own shape
+            images = _fit(images, _short(images), size=_target_size(take, _short(images)))
+            del take
+        elif polishing:
             _stage(unique_id, "polish")
             # Quality re-renders the take 1.5x or 2x bigger (the polish) when the size picked is
             # above what it rendered; at or below that, the render itself is the final picture.
@@ -811,9 +846,10 @@ class StubeliusH3Finish:
             _stage(unique_id, "clip")
             images, audio = _with_clip(clip, images, audio, enlarge)
             images, fps = _to_fps(images, o["fps"])
-        log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s",
+        log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s%s",
                  o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps,
-                 o["upscaler"] if upscaled else "none")
+                 ("RTX VSR" if regenerating else o["upscaler"]) if upscaled else "none",
+                 " (regenerated at 1440p first)" if regenerating else "")
         loudness = None
         try:
             from .stubelius_loudness import lufs
@@ -823,8 +859,9 @@ class StubeliusH3Finish:
         wave = audio["waveform"]
         _stage(unique_id, "done", width=int(images.shape[2]), height=int(images.shape[1]), fps=float(fps),
                frames=int(images.shape[0]), seconds=round(int(images.shape[0]) / float(fps), 3),
-               lufs=round(loudness, 1) if loudness is not None else None, upscaler=o["upscaler"] if upscaled else None,
-               polished=polishing, destutter=stutter, rate=int(audio["sample_rate"]),
+               lufs=round(loudness, 1) if loudness is not None else None,
+               upscaler=o["upscaler"] if upscaled or regenerating else None,
+               polished=polishing, regenerated=regenerating, destutter=stutter, rate=int(audio["sample_rate"]),
                channels=int(wave.shape[1]) if wave.dim() == 3 else 1)
         return (images, audio, float(fps))
 
@@ -855,24 +892,27 @@ class StubeliusH3Finish:
         return images, audio
 
     @staticmethod
-    def _polish_chunks(takes, models, w, strength, steps, method, node_id=None, scale=2.0):
+    def _polish_chunks(takes, models, w, strength, steps, method, node_id=None, scale=2.0, regen=False):
         """The polish of a take that runs past one chunk: every chunk of it (stubelius_polish.py),
-        where _polish would hand the Refine the last chunk alone."""
+        where _polish would hand the Refine the last chunk alone. regen = Regenerate 2K, for a take
+        of any length (stubelius_regen.py)."""
         import psutil
         from .stubelius_polish import polish
         candidate, take = takes["latents"][w - 1], takes["images"][w - 1]
         made = candidate.get("_muse_stage1_settings") or {}
         # by what the take is, not only by id(takes): a new take can get a freed one's id
-        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape), _take_identity(takes, w))
+        key = (id(takes), w, strength, steps, method, models.key, scale, tuple(take.shape), _take_identity(takes, w),
+               regen)
         for k, v in _POLISH_MEMO:
             if k == key:
-                log.info("[StubeliusH3Finish] Quality polish reused from memory (winner %d)", w)
+                log.info("[StubeliusH3Finish] %s reused from memory (winner %d)",
+                         "Regenerate 2K" if regen else "Quality polish", w)
                 return v
         from .stubelius_v2 import _hold_run_models, _release_held_models
         _release_held_models()
         try:
             images = polish(candidate, models, strength, steps, method, frames=take.shape[0], node_id=node_id,
-                            scale=scale)
+                            scale=scale, regen=regen)
         except BaseException:
             # a cancelled polish: every clone it made hangs off the bundle's cached models
             _hold_run_models(*_PATCHED.values(), *_BASE.values())
@@ -887,7 +927,8 @@ class StubeliusH3Finish:
 
     @staticmethod
     def _upscale(images, short_side, upscaler):
-        if upscaler == "RTX VSR":
+        if upscaler in ("RTX VSR", REGEN):
+            # Regenerate 2K's 1440p (or a clip in front, which isn't rendered again) the rest of the way
             return _vsr(images, short_side)
         if _cls("DLSS5EnhanceImages") is None:
             raise RuntimeError("[StubeliusH3Finish] 'DLSS5 + Color Lock' needs ComfyUI-DLSS5-Enhancer installed. "

@@ -16,6 +16,34 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.16
+
+- **Regenerate 2K, a third upscaler in the Output window** (any mode, Hybrid too; in Quality mode it takes the place
+  of the polish). NVlabs' Open-H3-Regenerate-2K refiner LoRA renders the take again at 1440p, chunk by chunk, so the
+  video keeps its length and its sound. Two settings under the card:
+  - **Strength:** Full (NVIDIA's own 3 steps from 0.91), Gentle (2 steps from 0.8) or Light (2 steps from 0.7). The
+    lower it starts, the more of the take it keeps.
+  - **LoRA:** Auto (the biggest refiner LoRA in `models/loras`), Full (8.3 GB) or Small (Kijai's rank-16 extract,
+    155 MB).
+- **Measured** on six Quality clips at 768p on an RTX 5090 (the finish only):
+  - Full gives 2 to 2.6x the face detail of the Quality polish in about 35% less time (4.9 vs 7.5 min), but it
+    redraws small things: the same-face score (ArcFace) fell to 0.71 and 0.54 where the polish kept 0.83 and 0.75,
+    one runner got glasses and the gulls in a wide shot were gone.
+  - Gentle stays sharper than the polish (detail 48 vs 28), keeps the face about as well (0.84) and takes half the
+    time (3.6 min). Light keeps the most (0.88).
+  - The small LoRA gives practically the same picture as the full one (44-47 dB against it), up to 20 s faster with
+    3-5 GB less RAM. With the card limited to 16 GB: 7.7 min against 10.8.
+  - For faces and characters use Gentle (or Light); Full where no small detail matters.
+
+## What's new in 0.15.3
+
+- **De-stutter fixes takes drawn "on twos".** H3 draws anime and 2D styles the way anime is drawn, each pose held
+  for two frames, so the motion runs at 12 poses a second and looks choppy. De-stutter caught those holds only
+  where things moved fast; the slow movement stayed held. A take that holds on 30% or more of its moving steps is
+  now searched again down to slow movement, and the whole take moves evenly. Measured on four takes on twos: the
+  held frames left after de-stutter went from 15-59% to 0-7%; takes that hold less than that are treated exactly
+  as before.
+
 ## What's new in 0.15.2
 
 - **The windows keep their size with ComfyUI's right-hand panel open.** On frontends 1.55 to 1.58 in classic mode
@@ -75,7 +103,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 | **1 Setup** | Stubelius H3 Setup | The six modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), Pika H3 Flex (≈768p in 6 steps with its own two LoRAs), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
-| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR or DLSS5 + Color Lock, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
+| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR, DLSS5 + Color Lock or Regenerate 2K, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
@@ -178,6 +206,19 @@ same sound as the take it came from.
   or 10 s for a video's first chunk (one that continues a video also re-renders the frames it
   carries over). A longer chunk spills out of the card and takes hours. A 2x step takes 2 to 4
   minutes.
+
+**Regenerate 2K.** The third upscaler in the Output window, in any mode: the take rendered again at
+1440p by NVlabs' [Open-H3-Regenerate-2K](https://nvlabs.github.io/Sana/Open-H3-Regenerate-2K/)
+refiner LoRA, in place of the Quality polish. Its recipe: the take's latent made 2K by zhangccccc's
+H3 latent upscaler, then Euler steps at CFG 1 with the LoRA on top of the checkpoint and LoRAs that
+made each chunk: three from sigma 0.91 at Full strength, two from 0.8 at Gentle, two from 0.7 at
+Light. Chunk by chunk like the polish, so the video keeps its length and its sound. 1080p is the
+1440p fitted down; 4K is RTX VSR from 1440p. The LoRA goes anywhere in `models/loras`: the full one
+([8.3 GB](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA), NVlabs) or Kijai's
+small rank-16 extract
+([155 MB](https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors)),
+which gives practically the same picture. Both are under the MiniMax H3 Community License, like H3
+itself.
 
 The polish runs 12 steps by default. A large polish turns on KJNodes' low-VRAM patches
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
@@ -400,10 +441,14 @@ were, and nothing is drawn across a hard cut.
   video. Changing the switch re-runs only the previews and the Finish, never the seeds.
 - On the Speed take above: roughness (how unevenly the picture moves from frame to frame) 0.83 before, 0.23
   after, against 0.27 for PDMD.
+- **Takes "on twos"** (anime and 2D styles: H3 holds each pose for two frames, like anime): when a take holds on
+  30% or more of its moving steps, the slow movement is searched too, so slow parts don't stay choppy. On a
+  take that held 90% of its moving steps: 59% still held with the fast parts only, none with the slow ones too.
 
 ## Jagged or smeared motion
 
-- **Judder** (a held frame every second or third frame): Speed mode's takes do it most. **de-stutter**
+- **Judder** (a held frame every second or third frame): Speed mode's takes do it most, and anime or 2D styles in
+  any mode (H3 draws them on twos, like anime). **de-stutter**
   (above, auto by default) fixes the rhythm, and PDMD renders much smoother in the first place. A higher frame rate
   alone doesn't fix it.
 - **Fast, small motion smears** (fingers, hands): render in PDMD instead of Speed. At Speed's ≈480p a
@@ -562,6 +607,7 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/loras` | for Pika H3 Flex mode: [`pika_h3_flex_ref2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors) and [`pika_h3_flex_fl2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors) (1.96 GB each, Pika) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
+| `models/loras` | for Regenerate 2K: [`minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors) (155 MB, Kijai) or [`open_h3_regenerate_2k_refiner_lora.safetensors`](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA/resolve/main/open_h3_regenerate_2k_refiner_lora.safetensors) (8.3 GB, NVlabs), any subfolder |
 
 RIFE downloads its checkpoint the first time you pick a frame rate above 24. Direct links for every
 file are in [INSTALL.txt](INSTALL.txt).

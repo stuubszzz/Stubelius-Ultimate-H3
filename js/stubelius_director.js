@@ -29,7 +29,7 @@ import {
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
-export const VERSION = "0.15.2";
+export const VERSION = "0.16.0";
 export { MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed };
 const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration_seconds", "seed",
   "control_after_generate", "timeline_data"];
@@ -973,7 +973,7 @@ export class DirectorWindow {
     const up = widgetValue(output, "upscaler", "RTX VSR");
     const size = SIZE_LABEL[res] || res;
     const parts = [size, `${fps} fps`];
-    if (size !== "Native") parts.push(String(up).startsWith("DLSS5") ? "DLSS 5" : "RTX VSR");
+    if (size !== "Native") parts.push(String(up).startsWith("DLSS5") ? "DLSS 5" : up === "Regenerate 2K" ? "Regenerate 2K" : "RTX VSR");
     return parts.join(" · ");
   }
 
