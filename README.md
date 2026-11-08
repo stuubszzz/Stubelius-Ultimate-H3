@@ -16,6 +16,19 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.16.1
+
+- **Sound that wouldn't stop.** Pointing at a take in the Director's inspector played it, and moving away started
+  the whole video, with sound, even after you had paused it. Now a take you point at plays silently unless the
+  video was already playing, and moving away puts the video back where it was, paused or playing.
+- **Play/pause buttons always stop.** The Seeds window's play button only checked the first seed. A seed you were
+  listening to could keep looping while the button offered "play", for example when the first seed's video couldn't
+  load. The Output window's button only checked the render, not the finished video you hear beside it. Both
+  buttons now pause whenever anything in their window plays.
+- **Videos stop with their window.** The Director preview stops when it has nothing to show (before, it played on,
+  hidden, with its controls gone). The Director, Seeds and Output windows stop all their videos when their node is
+  deleted or the workflow closes. A window whose node has left the graph can't play at all.
+
 ## What's new in 0.16
 
 - **Regenerate 2K, a third upscaler in the Output window** (any mode, Hybrid too; in Quality mode it takes the place
