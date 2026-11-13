@@ -12,8 +12,9 @@ Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup
         video stays on ref2va), so no model switch is needed in the graph.
 Finish  turns the Director's takes into the final video with the Output settings: picks the
         WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR,
-        DLSS5 + Color Lock, or Regenerate 2K, which renders the take again at 1440p in place of
-        the polish). WINNER is the only thing left to choose after a seed hunt; the
+        DLSS5 + Color Lock, Regenerate 2K, which renders the take again at 1440p in place of
+        the polish, or RelayVSR 2x / 4x, which upscales the take as it is, before RIFE and also in
+        place of the polish). WINNER is the only thing left to choose after a seed hunt; the
         Quality polish is memoised, so FPS/upscaler changes don't repeat it either.
 Speed/memory patches and the DLSS5/VSR/GGUF loaders are called by class name at runtime and
 are skipped (or reported clearly) when their pack isn't installed.
@@ -34,6 +35,7 @@ from .muse_minimax_director import _execute_comfy_node, _unpack_node_result
 from .stubelius_compiler import compiler_paused
 from .stubelius_regen import NAME as REGEN
 from .stubelius_regen import LORAS as REGEN_LORAS, STRENGTH as REGEN_STRENGTH, STRENGTHS as REGEN_STRENGTHS
+from .stubelius_relayvsr import DETAIL as RELAY_DETAIL, NAMES as RELAY
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +80,8 @@ FLEX_SWAPPED = ("Pika H3 Flex mode: flex_ref_lora and flex_fl_lora are swapped. 
 # took ~1.3x longer and looked different; with it a 15 s clip rendered ~10 % faster than PDMD.
 OMNI_VSA = dict(keep_percent=10.0, start_percent=0.0, end_percent=1.0, min_tokens=12288,
                 sink_conditioning="exact_kv_and_rows")
-UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock", REGEN]     # REGEN: the take rendered again at 1440p
+# REGEN: the take rendered again at 1440p; RELAY: RelayVSR 2x / 4x (stubelius_relayvsr.py)
+UPSCALERS = ["RTX VSR", "DLSS5 + Color Lock", REGEN, *RELAY]
 DLSS5_FACTORS = {1.5: "1.5x (Quality)", 1.724: "1.724x (Balanced)", 2.0: "2x (Performance)",
                  3.0: "3x (Ultra Performance)"}
 VSR_MAX_SCALE = 4.0     # RTX VSR per pass; more (Speed to 4K = 4.5x) runs in two passes
@@ -242,7 +245,12 @@ class StubeliusH3Output:
                     "then restores the original colours. Needs ComfyUI-DLSS5-Enhancer. Regenerate 2K renders the "
                     "take again at 1440p in three steps with NVlabs' Open-H3-Regenerate-2K refiner LoRA (in "
                     "models/loras), in any mode and in place of the Quality polish; the sound stays the take's. "
-                    "4K: RTX VSR from 1440p."}),
+                    "4K: RTX VSR from 1440p. RelayVSR 2x / 4x upscales the take as it is (its face, motion and "
+                    "sound) in seconds, also in place of the Quality polish: one model step on every 15th frame, "
+                    "a small decoder for the rest. Needs its model and decoder from huggingface.co/Comfy-Org/RelayVSR "
+                    "and ComfyUI 0.45+. 2x (LightX2V's, tuned for H3) reaches 1080p and 2K from a 768p take; 4x "
+                    "adds more detail and needs more VRAM (about 22 GB measured from 768p). Past its factor, RTX "
+                    "VSR does the rest."}),
                 "quality_polish_strength": ("FLOAT", {"default": 0.3, "min": 0.05, "max": 1.0, "step": 0.05,
                     "tooltip": "Quality mode at 1080p and up. 0.3 faithful, 0.45-0.55 cleaner but freer."}),
                 "quality_polish_steps": ("INT", {"default": 12, "min": 1, "max": 100,
@@ -283,6 +291,10 @@ class StubeliusH3Output:
                     "Regenerate 2K only: which refiner LoRA in models/loras. full = NVlabs' published one "
                     "(8.3 GB); small = a smaller extract of it (Kijai's rank 16, 155 MB); auto = the biggest one "
                     "found."}),
+                "relayvsr_detail": ("FLOAT", {"default": RELAY_DETAIL, "min": 0.0, "max": 1.0, "step": 0.05,
+                    "tooltip": "RelayVSR only: how much of the detail its decoder adds on top of a plain enlargement "
+                    "is kept. 1 = all of it (ComfyUI's template). Lower keeps faces closer to the take for less new "
+                    "detail: at 0.6 the talking faces of our test kept 0.98 same face instead of 0.97."}),
             }
         }
 
@@ -293,7 +305,7 @@ class StubeliusH3Output:
 
     def run(self, mode, final_resolution, final_fps, upscaler, quality_polish_strength,
             quality_polish_steps, quality_polish_method, quality_polish_scale="1.5x", clip_in_output=True,
-            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto"):
+            de_stutter="auto", regen_strength=REGEN_STRENGTH, regen_lora="auto", relayvsr_detail=RELAY_DETAIL):
         mode = max(1, min(len(MODES), int(mode)))
         name = MODES[mode - 1]
         if final_resolution not in SIZES_BY_MODE[name]:
@@ -306,7 +318,8 @@ class StubeliusH3Output:
                  polish_scale=POLISH_SCALES.get(quality_polish_scale, 1.5), clip_in_output=bool(clip_in_output),
                  de_stutter=de_stutter if de_stutter in ("auto", "on", "off") else "auto",
                  regen_strength=regen_strength if regen_strength in REGEN_STRENGTHS else REGEN_STRENGTH,
-                 regen_lora=regen_lora if regen_lora in REGEN_LORAS else "auto")
+                 regen_lora=regen_lora if regen_lora in REGEN_LORAS else "auto",
+                 relay_detail=max(0.0, min(1.0, float(relayvsr_detail))))
         log.info("[StubeliusH3Output] %s", o)
         return (o,)
 
@@ -786,10 +799,13 @@ class StubeliusH3Finish:
             log.warning("[StubeliusH3Finish] Regenerate 2K renders the take again from its chunks, and this take "
                         "doesn't carry them (made by an older version of the pack): RTX VSR upscales it instead.")
             regenerating = False
-        polishing = bool(not regenerating and o["mode"] == 3 and target and target > POLISH_ABOVE * _short(images))
+        # RelayVSR (stubelius_relayvsr.py): the take upscaled as it is, in place of the Quality polish too
+        relaying = bool(o["upscaler"] in RELAY and target and target / _short(images) > 1.02)
+        polishing = bool(not regenerating and not relaying and o["mode"] == 3 and target
+                         and target > POLISH_ABOVE * _short(images))
         _stage(unique_id, "start", winner=w, frames=int(images.shape[0]), width=int(images.shape[2]),
-               height=int(images.shape[1]), polish=polishing, regen=regenerating, resolution=o["resolution"],
-               fps=float(o["fps"]), upscaler=o["upscaler"])
+               height=int(images.shape[1]), polish=polishing, regen=regenerating, relay=relaying,
+               resolution=o["resolution"], fps=float(o["fps"]), upscaler=o["upscaler"])
         if regenerating:
             from .stubelius_regen import plan
             _stage(unique_id, "polish", regen=True)
@@ -825,7 +841,15 @@ class StubeliusH3Finish:
         _stage(unique_id, "destutter")
         images, stutter = destutter(images, o.get("de_stutter", "auto"), label=f"winner {w}: ")
 
+        detail = o.get("relay_detail", RELAY_DETAIL)
         fps = SOURCE_FPS
+        # RelayVSR goes before RIFE: it reads the take's own 24 fps frames (every 15th through its model), and
+        # RIFE then draws at the bigger size. With a clip in front everything is upscaled before RIFE anyway.
+        early = relaying and clip is None
+        if early:
+            _stage(unique_id, "upscale", relay=True)
+            from .stubelius_relayvsr import upscale as relay_upscale
+            images = relay_upscale(images, target, RELAY[o["upscaler"]], detail)
         if clip is None:
             if o["fps"] > SOURCE_FPS + 1e-6:
                 _stage(unique_id, "fps")
@@ -834,21 +858,23 @@ class StubeliusH3Finish:
         upscaled = bool(target and target / _short(images) > 1.02)
         if upscaled:
             _stage(unique_id, "upscale")
-            images = self._upscale(images, target, o["upscaler"])
+            # past RelayVSR's factor (e.g. 2x from 768p to 4K) RTX VSR takes it the rest of the way
+            images = self._enlarge(images, target, "RTX VSR" if early else o["upscaler"], detail)
         if target:
             images = _fit(images, target)   # exact size (DLSS5 only scales 1.5x / 2x)
         if clip is not None:
             # the clip in front, at the finished size (through the same upscaler when it is smaller),
             # then the whole video to the final frame rate, so RIFE also draws the frames between the
             # clip's last frame and the take's first
-            enlarge = ((lambda frames: _fit(self._upscale(frames, target, o["upscaler"]), target))
+            enlarge = ((lambda frames: _fit(self._enlarge(frames, target, o["upscaler"], detail), target))
                        if target else None)
             _stage(unique_id, "clip")
             images, audio = _with_clip(clip, images, audio, enlarge)
             images, fps = _to_fps(images, o["fps"])
+        used = (o["upscaler"] + (" + RTX VSR" if upscaled and early else "") if relaying
+                else ("RTX VSR" if regenerating else o["upscaler"]) if upscaled else "none")
         log.info("[StubeliusH3Finish] mode %d, winner %d, %s -> %dx%d @ %.3g fps, upscaler %s%s",
-                 o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps,
-                 ("RTX VSR" if regenerating else o["upscaler"]) if upscaled else "none",
+                 o["mode"], w, o["resolution"], images.shape[2], images.shape[1], fps, used,
                  " (regenerated at 1440p first)" if regenerating else "")
         loudness = None
         try:
@@ -860,8 +886,8 @@ class StubeliusH3Finish:
         _stage(unique_id, "done", width=int(images.shape[2]), height=int(images.shape[1]), fps=float(fps),
                frames=int(images.shape[0]), seconds=round(int(images.shape[0]) / float(fps), 3),
                lufs=round(loudness, 1) if loudness is not None else None,
-               upscaler=o["upscaler"] if upscaled or regenerating else None,
-               polished=polishing, regenerated=regenerating, destutter=stutter, rate=int(audio["sample_rate"]),
+               upscaler=o["upscaler"] if upscaled or regenerating or relaying else None,
+               polished=polishing, regenerated=regenerating, relayed=relaying, destutter=stutter, rate=int(audio["sample_rate"]),
                channels=int(wave.shape[1]) if wave.dim() == 3 else 1)
         return (images, audio, float(fps))
 
@@ -924,6 +950,15 @@ class StubeliusH3Finish:
         if len(_POLISH_MEMO) > 1 and held > 0.35 * psutil.virtual_memory().total:
             del _POLISH_MEMO[0]
         return images, takes["audio"][w - 1]
+
+    def _enlarge(self, images, short_side, upscaler, detail=RELAY_DETAIL):
+        """The Output's upscaler on `images`: RelayVSR at its factor (brought to the size when the factor reaches it)
+        and RTX VSR past it, or _upscale for the others."""
+        if upscaler in RELAY:
+            from .stubelius_relayvsr import upscale as relay_upscale
+            images = relay_upscale(images, short_side, RELAY[upscaler], detail)
+            return _vsr(images, short_side) if short_side / _short(images) > 1.02 else images
+        return self._upscale(images, short_side, upscaler)
 
     @staticmethod
     def _upscale(images, short_side, upscaler):

@@ -27,6 +27,9 @@ const REGEN_STRENGTH = {
   "light (0.7)": { label: "Light", steps: 2, from: "0.7", text: "2 steps from 0.7: keeps the most of the take" },
 };
 const REGEN_LORA = [["auto", "Auto"], ["full", "Full · 8.3 GB"], ["small", "Small · 155 MB"]];
+// RelayVSR (stubelius_relayvsr.NAMES): the take upscaled as it is, 2x or 4x, before RIFE and in place of the polish
+const RELAY = { "RelayVSR 2x": 2, "RelayVSR 4x": 4 };
+const upscalerLabel = (up) => up.startsWith("DLSS") ? "DLSS 5 + Color Lock" : up === REGEN ? "Regenerate 2K" : RELAY[up] ? up : "RTX VSR";
 
 class OutputWindow {
   constructor(node) {
@@ -222,7 +225,7 @@ class OutputWindow {
     const st = this.stage?.stage === "done" ? this.stage : this.node.properties?.sh3_done;
     v.setSources(fin ? viewUrl(fin) : null, win ? viewUrl(win) : (fin ? viewUrl(fin) : null));
     const upName = String(widgetValue(out, "upscaler", "RTX VSR"));
-    const upLabel = upName.startsWith("DLSS") ? "DLSS 5 + Color Lock" : upName === REGEN ? "Regenerate 2K" : "RTX VSR";
+    const upLabel = upscalerLabel(upName);
     v.setLabels(st ? `${SIZES.find((x) => SHORT[x[0]] && SHORT[x[0]] === Math.min(st.width, st.height))?.[1] || `${st.width}×${st.height}`} · ${st.upscaler ? upLabel : "native"}` : "Finished",
       win ? `Render · ${win.width}×${win.height}` : "Render");
     v.setMode(fin && win ? this.mode : "single");
@@ -299,13 +302,20 @@ class OutputWindow {
       const small = widgetValue(out, "regen_lora", "auto") === "small";
       steps.push({ ic: "wand", name: "Regenerate 2K", text: `Rendered again at 1440p in ${rs.steps} steps from ${rs.from} by the ${small ? "small " : ""}refiner LoRA, its own sound`,
         state: running("polish") ? "run" : passed("polish") ? "done" : "next" });
-    } else if (mode === "Quality" && res !== "native (no upscale)") {
+    } else if (mode === "Quality" && res !== "native (no upscale)" && !RELAY[up]) {
       steps.push({ ic: "diamond", name: "Quality polish", text: `Rendered again ${widgetValue(out, "quality_polish_scale", "1.5x")} bigger, ${widgetValue(out, "quality_polish_steps", 12)} steps`,
         state: running("polish") ? "run" : passed("polish") ? "done" : "next" });
     }
+    // RelayVSR: its factor from the winner's size (when known), RTX VSR past it
+    const relay = RELAY[up];
+    const winShort = win?.width && win?.height ? Math.min(win.width, win.height) : 0;
+    const relayText = !relay ? "" : winShort && SHORT[res] > relay * winShort + 0.5
+      ? `RelayVSR ${relay}x, then RTX VSR the rest; the take as it is, faces kept`
+      : `RelayVSR ${relay}x, fitted to ${size}; the take as it is, faces kept`;
     steps.push({ ic: "aspect", name: res === "native (no upscale)" ? "Native size" : regen && SHORT[res] <= 1440 ? `Fit to ${size}` : `Upscale to ${size}`,
       text: res === "native (no upscale)" ? "No upscale: the render's own size" : up.startsWith("DLSS") ? "DLSS 5 with Color Lock holds the colours"
-        : regen ? (SHORT[res] > 1440 ? "RTX VSR from the regenerated 1440p" : "The regenerated 1440p, at this size") : "RTX VSR: fast and clean",
+        : regen ? (SHORT[res] > 1440 ? "RTX VSR from the regenerated 1440p" : "The regenerated 1440p, at this size")
+        : relay ? relayText : "RTX VSR: fast and clean",
       state: res === "native (no upscale)" ? "skip" : running("upscale") ? "run" : passed("upscale") ? "done" : "next" });
     steps.push({ ic: "wave", name: fps > 24 ? `Smooth to ${fps} fps` : "24 fps", text: fps > 24 ? "RIFE in-betweens, de-stutter first if needed" : "Frames as rendered, de-stutter if needed",
       state: running("fps") || running("destutter") ? "run" : passed("fps") ? "done" : "next" });
@@ -379,11 +389,25 @@ class OutputWindow {
     const card = (value, name, ic, text) => h("button.o-card", { type: "button", class: up === value ? "on" : null,
       onclick: () => set("upscaler", value) }, h("div.o-card-h", icon(ic, 16), h("b", name)), h("div.sh3-muted", text));
     const dlss = !!window.LiteGraph?.registered_node_types?.DLSS5EnhanceImages;
+    const relayNodes = !!window.LiteGraph?.registered_node_types?.RelayVSRConditioning;
     const offers = w("upscaler")?.options?.values || [];
     panel.appendChild(h("div.o-sec", label("Upscaler"), h("div.o-cards",
       card("DLSS5 + Color Lock", "DLSS 5 + Color Lock", "sparkles", dlss ? "Sharpest; Color Lock keeps the colours the render had" : "Needs ComfyUI-DLSS5-Enhancer"),
       card("RTX VSR", "RTX VSR", "bolt", "Fast and clean, a little softer"),
-      offers.includes(REGEN) ? card(REGEN, "Regenerate 2K", "wand", "Renders the take again at 1440p in 2-3 steps; needs the refiner LoRA") : null)));
+      offers.includes(REGEN) ? card(REGEN, "Regenerate 2K", "wand", "Renders the take again at 1440p in 2-3 steps; needs the refiner LoRA") : null,
+      offers.includes("RelayVSR 2x") ? card("RelayVSR 2x", "RelayVSR 2x", "layers", relayNodes
+        ? "Sharper in seconds, the take as it is (faces kept); tuned for H3" : "Needs ComfyUI 0.45+ (its RelayVSR nodes)") : null,
+      offers.includes("RelayVSR 4x") ? card("RelayVSR 4x", "RelayVSR 4x", "layers", relayNodes
+        ? "More detail than 2x, about 3x the time and much more VRAM" : "Needs ComfyUI 0.45+ (its RelayVSR nodes)") : null)));
+    // RelayVSR's detail (an optional input, so older Output nodes simply don't show it)
+    if (RELAY[up] && w("relayvsr_detail")) {
+      const dv = Number(w("relayvsr_detail").value ?? 1);
+      const dVal = h("b", dv.toFixed(2));
+      panel.appendChild(h("div.o-polish-ed.o-regen",
+        h("div.o-row", h("span.sh3-muted", "Detail"), slider({ min: 0, max: 1, step: 0.05, value: dv, title: "How much of RelayVSR's added detail is kept",
+          onInput: (v) => { dVal.textContent = Number(v).toFixed(2); }, onChange: (v) => set("relayvsr_detail", v) }), dVal),
+        h("div.sh3-muted.o-regen-hint", `Needs its model and decoder (${RELAY[up]}x) from Comfy-Org/RelayVSR. 1 = all of its detail; lower keeps faces closer to the take`)));
+    }
     // Regenerate 2K's two settings (optional inputs, so older Output nodes simply don't show them)
     if (up === REGEN && (w("regen_strength") || w("regen_lora"))) {
       const rsW = w("regen_strength");
@@ -405,11 +429,11 @@ class OutputWindow {
         this.render();
       })));
     const mode = this.setupMode();
-    const polishOn = mode === "Quality" && up !== REGEN;
+    const polishOn = mode === "Quality" && up !== REGEN && !RELAY[up];
     const pol = h("div.o-polish", h("span.sh3-ico.k", icon("diamond", 16)),
       h("div.o-polish-t", h("b", "Quality polish"), h("div.sh3-muted",
         `Runs in Quality mode · ${w("quality_polish_scale")?.value || "1.5x"} · ${w("quality_polish_steps")?.value ?? 12} steps · strength ${Number(w("quality_polish_strength")?.value ?? 0.3).toFixed(2)}`)),
-      polishOn ? null : badge(up === REGEN ? "Regenerate 2K instead" : `off in ${mode}`));
+      polishOn ? null : badge(up === REGEN ? "Regenerate 2K instead" : RELAY[up] && mode === "Quality" ? `${up} instead` : `off in ${mode}`));
     panel.appendChild(pol);
     if (polishOn) {
       const strength = slider({ min: 0.05, max: 1, step: 0.05, value: Number(w("quality_polish_strength")?.value ?? 0.3),
@@ -592,6 +616,7 @@ class OutputWindow {
     f.append(h("span.sh3-fi", icon("folder", 14), "Saves to ", h("b", `output/${sub}`)),
       h("span.sh3-fi", icon("cpu", 14), "DLSS 5 ", h("b", types.DLSS5EnhanceImages ? "ready" : "not installed")),
       h("span.sh3-fi", icon("cpu", 14), "RTX VSR ", h("b", types.RTXVideoSuperResolution ? "ready" : "not installed")),
+      h("span.sh3-fi", icon("cpu", 14), "RelayVSR ", h("b", types.RelayVSRConditioning ? "ready" : "needs ComfyUI 0.45+")),
       h("div.sh3-spacer"),
       h("span.sh3-fi", icon("refresh", 14), "Change a setting here and only the finish runs again"));
   }
