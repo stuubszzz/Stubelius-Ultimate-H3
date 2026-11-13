@@ -11,8 +11,8 @@ The Flash decoder works window by window, from one keyframe to the next, each wi
 the keyframe latents on either side). So the keyframes are sampled for the whole take at once, and the decode runs
 in pieces of whole windows: a piece of frames k_a..k_b with the latents a..b decodes exactly what one long decode
 would (the piece's first frame, a keyframe the piece before already gave, is dropped). Each piece is brought to the
-finished size right away, so a 4x decode (198 MB a frame from 768p) never sits in RAM whole: the measured 498-frame
-take needed more than 94 GB at 4x in one decode.
+finished size right away, so a 4x decode (198 MB a frame from 768p) never sits in RAM whole: in one decode the
+498 frames of an 18 s take would be about 99 GB at 4x.
 
 Weights: huggingface.co/Comfy-Org/RelayVSR. models/diffusion_models: relayvsr_x2_lightx2v_int8_convrot.safetensors /
 relayvsr_x4_int8_convrot.safetensors; models/vae: relayvsr_flash_vae_x2_fp32.safetensors /

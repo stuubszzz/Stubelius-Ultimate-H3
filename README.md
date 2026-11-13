@@ -26,16 +26,19 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
   - **Detail** under the card: how much of the detail the decoder adds is kept (1 = all of it, ComfyUI's default).
   - It runs before RIFE, on the take's own frames. Past its factor (2x from 768p to 4K) RTX VSR does the rest.
   - A long take is decoded in pieces, each piece brought to the finished size straight away, so 4x of an 18 s take
-    fits in RAM (in one piece it needed more than 94 GB). The pieces give exactly the frames one decode gives.
-- **Measured** on the same six Quality clips at 768p as Regenerate 2K, to 1440p, on an RTX 5090 (6.6 s clips,
-  the whole job):
-  - RelayVSR 2x: about 33 s, same face (ArcFace) 0.97 on both talking clips. Its face detail is about the Quality
-    polish's (29 vs 28 on the café clip), where the polish takes 7.5 min and kept 0.75-0.83.
-  - RelayVSR 4x: 90-100 s, same face 0.97. Its face detail is about Regenerate 2K Gentle's (55 vs 48), where Gentle
-    takes 3.5 min and kept 0.71-0.84. About 22 GB of VRAM in use from a 768p take; 2x about 8-11 GB.
+    fits in RAM (in one piece its 498 frames at 4x alone would be about 99 GB). The pieces give exactly the frames one
+    decode gives (checked on the GPU at 2x and 4x).
+- **Measured** on the same Quality clips at 768p as Regenerate 2K, to 2K (1440p), on an RTX 5090:
+  - Time, the RelayVSR step alone: 8-12 s for a 5 s clip at 2x, 32-34 s at 4x; an 18 s take 31-34 s at 2x, 122 s
+    at 4x. The Quality polish took 7.5 min for 6.6 s, Regenerate 2K Gentle 3.5 min.
+  - Same face (ArcFace) 0.97 on both talking clips, at 2x and at 4x (the polish kept 0.75-0.83, Gentle 0.71-0.84).
+    2x gives about the polish's face detail (29 vs 28 on the café clip), 4x about Gentle's (55 vs 48).
   - Detail 0.6 kept the talking faces closest of the RelayVSR ways (0.98), with less new detail.
   - Small or fast faces change more: the rooftop runner kept 0.72 at 2x where RTX VSR kept 0.90, and 4x changed the
     tiny faces of a wide shot most (0.42). RTX VSR stays the most faithful.
+  - Video memory: 2x used about 10 GB (12.6 GB for the 18 s take) and ran at full speed with the card limited to
+    16 GB. 4x used about 20 GB: fine at 24 GB, but under a 16 GB limit it spilled into system memory and crawled.
+    RAM: 12-14 GB for a 5 s clip, 32 GB (2x) and 39 GB (4x) for the 18 s take.
 
 ## What's new in 0.16.1
 
