@@ -722,7 +722,7 @@ function injectSetupStyles() {
 .sh3-u .su-turbo{display:flex;align-items:center;gap:14px;border-radius:16px;padding:12px 16px;background:var(--glass);border:1px solid var(--stroke);text-align:left;color:var(--text)}
 .sh3-u .su-turbo>div{flex:1;min-width:0}
 .sh3-u .su-turbo .sh3-muted{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sh3-u .su-tfile{font-family:var(--fm);font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh3-u .su-tfile{font-family:var(--fm);font-size:11px;line-height:1.35;color:var(--text3);margin-top:2px;overflow-wrap:anywhere}
 .sh3-u .su-turbo.on{background:linear-gradient(110deg,rgba(var(--ac),.2),rgba(var(--ac2),.06));border-color:rgba(var(--ac),.65)}
 .sh3-u .su-turbo.missing{border-color:rgba(var(--bad),.6);background:rgba(var(--bad),.08)}
 .sh3-u .su-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke2);flex:none;position:relative}
