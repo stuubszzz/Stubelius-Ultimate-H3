@@ -25,17 +25,17 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
   tuned for MiniMax H3; 4x is the original. ComfyUI has the nodes built in from 0.45, so no other node pack is needed.
   - **Detail** under the card: how much of the detail the decoder adds is kept (1 = all of it, ComfyUI's default).
   - It runs before RIFE, on the take's own frames. Past its factor (2x from 768p to 4K) RTX VSR does the rest.
-  - A long take is decoded in pieces, each piece brought to the finished size straight away, so 4x of an 18 s take
-    fits in RAM (in one piece its 498 frames at 4x alone would be about 99 GB). The pieces give exactly the frames one
-    decode gives (checked on the GPU at 2x and 4x).
+  - A long take is decoded in pieces, each piece brought to the finished size straight away. Decoded in one go, the
+    498 frames of an 18 s take would need about 99 GB of RAM at 4x; in pieces the 18 s take ran at a 39 GB RAM peak.
+    The pieces give exactly the frames one decode gives (checked on the GPU at 2x and 4x).
 - **Measured** on the same Quality clips at 768p as Regenerate 2K, to 2K (1440p), on an RTX 5090:
   - Time, the RelayVSR step alone: 8-12 s for a 5 s clip at 2x, 32-34 s at 4x; an 18 s take 31-34 s at 2x, 122 s
     at 4x. The Quality polish took 7.5 min for 6.6 s, Regenerate 2K Gentle 3.5 min.
-  - Same face (ArcFace) 0.97 on both talking clips, at 2x and at 4x (the polish kept 0.75-0.83, Gentle 0.71-0.84).
-    2x gives about the polish's face detail (29 vs 28 on the café clip), 4x about Gentle's (55 vs 48).
-  - Detail 0.6 kept the talking faces closest of the RelayVSR ways (0.98), with less new detail.
-  - Small or fast faces change more: the rooftop runner kept 0.72 at 2x where RTX VSR kept 0.90, and 4x changed the
-    tiny faces of a wide shot most (0.42). RTX VSR stays the most faithful.
+  - Same face (ArcFace), measured as NVIDIA's Regenerate 2K IC was, on the same frames: RelayVSR 2x 0.97 and 0.97 on
+    the two talking clips and 0.93 on the 18 s take, IC 0.97, 0.96 and 0.92. The polish kept 0.75-0.83, Gentle
+    0.71-0.84. A fast face is the weak spot: the rooftop runner kept 0.72 at 2x (0.75 at 4x), IC 0.64.
+  - 2x gives about the polish's face detail (29 vs 28 on the café clip), 4x about Gentle's (55 vs 48). Detail 0.6
+    kept the talking faces closest of the RelayVSR ways (0.98), with less new detail. RTX VSR stays the most faithful.
   - Video memory: 2x used about 10 GB (12.6 GB for the 18 s take) and ran at full speed with the card limited to
     16 GB. 4x used about 20 GB: fine at 24 GB, but under a 16 GB limit it spilled into system memory and crawled.
     RAM: 12-14 GB for a 5 s clip, 32 GB (2x) and 39 GB (4x) for the 18 s take.
