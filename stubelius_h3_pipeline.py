@@ -304,11 +304,6 @@ class StubeliusH3Output:
                     "Regenerate 2K only: how far the take is rendered again. full = the refiner's own three "
                     "steps, the most new detail; gentle and light start lower and keep more of the take (its "
                     "motion, expressions and small props) for less new detail, in two steps."}),
-                "frame_generation": (FRAME_ENGINES, {"default": FRAME_DEFAULT, "tooltip":
-                    "What draws the in-between frames, for a frame rate above 24 and for de-stutter: RIFE 4.7 "
-                    "(any GPU), or NVIDIA's RTX Frame Generation (the VFX SDK effect in nvidia-vfx, as RTX VSR; RTX "
-                    "40 series and newer). HIGH is the closest to real frames, LOW the fastest. Where RTX can't run, "
-                    "RIFE draws them."}),
                 "regen_lora": (list(REGEN_LORAS), {"default": "auto", "tooltip":
                     "Regenerate 2K only: which refiner LoRA in models/loras. full = NVlabs' published one "
                     "(8.3 GB); small = a smaller extract of it (Kijai's rank 16, 155 MB); auto = the biggest one "
@@ -317,6 +312,12 @@ class StubeliusH3Output:
                     "tooltip": "RelayVSR only: how much of the detail its decoder adds on top of a plain enlargement "
                     "is kept. 1 = all of it (ComfyUI's template). Lower keeps faces closer to the take for less new "
                     "detail: at 0.6 the talking faces of our test kept 0.98 same face instead of 0.97."}),
+                # last: optional inputs are saved by position, so a new one goes after all the released ones
+                "frame_generation": (FRAME_ENGINES, {"default": FRAME_DEFAULT, "tooltip":
+                    "What draws the in-between frames, for a frame rate above 24 and for de-stutter: RIFE 4.7 "
+                    "(any GPU), or NVIDIA's RTX Frame Generation (the VFX SDK effect in nvidia-vfx, as RTX VSR; RTX "
+                    "40 series and newer). HIGH is the closest to real frames, LOW the fastest. Where RTX can't run, "
+                    "RIFE draws them."}),
             }
         }
 
