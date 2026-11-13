@@ -103,6 +103,17 @@ models/loras/              open_h3_regenerate_2k_refiner_lora.safetensors   (8.3
   found by name; the pack converts it on load. The small one gives practically the same picture. Auto (the
   Output window's LoRA setting) takes the biggest one it finds. Best with zhangccccc's H3 latent upscaler (above).
 
+Optional, for the RelayVSR 2x / 4x upscalers (the take upscaled as it is, faces kept, in seconds; ComfyUI 0.45+):
+models/diffusion_models/   relayvsr_x2_lightx2v_int8_convrot.safetensors   (5.2 GB, LightX2V's 2x for H3)
+  https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors
+models/vae/                relayvsr_flash_vae_x2_fp32.safetensors   (0.13 GB)
+  https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x2_fp32.safetensors
+models/diffusion_models/   relayvsr_x4_int8_convrot.safetensors   (5.2 GB, for 4x)
+  https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x4_int8_convrot.safetensors
+models/vae/                relayvsr_flash_vae_x4_fp32.safetensors   (0.13 GB, for 4x)
+  https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x4_fp32.safetensors
+  found by name; each model needs the decoder of its own factor. Apache-2.0.
+
 Optional live preview (watch the video form while it samples):
 models/vae_approx/         taeh3.safetensors
   https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors   (Kijai's tiny H3 VAE, 10 MB)

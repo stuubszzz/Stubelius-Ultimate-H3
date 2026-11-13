@@ -16,6 +16,27 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.16.2
+
+- **RelayVSR 2x and 4x, two more upscalers in the Output window** (any mode; in Quality mode they take the place of
+  the polish, as Regenerate 2K does). [RelayVSR](https://github.com/kopperx/RelayVSR) upscales the take as it is: a
+  Wan 2.2 model runs one step on every 15th frame, and a small decoder builds every frame from those and the take's
+  own frames. Nothing is rendered again, so faces, motion and sound stay the take's. The 2x model is LightX2V's,
+  tuned for MiniMax H3; 4x is the original. ComfyUI has the nodes built in from 0.45, so no other node pack is needed.
+  - **Detail** under the card: how much of the detail the decoder adds is kept (1 = all of it, ComfyUI's default).
+  - It runs before RIFE, on the take's own frames. Past its factor (2x from 768p to 4K) RTX VSR does the rest.
+  - A long take is decoded in pieces, each piece brought to the finished size straight away, so 4x of an 18 s take
+    fits in RAM (in one piece it needed more than 94 GB). The pieces give exactly the frames one decode gives.
+- **Measured** on the same six Quality clips at 768p as Regenerate 2K, to 1440p, on an RTX 5090 (6.6 s clips,
+  the whole job):
+  - RelayVSR 2x: about 33 s, same face (ArcFace) 0.97 on both talking clips. Its face detail is about the Quality
+    polish's (29 vs 28 on the café clip), where the polish takes 7.5 min and kept 0.75-0.83.
+  - RelayVSR 4x: 90-100 s, same face 0.97. Its face detail is about Regenerate 2K Gentle's (55 vs 48), where Gentle
+    takes 3.5 min and kept 0.71-0.84. About 22 GB of VRAM in use from a 768p take; 2x about 8-11 GB.
+  - Detail 0.6 kept the talking faces closest of the RelayVSR ways (0.98), with less new detail.
+  - Small or fast faces change more: the rooftop runner kept 0.72 at 2x where RTX VSR kept 0.90, and 4x changed the
+    tiny faces of a wide shot most (0.42). RTX VSR stays the most faithful.
+
 ## What's new in 0.16.1
 
 - **Sound that wouldn't stop.** Pointing at a take in the Director's inspector played it, and moving away started
@@ -116,7 +137,7 @@ A workflow with the older How to use note gets the window in its place once, whe
 | **1 Setup** | Stubelius H3 Setup | The six modes: Speed (≈480p, 8 steps), Hybrid (≈540p, 10 steps), Quality (≈768p, 20 steps, no speedup LoRA), PDMD (≈768p in 4 steps), FastH3 Omni (≈768p in 8 steps on its own checkpoint, Reference mode only), Pika H3 Flex (≈768p in 6 steps with its own two LoRAs), and their fine-tuning, the flow shift included; how many seeds to compare (1–4); the models (from the Models node, each with its precision, its size and whether it's on disk); the turbo, PDMD and two global LoRAs (strength −9 to 9, for slider LoRAs); attention and low-VRAM switches; the video memory; the look of every window (six themes) |
 | **2 Director** | Stubelius H3 Director V2 | Reference (Omni) or First/Last Frame mode, shape, length (Extend past one chunk), chunk size, seed, **Render**. A preview of the takes, an inspector for the chunk you pick (how it joins the chunk before it, its shots, style, sound, music, **LoRAs per chunk**, its **takes**), a timeline (keyframes with up to eight **middle frames** or a **clip to continue**, shots, **sounds and clips** pinned at a second, chunks, **characters** made from many pictures) and, in Reference mode, the cast and reference clips |
 | **3 Seeds** | Stubelius Seed Previews | Every seed side by side and in sync, with the Output's de-stutter, as the finished video will move. Solo a seed's sound, an A/B split, loop a chunk. Hints where a take may need a look (held frames redrawn, a nearly silent take), never a ranking. **Pick** the winner, or pick chunk by chunk |
-| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR, DLSS5 + Color Lock or Regenerate 2K, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
+| **4 Output** | Stubelius H3 Finish | The winner against the finished video (a divider to drag, a 2× loupe), the finish step by step, the Output node's settings: final resolution per mode (Speed up to 2K, the other modes up to 4K; exact short side, portrait too), any frame rate from 24 to 120 (above 24 RIFE draws the in-between frames), RTX VSR, DLSS5 + Color Lock, Regenerate 2K or RelayVSR 2x / 4x, Quality polish (1.5x or 2x), **de-stutter**, a continued clip in front of the video or not. Then the saved file with its loudness, **Open folder**, and the latest results. A change here re-runs only the finish, from cache |
 
 Behind the windows, collapsed: **Stubelius H3 Models** and **Stubelius H3 Output** (the windows edit
 them), **Stubelius Theme**, **Stubelius Live Preview** (watch the Director and the Quality polish
@@ -232,6 +253,13 @@ small rank-16 extract
 ([155 MB](https://huggingface.co/Kijai/MiniMax-H3-experimental/blob/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors)),
 which gives practically the same picture. Both are under the MiniMax H3 Community License, like H3
 itself.
+
+**RelayVSR 2x / 4x.** The fourth and fifth upscalers, in any mode: the take upscaled as it is by
+[RelayVSR](https://github.com/kopperx/RelayVSR), also in place of the Quality polish. ComfyUI's own recipe (its RelayVSR
+template): RelayVSR Conditioning, one sampler step at CFG 1 (euler, simple), VSR Decode with the Flash decoder of the
+same factor. It runs before RIFE; the result is fitted to the size, and past the factor RTX VSR does the rest. The files
+are [Comfy-Org/RelayVSR](https://huggingface.co/Comfy-Org/RelayVSR) (Apache-2.0): the model in
+`models/diffusion_models`, its decoder in `models/vae`, found by name. ComfyUI 0.45 or newer.
 
 The polish runs 12 steps by default. A large polish turns on KJNodes' low-VRAM patches
 by itself (ComfyUI-KJNodes 1.5.1 or newer); they give the same picture. The polished video ends up
@@ -620,6 +648,8 @@ Official files from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/Mini
 | `models/loras` | for Pika H3 Flex mode: [`pika_h3_flex_ref2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_ref2va_v1_bf16.safetensors) and [`pika_h3_flex_fl2va_v1_bf16.safetensors`](https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors) (1.96 GB each, Pika) |
 | `models/vae_approx` | optional live preview: [`taeh3.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-TAE/resolve/main/vae_approx/taeh3.safetensors) (Kijai) |
 | `models/latent_upscale_models` | for the 1.5x Quality polish: [`minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors`](https://huggingface.co/zhangccccc/Minimax_h3_latent_Upscaler/resolve/main/minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors) (zhangccccc) |
+| `models/diffusion_models` + `models/vae` | for RelayVSR 2x: [`relayvsr_x2_lightx2v_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors) (5.2 GB) + [`relayvsr_flash_vae_x2_fp32.safetensors`](https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x2_fp32.safetensors) (0.13 GB), Comfy-Org, Apache-2.0 |
+| `models/diffusion_models` + `models/vae` | for RelayVSR 4x: [`relayvsr_x4_int8_convrot.safetensors`](https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/diffusion_models/relayvsr_x4_int8_convrot.safetensors) (5.2 GB) + [`relayvsr_flash_vae_x4_fp32.safetensors`](https://huggingface.co/Comfy-Org/RelayVSR/resolve/main/vae/relayvsr_flash_vae_x4_fp32.safetensors) (0.13 GB) |
 | `models/loras` | for Regenerate 2K: [`minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors`](https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors) (155 MB, Kijai) or [`open_h3_regenerate_2k_refiner_lora.safetensors`](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K-LoRA/resolve/main/open_h3_regenerate_2k_refiner_lora.safetensors) (8.3 GB, NVlabs), any subfolder |
 
 RIFE downloads its checkpoint the first time you pick a frame rate above 24. Direct links for every
