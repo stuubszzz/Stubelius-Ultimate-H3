@@ -80,6 +80,38 @@ function turboInfo(name) {
   return [n.replace(/\.safetensors$/i, ""), "turbo LoRA"];
 }
 
+// A LoRA dropdown with a filter box: typing narrows it to the files whose name or folder holds the text. The file in
+// use stays on top (the dropdown keeps showing it), the rest by folder, as in "Choose another speed-up LoRA…".
+function loraPicker(values, value, onPick) {
+  const inUse = value && value !== "none" ? value : "";
+  const filter = h("input.sh3-input.su-pick-filter", { type: "text", placeholder: "filter by name or folder…" });
+  const sel = h("select.sh3-select.su-file.su-pick-sel", { title: inUse || null });
+  const fill = () => {
+    clear(sel);
+    const q = filter.value.trim().toLowerCase();
+    sel.appendChild(h("option", inUse ? { value: inUse, text: inUse.split(/[\\/]/).pop(), selected: true }
+      : { value: "", text: "pick a LoRA…", selected: true, disabled: true }));
+    const groups = new Map();
+    for (const x of values) {
+      if (!x || x === "none" || x === inUse || (q && !x.toLowerCase().includes(q))) continue;
+      const i = Math.max(x.lastIndexOf("\\"), x.lastIndexOf("/"));
+      const f = i > 0 ? x.slice(0, i).replace(/\\/g, " / ") : "(loras root)";
+      if (!groups.has(f)) groups.set(f, []);
+      groups.get(f).push(x);
+    }
+    if (!groups.size) sel.appendChild(h("option", { value: "", text: q ? `no LoRA with "${filter.value.trim()}"` : "no other LoRAs", disabled: true }));
+    [...groups.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).forEach((f) => {
+      const og = h("optgroup", { label: f });
+      groups.get(f).forEach((x) => og.appendChild(h("option", { value: x, text: x.split(/[\\/]/).pop() })));
+      sel.appendChild(og);
+    });
+  };
+  sel.addEventListener("change", () => { if (sel.value && sel.value !== inUse) onPick(sel.value); });
+  filter.addEventListener("input", fill);
+  fill();
+  return { filter, sel };
+}
+
 // The render size a mode's megapixels make at the Director's shape: _resolve_resolution's formula (ComfyUI's
 // ResolutionSelector, sides on 32), Python's round included (halves to the even side)
 function sizeFor(mp, aspect) {
@@ -403,18 +435,15 @@ class SetupWindow {
       .sort((a, b) => kind(a) - kind(b) || a.localeCompare(b, undefined, { sensitivity: "base" }));
     const shown = [current, ...turbos.filter((n) => n !== current)].filter((n) => n && n !== "none").slice(0, 4);
     const left = h("div.su-lcol", label("Turbo LoRA · Speed and Hybrid"));
-    const infos = shown.map(turboInfo);
-    const seen = {};
-    for (const [name] of infos) seen[name] = (seen[name] || 0) + 1;
-    for (const [i, n] of shown.entries()) {
-      const name = infos[i][0];
-      // two files of one kind: told apart by the file
-      const text = seen[name] > 1 ? n.replace(/\.safetensors$/i, "") : infos[i][1];
+    for (const n of shown) {
+      const [name, text] = turboInfo(n);
       const on = n === current;
       const gone = !all.includes(n);             // the workflow names it, models/loras doesn't have it
+      // the file itself on every card (its own name; the folder in the tooltip): which version is in use, at a glance
+      const file = n.split(/[\\/]/).pop().replace(/\.safetensors$/i, "");
       left.appendChild(h("button.su-turbo", { type: "button", class: [on ? "on" : "", gone ? "missing" : ""].join(" ").trim() || null,
         title: gone ? `${n}: not in models/loras on this machine` : n, onclick: () => this.setM("speedup_lora", n) },
-      h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", gone ? "not on this machine" : text)),
+      h("span.su-radio"), h("div", h("b", name), h("div.sh3-muted", gone ? "not on this machine" : text), h("div.su-tfile", file)),
       on ? badge(gone ? "missing" : "active", gone ? "bad" : "ac") : null));
     }
     // its strength, here as well as under the mode cards (the same setting: each mode fills it in)
@@ -450,9 +479,11 @@ class SetupWindow {
       if (nameW.value === "none" && i === 2 && widgetValue(m, "extra_lora_1") === "none") continue;
       if (nameW.value === "none") {
         right.appendChild(h("button.su-addl", { type: "button", onclick: (e) => {
-          const pick = select(nameW.options?.values || [], "none", (x) => this.setM(`extra_lora_${i}`, x), "su-file");
-          e.currentTarget.replaceWith(pick);
-          pick.focus();
+          const add = e.currentTarget;
+          const { filter, sel } = loraPicker(nameW.options?.values || [], "none", (x) => this.setM(`extra_lora_${i}`, x));
+          const row = h("div.su-pick", filter, sel, iconButton("x", "Close", () => row.replaceWith(add)));
+          add.replaceWith(row);
+          filter.focus();
         } }, icon("plus", 14), "Add a global LoRA"));
         continue;
       }
@@ -463,9 +494,9 @@ class SetupWindow {
         const v = parseFloat(num.value);
         this.setM(`extra_lora_${i}_strength`, Number.isFinite(v) ? Math.max(-LORA_MAX, Math.min(LORA_MAX, v)) : 1.0);
       });
+      const { filter, sel } = loraPicker(nameW.options?.values || [], nameW.value, (x) => this.setM(`extra_lora_${i}`, x));
       right.appendChild(h("div.su-glora",
-        h("div.su-glora-h", icon("sliders", 16), select(nameW.options?.values || [], nameW.value, (x) => this.setM(`extra_lora_${i}`, x), "su-file"),
-          iconButton("x", "Take it out", () => this.setM(`extra_lora_${i}`, "none"))),
+        h("div.su-glora-h", icon("sliders", 16), sel, filter, iconButton("x", "Take it out", () => this.setM(`extra_lora_${i}`, "none"))),
         h("div.su-glora-s", slider({ min: -2, max: 2, step: 0.05, value: Math.max(-2, Math.min(2, strength)),
           onInput: (v) => { num.value = v; }, onChange: (v) => this.setM(`extra_lora_${i}_strength`, v) }), num)));
     }
@@ -691,6 +722,7 @@ function injectSetupStyles() {
 .sh3-u .su-turbo{display:flex;align-items:center;gap:14px;border-radius:16px;padding:12px 16px;background:var(--glass);border:1px solid var(--stroke);text-align:left;color:var(--text)}
 .sh3-u .su-turbo>div{flex:1;min-width:0}
 .sh3-u .su-turbo .sh3-muted{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh3-u .su-tfile{font-family:var(--fm);font-size:11px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh3-u .su-turbo.on{background:linear-gradient(110deg,rgba(var(--ac),.2),rgba(var(--ac2),.06));border-color:rgba(var(--ac),.65)}
 .sh3-u .su-turbo.missing{border-color:rgba(var(--bad),.6);background:rgba(var(--bad),.08)}
 .sh3-u .su-radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--stroke2);flex:none;position:relative}
@@ -712,6 +744,8 @@ function injectSetupStyles() {
 .sh3-u .su-glora-h{display:flex;align-items:center;gap:10px}
 .sh3-u .su-glora-h .su-file{font-family:var(--ff);font-size:13.5px;font-weight:600;color:var(--text)}
 .sh3-u .su-glora-h .sh3-ibtn{width:28px;height:28px;border-radius:9px}
+.sh3-u .su-glora-h .su-pick-sel{flex:1;min-width:0}
+.sh3-u .su-glora-h .su-pick-filter{flex:0 0 34%;height:30px;font-size:12px}
 .sh3-u .su-glora-s{display:flex;align-items:center;gap:12px}
 .sh3-u .su-gval{font-family:var(--fh);width:78px;flex:none;text-align:right}
 .sh3-u .su-addl{display:flex;align-items:center;justify-content:center;gap:8px;height:46px;border-radius:14px;border:1px dashed var(--stroke2);background:none;color:var(--text2)}
