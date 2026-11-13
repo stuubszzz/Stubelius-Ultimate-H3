@@ -289,9 +289,11 @@ class OutputWindow {
     const up = String(widgetValue(out, "upscaler", "RTX VSR"));
     const saver = this.saver();
     const st = this.stage;
-    const at = st && STAGES.includes(st.stage) ? STAGES.indexOf(st.stage) : -1;
+    // RelayVSR upscales before RIFE (no clip in front): its "upscale" stage comes before "fps"
+    const order = RELAY[up] ? ["start", "polish", "destutter", "upscale", "fps", "clip", "done"] : STAGES;
+    const at = st && order.includes(st.stage) ? order.indexOf(st.stage) : -1;
     const running = (name) => st?.stage === name;
-    const passed = (name) => at > STAGES.indexOf(name) || st?.stage === "done";
+    const passed = (name) => at > order.indexOf(name) || st?.stage === "done";
     const win = this.winnerVideo();
     const steps = [];
     steps.push({ ic: "crown", name: "Winner", text: win ? `Seed ${this.winner()}, ${(win.chunk_seeds || []).length || 1} chunk${(win.chunk_seeds || []).length === 1 ? "" : "s"}, its own sound` : "Pick one in Seeds",
@@ -616,7 +618,7 @@ class OutputWindow {
     f.append(h("span.sh3-fi", icon("folder", 14), "Saves to ", h("b", `output/${sub}`)),
       h("span.sh3-fi", icon("cpu", 14), "DLSS 5 ", h("b", types.DLSS5EnhanceImages ? "ready" : "not installed")),
       h("span.sh3-fi", icon("cpu", 14), "RTX VSR ", h("b", types.RTXVideoSuperResolution ? "ready" : "not installed")),
-      h("span.sh3-fi", icon("cpu", 14), "RelayVSR ", h("b", types.RelayVSRConditioning ? "ready" : "needs ComfyUI 0.45+")),
+      h("span.sh3-fi", icon("cpu", 14), "RelayVSR ", h("b", types.RelayVSRConditioning ? "nodes built in" : "needs ComfyUI 0.45+")),
       h("div.sh3-spacer"),
       h("span.sh3-fi", icon("refresh", 14), "Change a setting here and only the finish runs again"));
   }

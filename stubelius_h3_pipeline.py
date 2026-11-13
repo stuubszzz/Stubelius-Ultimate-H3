@@ -648,11 +648,13 @@ def _dlss5(images, need):
     return _run("DLSS5EnhanceImages", images=images, settings=settings, verify_neural_rendering=True)[0]
 
 
-def _ram_check(images, target, fps, extra_frames=0):
+def _ram_check(images, target, fps, extra_frames=0, upscaled_first=False):
     """The finished frames are held uncompressed (width x height x 12 bytes each). Say so up front
-    when they alone won't fit in RAM, instead of letting the job crawl through the pagefile."""
+    when they alone won't fit in RAM, instead of letting the job crawl through the pagefile.
+    upscaled_first: RelayVSR upscales before RIFE, so its frames at the finished size are held too while RIFE runs."""
     import psutil
-    frames = round((images.shape[0] + extra_frames) * max(1.0, fps / SOURCE_FPS))
+    rate = max(1.0, fps / SOURCE_FPS)
+    frames = round((images.shape[0] + extra_frames) * (rate + (1.0 if upscaled_first and rate > 1.0 else 0.0)))
     width, height = _target_size(images, target) if target else (images.shape[2], images.shape[1])
     need, total = frames * width * height * 12, psutil.virtual_memory().total
     if need > 0.6 * total:
@@ -832,7 +834,7 @@ class StubeliusH3Finish:
             scale = effective_polish_scale(o["polish_method"], o.get("polish_scale", 2.0), "[StubeliusH3Finish]")
             images = polish(takes, models, w, o["polish_strength"], o["polish_steps"],
                             o["polish_method"], unique_id, scale=scale)[0]
-        _ram_check(images, target, o["fps"], extra_frames=_clip_frames(clip))
+        _ram_check(images, target, o["fps"], extra_frames=_clip_frames(clip), upscaled_first=relaying and clip is None)
         if target and _short(images) > target:
             # e.g. Quality 2K: the polish comes out above 1440p. Downscale before RIFE (less work).
             images = _fit(images, target)
