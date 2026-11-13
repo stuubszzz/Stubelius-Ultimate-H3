@@ -397,7 +397,7 @@ class H3Models:
         # Pika H3 Flex: the branches' files have the same keys and different weights, so each gets its own
         speedup = c.get("flex_ref_lora" if kind == "ref" else "flex_fl_lora") or c["speedup_lora"]
         loras = [(speedup, c["speedup_strength"])]
-        loras += [(c["extra_lora_1"], c["extra_lora_1_strength"]), (c["extra_lora_2"], c["extra_lora_2_strength"])]
+        loras += [(c[f"extra_lora_{i}"], c[f"extra_lora_{i}_strength"]) for i in GLOBAL_LORAS if f"extra_lora_{i}" in c]
         for lname, strength in loras:
             if lname and lname != "none" and strength != 0:
                 path = _resolve_lora(lname)
@@ -491,6 +491,12 @@ def _prune(cfg):
         _AUX.pop(k)
 
 
+# Global LoRAs 3 and 4 (0.16.2) are in a bundle's settings only when one is set: a kept take is found by a hash of
+# every setting, and a slot that wasn't there before mustn't change it.
+EXTRA_ONLY_IN_USE = (3, 4)
+GLOBAL_LORAS = (1, 2, 3, 4)
+
+
 class StubeliusH3Models:
     @classmethod
     def INPUT_TYPES(cls):
@@ -545,6 +551,11 @@ class StubeliusH3Models:
                 "flex_fl_lora": (loras, {"default": _first_match(loras, "pika_h3_flex_fl2va"), "tooltip":
                     "Used for First/Last Frame chunks when the Setup mode is Pika H3 Flex: "
                     "pika_h3_flex_fl2va_v1_bf16.safetensors from huggingface.co/Comfy-Org/MiniMax-H3 (loras)."}),
+                # global LoRAs 3 and 4 (0.16.2): last, so the workflows saved before keep every value in its place
+                "extra_lora_3": (loras, {"default": "none", "tooltip": "Applies to every chunk, as global LoRAs 1 and 2."}),
+                "extra_lora_3_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05}),
+                "extra_lora_4": (loras, {"default": "none", "tooltip": "Applies to every chunk, as global LoRAs 1 and 2."}),
+                "extra_lora_4_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05}),
             },
         }
 
@@ -555,6 +566,10 @@ class StubeliusH3Models:
 
     def run(self, setup, pdmd_lora="none", omni_model="none", flex_ref_lora="none", flex_fl_lora="none", **cfg):
         cfg["speedup_strength"] = float(setup["speedup_strength"])
+        for i in EXTRA_ONLY_IN_USE:
+            name, strength = cfg.pop(f"extra_lora_{i}", "none"), cfg.pop(f"extra_lora_{i}_strength", 1.0)
+            if name and name != "none":
+                cfg[f"extra_lora_{i}"], cfg[f"extra_lora_{i}_strength"] = name, float(strength)
         if setup.get("mode") == "PDMD":
             if not pdmd_lora or pdmd_lora == "none":
                 raise ValueError("[StubeliusH3Models] " + PDMD_LORA_HELP)

@@ -44,6 +44,7 @@ const PERF = [
   ["spectrum", "Spectrum forecasting", "chart", "faster, may soften"],
   ["h3_cache", "H3 step cache", "database", "faster, may soften"],
 ];
+const GLOBALS = [1, 2, 3, 4];          // the Models node's global LoRAs (3 and 4 from 0.16.2)
 const TURBO_RE = SPEEDUP_RE;            // a few-step LoRA by its name (stubelius_director_shared.js)
 const OMNI_LOCK = "FastH3 Omni mode uses no turbo LoRA: the checkpoint is distilled to 8 steps already";
 const FLEX_LOCK = "Pika H3 Flex mode sets it: its LoRAs run at full strength on their own 6 steps, with LCM and H3's 12 / 3";
@@ -234,7 +235,7 @@ class SetupWindow {
       const v = widgetValue(m, name);
       if (v && v !== "off" && v !== "none") for (const f of folders) items.push([f, v]);
     }
-    for (const name of ["speedup_lora", "extra_lora_1", "extra_lora_2", "pdmd_lora"]) {
+    for (const name of ["speedup_lora", ...GLOBALS.map((i) => `extra_lora_${i}`), "pdmd_lora"]) {
       const v = widgetValue(m, name);
       if (v && v !== "none") items.push(["loras", v]);
     }
@@ -473,10 +474,12 @@ class SetupWindow {
         select(pd.options?.values || [], pd.value, (x) => this.setM("pdmd_lora", x), "su-file")), h("span.sh3-muted", "used in PDMD mode")));
     }
     const right = h("div.su-lcol", label("Global LoRAs"));
-    for (const i of [1, 2]) {
+    let offered = false;                   // one "Add a global LoRA" at a time: the first free slot
+    for (const i of GLOBALS) {
       const nameW = widget(m, `extra_lora_${i}`), strW = widget(m, `extra_lora_${i}_strength`);
-      if (!nameW) continue;
-      if (nameW.value === "none" && i === 2 && widgetValue(m, "extra_lora_1") === "none") continue;
+      if (!nameW) continue;                // a pack before 0.16.2 behind this window: its two slots only
+      if (nameW.value === "none" && offered) continue;
+      if (nameW.value === "none") offered = true;
       if (nameW.value === "none") {
         right.appendChild(h("button.su-addl", { type: "button", onclick: (e) => {
           const add = e.currentTarget;
@@ -557,7 +560,7 @@ class SetupWindow {
     const m = this.models();
     const ref = this.director()?._sh3?.isReference;
     const video = this.sizes[widgetValue(m, ref ? "ref2va_model" : "fl2va_model")] || 0;
-    const loras = ["speedup_lora", "extra_lora_1", "extra_lora_2"].reduce((a, n) => a + (this.sizes[widgetValue(m, n)] || 0), 0);
+    const loras = ["speedup_lora", ...GLOBALS.map((i) => `extra_lora_${i}`)].reduce((a, n) => a + (this.sizes[widgetValue(m, n)] || 0), 0);
     const vaes = (this.sizes[widgetValue(m, "video_vae")] || 0) + (this.sizes[widgetValue(m, "audio_vae")] || 0);
     const free = dev?.vram_free || 0;
     const parts = [["Video model", video, "ac"], ["LoRAs", loras, "k"], ["VAEs", vaes, "snd"], ["Free on the card now", free, "free"]];

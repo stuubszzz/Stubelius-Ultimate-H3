@@ -19,7 +19,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 - **Video / Audio shift** — where the sampler spends its steps (H3's own: 12 / 3, what every mode starts on). Use what your speed-up LoRA was trained on: LightX2V's 768p turbo LoRAs want **6 / 3**, and the window offers it when one is picked.
 - **Seeds to compare** — how many full videos, with sound, to render: 1–4. With every chunk picked (after **Pick by chunk** or a hunt) the first seed is your picks and the others try new seeds for the last chunk.
 - **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's checkpoint and Pika H3 Flex's two LoRAs (their modes only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
-- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Two **global LoRAs** for every chunk (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
+- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Up to four **global LoRAs** for every chunk, each with a filter box to find the file (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
 - **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (six themes, **Tidy the canvas**).
 - Changing anything here **re-renders**.
 

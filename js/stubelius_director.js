@@ -611,7 +611,10 @@ export class DirectorWindow {
     const was = this.node.properties?.sh3_seeds_recipe;
     if (!was) return [];
     const now = this.recipeNow();
-    return Object.keys({ ...was, ...now }).filter((k) => String(was[k]) !== String(now[k])).map((k) => [k, was[k], now[k]]);
+    // a setting the seeds' recipe hasn't got (a slot added after they rendered: global LoRAs 3 and 4 in 0.16.2) only
+    // counts once it's in use
+    const unused = (k) => !(k in was) && String(now[k.replace(/_strength$/, "")] ?? "none") === "none";
+    return Object.keys({ ...was, ...now }).filter((k) => String(was[k]) !== String(now[k]) && !unused(k)).map((k) => [k, was[k], now[k]]);
   }
 
   // Before a Finish (Seeds or Output): Setup and Models feed the Director, so with other settings than the seeds had,
@@ -626,6 +629,8 @@ export class DirectorWindow {
     const NAMES = { speedup_lora_strength: "Turbo strength", speedup_lora: "Speed-up LoRA", megapixels: "Size", steps: "Steps",
       sampler: "Sampler", scheduler: "Scheduler", mode: "Mode", seeds: "Seeds to compare", extra_lora_1: "Global LoRA 1",
       extra_lora_2: "Global LoRA 2", extra_lora_1_strength: "Global LoRA 1 strength", extra_lora_2_strength: "Global LoRA 2 strength",
+      extra_lora_3: "Global LoRA 3", extra_lora_4: "Global LoRA 4", extra_lora_3_strength: "Global LoRA 3 strength",
+      extra_lora_4_strength: "Global LoRA 4 strength",
       fl2va_model: "First/Last model", ref2va_model: "Reference model", text_encoder: "Text encoder", pdmd_lora: "PDMD LoRA",
       omni_model: "FastH3 Omni model", flex_ref_lora: "Pika H3 Flex LoRA, Reference", flex_fl_lora: "Pika H3 Flex LoRA, First/Last" };
     const name = (k) => { const n = k.split(":")[1]; return NAMES[n] || n.replace(/_/g, " "); };
