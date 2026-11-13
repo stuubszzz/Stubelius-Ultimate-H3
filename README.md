@@ -33,7 +33,8 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
     at 4x. The Quality polish took 7.5 min for 6.6 s, Regenerate 2K Gentle 3.5 min.
   - Same face (ArcFace), measured as NVIDIA's Regenerate 2K IC was, on the same frames: RelayVSR 2x 0.97 and 0.97 on
     the two talking clips and 0.93 on the 18 s take, IC 0.97, 0.96 and 0.92. The polish kept 0.75-0.83, Gentle
-    0.71-0.84. A fast face is the weak spot: the rooftop runner kept 0.72 at 2x (0.75 at 4x), IC 0.64.
+    0.71-0.84. A fast face is the weak spot: the rooftop runner kept 0.72 at 2x (0.75 at 4x), IC 0.64,
+    where plain RTX VSR kept 0.90. For fast action RTX VSR is the safer choice.
   - 2x gives about the polish's face detail (29 vs 28 on the café clip), 4x about Gentle's (55 vs 48). Detail 0.6
     kept the talking faces closest of the RelayVSR ways (0.98), with less new detail. RTX VSR stays the most faithful.
   - Video memory: 2x used about 10 GB (12.6 GB for the 18 s take) and ran at full speed with the card limited to
