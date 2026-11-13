@@ -473,7 +473,10 @@ class SetupWindow {
       left.appendChild(h("div.su-pdmd", icon("bolt", 18), h("div.su-pdmd-t", h("b", "PDMD 4-step LoRA"),
         select(pd.options?.values || [], pd.value, (x) => this.setM("pdmd_lora", x), "su-file")), h("span.sh3-muted", "used in PDMD mode")));
     }
-    const right = h("div.su-lcol", label("Global LoRAs"));
+    // how many slots this pack has (4 from 0.16.2) and how many are free: shown on the column and the Add button
+    const slots = GLOBALS.filter((i) => widget(m, `extra_lora_${i}`));
+    const free = slots.filter((i) => widgetValue(m, `extra_lora_${i}`, "none") === "none").length;
+    const right = h("div.su-lcol", label(`Global LoRAs · up to ${slots.length}`));
     let offered = false;                   // one "Add a global LoRA" at a time: the first free slot
     for (const i of GLOBALS) {
       const nameW = widget(m, `extra_lora_${i}`), strW = widget(m, `extra_lora_${i}_strength`);
@@ -487,7 +490,7 @@ class SetupWindow {
           const row = h("div.su-pick", filter, sel, iconButton("x", "Close", () => row.replaceWith(add)));
           add.replaceWith(row);
           filter.focus();
-        } }, icon("plus", 14), "Add a global LoRA"));
+        } }, icon("plus", 14), `Add a global LoRA · ${free} of ${slots.length} free`));
         continue;
       }
       // the slider covers ±2; the box takes slider LoRAs up to ±9, as the node does
