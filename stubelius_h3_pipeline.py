@@ -36,7 +36,7 @@ from .stubelius_compiler import compiler_paused
 from .stubelius_regen import NAME as REGEN
 from .stubelius_regen import LORAS as REGEN_LORAS, STRENGTH as REGEN_STRENGTH, STRENGTHS as REGEN_STRENGTHS
 from .stubelius_relayvsr import DETAIL as RELAY_DETAIL, NAMES as RELAY
-from .stubelius_rtx_framegen import DEFAULT as FRAME_DEFAULT, ENGINES as FRAME_ENGINES
+from .stubelius_rtx_framegen import DEFAULT as FRAME_DEFAULT, ENGINES as FRAME_ENGINES, NEW_DEFAULT as FRAME_NEW
 
 log = logging.getLogger(__name__)
 
@@ -313,11 +313,11 @@ class StubeliusH3Output:
                     "is kept. 1 = all of it (ComfyUI's template). Lower keeps faces closer to the take for less new "
                     "detail: at 0.6 the talking faces of our test kept 0.98 same face instead of 0.97."}),
                 # last: optional inputs are saved by position, so a new one goes after all the released ones
-                "frame_generation": (FRAME_ENGINES, {"default": FRAME_DEFAULT, "tooltip":
+                "frame_generation": (FRAME_ENGINES, {"default": FRAME_NEW, "tooltip":
                     "What draws the in-between frames, for a frame rate above 24 and for de-stutter: RIFE 4.7 "
                     "(any GPU), or NVIDIA's RTX Frame Generation (the VFX SDK effect in nvidia-vfx, as RTX VSR; RTX "
-                    "40 series and newer). HIGH is the closest to real frames, LOW the fastest. Where RTX can't run, "
-                    "RIFE draws them."}),
+                    "40 series and newer). MEDIUM for most shots, HIGH for fast movement, LOW the fastest. Where RTX "
+                    "can't run, RIFE draws them."}),
             }
         }
 
@@ -1054,7 +1054,7 @@ class StubeliusH3Finish:
         return _fit(enhanced, short_side, inplace=private)
 
 
-THEMES = ["Studio slate", "Stuubzzz neon", "Film stock", "Paper light", "Midnight blueprint", "ComfyUI default"]
+THEMES = ["Studio slate", "Stuubzzz neon", "Film stock", "Paper light", "Midnight blueprint", "Cyber yellow", "ComfyUI default"]
 
 
 class StubeliusTheme:

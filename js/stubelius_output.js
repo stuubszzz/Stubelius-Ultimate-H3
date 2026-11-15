@@ -398,7 +398,7 @@ class OutputWindow {
       panel.appendChild(h("div.o-sec", label("Frame generation"),
         seg(FRAME_GEN.filter(([v]) => (fgW.options?.values || [v]).includes(v)), fg, (v) => set("frame_generation", v)),
         h("div.sh3-muted.o-fg-hint", fg.startsWith("RTX")
-          ? "NVIDIA's RTX Frame Generation, RTX 40 series and newer (RIFE where it can't run). High = closest to real frames, Low = fastest. It draws de-stutter's frames too"
+          ? "NVIDIA's RTX Frame Generation, RTX 40 series and newer (RIFE where it can't run). Medium for most shots, High for fast movement, Low = fastest. It draws de-stutter's frames too"
           : "Runs on any GPU. It draws de-stutter's frames too")));
     }
     const up = String(w("upscaler")?.value || "RTX VSR");

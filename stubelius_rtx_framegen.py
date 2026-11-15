@@ -19,7 +19,8 @@ from comfy.model_management import get_torch_device
 log = logging.getLogger(__name__)
 
 ENGINES = ["RIFE 4.7", "RTX Frame Gen HIGH", "RTX Frame Gen MEDIUM", "RTX Frame Gen LOW"]
-DEFAULT = ENGINES[0]
+DEFAULT = ENGINES[0]            # a workflow saved without the setting keeps what it had: RIFE
+NEW_DEFAULT = ENGINES[2]        # a new Output node: RTX Medium (High for fast movement); RIFE where RTX can't run
 _WARNED = set()
 
 
