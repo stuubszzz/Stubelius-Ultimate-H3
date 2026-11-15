@@ -21,7 +21,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 - **Seeds to compare** — how many full videos, with sound, to render: 1–4. With every chunk picked (after **Pick by chunk** or a hunt) the first seed is your picks and the others try new seeds for the last chunk.
 - **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's and TurboH3's checkpoints and Pika H3 Flex's two LoRAs (their modes only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
 - **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Up to four **global LoRAs** for every chunk, each with a filter box to find the file (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
-- **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (six themes, **Tidy the canvas**).
+- **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (seven themes, Cyber yellow among them; **Tidy the canvas**).
 - Changing anything here **re-renders**.
 
 ## 2 · DIRECTOR — what the video is
