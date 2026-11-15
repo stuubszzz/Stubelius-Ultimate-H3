@@ -11,6 +11,7 @@ const THEMES = {
   "Stuubzzz neon":      { cv: "#141117", nb: "#1b1720", tb: "#241e2a", tx: "#f3eef6", mu: "#a095ab", inp: "#110e14", bd: "#3a2f42", ac: "#ff3da8", on: "#1a0610", s: ["#ff3da8", "#ff8a5c", "#ffd64a", "#7cf0c8"] },
   "Film stock":         { cv: "#171411", nb: "#1f1a15", tb: "#29221b", tx: "#efe6d8", mu: "#a3937e", inp: "#14110d", bd: "#3b3127", ac: "#e8a33d", on: "#1a1206", s: ["#e8a33d", "#c8553d", "#9bb07a", "#d9c7a3"] },
   "Paper light":        { cv: "#e7e6e1", nb: "#f8f7f3", tb: "#eeede7", tx: "#26262a", mu: "#6f6d68", inp: "#ffffff", bd: "#d6d4cc", ac: "#2f6fdd", on: "#ffffff", s: ["#2f6fdd", "#7a4fd6", "#0f8a6e", "#c27a12"] },
+  "Cyber yellow":       { cv: "#060608", nb: "#0e0e12", tb: "#16160d", tx: "#ece9d4", mu: "#a7a390", inp: "#050507", bd: "#2e2c12", ac: "#fcee0a", on: "#141200", s: ["#fcee0a", "#00f0ff", "#ff3d8a", "#ff003c"] },
   "Midnight blueprint": { cv: "#0c1524", nb: "#101d31", tb: "#15263f", tx: "#dbe7ff", mu: "#7f93b5", inp: "#0a1220", bd: "#233857", ac: "#4f9dff", on: "#06101f", s: ["#4f9dff", "#58e1ff", "#8ef0b6", "#ffc86b"] },
   "ComfyUI default":    null,
 };

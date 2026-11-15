@@ -821,6 +821,7 @@ function injectSetupStyles() {
   background:#121116;border:1px solid var(--stroke2);color:#f0eef6;text-align:left}
 .sh3-u .su-theme[data-theme="Paper light"]{background:#f6f5f1;color:#232327}
 .sh3-u .su-theme[data-theme="Midnight blueprint"]{background:#0b1527}
+.sh3-u .su-theme[data-theme="Cyber yellow"]{background:#09090b;background-image:repeating-linear-gradient(0deg,rgba(252,238,10,.05) 0 1px,transparent 1px 3px)}
 .sh3-u .su-theme[data-theme="Film stock"]{background:#17120d}
 .sh3-u .su-theme[data-theme="Studio slate"]{background:#16171b}
 .sh3-u .su-theme[data-theme="ComfyUI default"]{background:#232323}

@@ -9,7 +9,7 @@ const { app } = window.comfyAPI.app;
 
 export const THEMES = {
   "Stuubzzz neon": "neon", "Studio slate": "slate", "Film stock": "film",
-  "Paper light": "paper", "Midnight blueprint": "midnight", "ComfyUI default": "comfy",
+  "Paper light": "paper", "Midnight blueprint": "midnight", "Cyber yellow": "cyber", "ComfyUI default": "comfy",
 };
 export const THEME_NAMES = Object.keys(THEMES);
 // the swatches the Look panel shows: [stripe gradient, four dots]
@@ -19,6 +19,7 @@ export const THEME_SWATCHES = {
   "Film stock": ["linear-gradient(90deg,#f0b252,#e8a33d,#c8553d)", ["#e8a33d", "#c8553d", "#9bb07a", "#d9c7a3"]],
   "Paper light": ["linear-gradient(90deg,#2f6fdd,#7a4fd6)", ["#2f6fdd", "#7a4fd6", "#0f8a6e", "#c27a12"]],
   "Midnight blueprint": ["linear-gradient(90deg,#4f9dff,#58e1ff,#8ef0b6)", ["#4f9dff", "#58e1ff", "#8ef0b6", "#ffc86b"]],
+  "Cyber yellow": ["linear-gradient(90deg,#fcee0a 0%,#fcee0a 60%,#00f0ff 100%)", ["#fcee0a", "#00f0ff", "#ff003c", "#ece9d4"]],
   "ComfyUI default": ["linear-gradient(90deg,#5c8dff,#7aa7ff)", ["#8a8a8a", "#a0a0a0", "#b8b8b8", "#d0d0d0"]],
 };
 
@@ -794,6 +795,39 @@ const CSS = `
   --ac:79,157,255;--ac2:88,225,255;--on:#041022;--brand:linear-gradient(100deg,#4f9dff 0%,#58e1ff 55%,#8ef0b6 100%);
   --k:88,225,255;--snd:142,240,182;--cut:255,200,107;--ok:142,240,182;--menu:#0c1729;
   --pattern:linear-gradient(rgba(79,157,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(79,157,255,.06) 1px,transparent 1px);}
+.sh3[data-theme="cyber"]{--page:#020203;--glow1:rgba(252,238,10,.10);--glow2:rgba(0,240,255,.08);--glow3:rgba(255,0,60,.05);
+  --in-a:#0b0b0e;--in-b:#060608;--in-hi:rgba(252,238,10,.05);
+  --edge:linear-gradient(135deg,rgba(252,238,10,.95),rgba(252,238,10,.35) 22%,rgba(255,255,255,.05) 50%,rgba(0,240,255,.35) 80%,rgba(0,240,255,.85));
+  --text:#ece9d4;--text2:#a7a390;--text3:#6b685c;
+  --glass:rgba(252,238,10,.025);--glass2:rgba(252,238,10,.05);--glass3:rgba(252,238,10,.10);
+  --stroke:rgba(252,238,10,.13);--stroke2:rgba(252,238,10,.27);--well:rgba(0,0,0,.35);--field:rgba(0,0,0,.5);
+  --ac:252,238,10;--ac2:0,240,255;--on:#141200;--brand:linear-gradient(100deg,#fcee0a 0%,#fcee0a 78%,#e4f20a 100%);
+  --k:255,61,138;--snd:0,240,255;--cut:255,0,60;--ok:0,255,159;--bad:255,0,60;
+  --shadow:0 40px 120px rgba(0,0,0,.7);--panel-shadow:none;--grain:transparent;--ambient:.22;--menu:#0d0d11;
+  --pattern:repeating-linear-gradient(0deg,rgba(252,238,10,.035) 0 1px,transparent 1px 3px);
+  --cut-shape:polygon(0 0,calc(100% - var(--cc,14px)) 0,100% var(--cc,14px),100% 100%,var(--cc,14px) 100%,0 calc(100% - var(--cc,14px)))}
+/* Cyber yellow: square everything, cut two corners of the big shapes, scanlines, uppercase heads, cyan mono labels */
+.sh3[data-theme="cyber"],.sh3[data-theme="cyber"] *{border-radius:0 !important}
+.sh3[data-theme="cyber"] .sh3-pattern{background-size:auto}
+.sh3-window[data-theme="cyber"],.sh3[data-theme="cyber"] .sh3-window{--cc:30px;clip-path:var(--cut-shape);box-shadow:none}
+.sh3[data-theme="cyber"] .sh3-inner{--cc:29px;clip-path:var(--cut-shape)}
+.sh3[data-theme="cyber"] .sh3-panel{--cc:18px;clip-path:var(--cut-shape);box-shadow:none;
+  background:linear-gradient(180deg,rgba(252,238,10,.045),rgba(252,238,10,.015))}
+.sh3[data-theme="cyber"] .sh3-btn.cta,.sh3[data-theme="cyber"] .sh3-btn.primary{--cc:10px;clip-path:var(--cut-shape);
+  text-transform:uppercase;letter-spacing:.08em;box-shadow:none}
+.sh3[data-theme="cyber"] .sh3-btn.brand,.sh3[data-theme="cyber"] .sh3-chip,.sh3[data-theme="cyber"] .sh3-status,
+.sh3[data-theme="cyber"] .sh3-logo{--cc:8px;clip-path:var(--cut-shape)}
+.sh3[data-theme="cyber"] .su-card,.sh3[data-theme="cyber"] .su-theme{--cc:16px;clip-path:var(--cut-shape)}
+.sh3[data-theme="cyber"] .su-card.on{box-shadow:none;background:rgba(252,238,10,.06)}
+.sh3[data-theme="cyber"] .sh3-logo{box-shadow:none}
+.sh3[data-theme="cyber"] .sh3-ttl,.sh3[data-theme="cyber"] .sh3-h2,.sh3[data-theme="cyber"] .su-art-name{text-transform:uppercase;letter-spacing:.06em}
+.sh3[data-theme="cyber"] .sh3-ttl{color:rgb(var(--ac))}
+.sh3[data-theme="cyber"] .sh3-lbl{font-family:var(--fm);letter-spacing:.16em;color:rgba(0,240,255,.85)}
+.sh3[data-theme="cyber"] .sh3-chip .sh3-lbl{letter-spacing:.04em}
+.sh3[data-theme="cyber"] .sh3-step.on b{background:rgb(var(--ac))}
+.sh3[data-theme="cyber"] .sh3-tog.on{box-shadow:none}
+.sh3[data-theme="cyber"] input[type=range]::-webkit-slider-thumb{border-radius:0}
+.sh3[data-theme="cyber"] input[type=range]::-moz-range-thumb{border-radius:0}
 .sh3[data-theme="comfy"]{--page:#111111;--glow1:rgba(255,255,255,.04);--glow2:rgba(92,141,255,.07);--glow3:transparent;
   --in-a:#232323;--in-b:#1c1c1c;--in-hi:rgba(255,255,255,.02);
   --edge:linear-gradient(135deg,rgba(255,255,255,.16),rgba(255,255,255,.08));
