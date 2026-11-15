@@ -95,6 +95,11 @@ models/loras/              pika_h3_flex_fl2va_v1_bf16.safetensors    (1.96 GB, P
   https://huggingface.co/Comfy-Org/MiniMax-H3/resolve/main/loras/pika_h3_flex_fl2va_v1_bf16.safetensors
   the Setup window finds them by name; each goes on its own slot on the Models node ("flex ref lora", "flex fl lora").
 
+Optional, for TurboH3 mode (First/Last Frame mode in 4 steps on its own checkpoint):
+models/diffusion_models/   minimax_h3_fl2va_turboh3_i2va_pruned_int8_convrot.safetensors   (21 GB, thu-ml, Kijai's int8)
+  https://huggingface.co/Kijai/MiniMax-H3_comfy/resolve/main/diffusion_models/minimax_h3_fl2va_turboh3_i2va_pruned_int8_convrot.safetensors
+  then pick it as "turboh3 model" on the Models node (or as TurboH3 in the Setup window).
+
 Optional, for the Regenerate 2K upscaler (the take rendered again at 1440p in 2-3 steps, any mode), one of:
 models/loras/              minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors   (155 MB, Kijai)
   https://huggingface.co/Kijai/MiniMax-H3-experimental/resolve/main/loras/minimax_h3_open_regenerate_2k_refiner_rank_16_bf16.safetensors
