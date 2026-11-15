@@ -1,6 +1,7 @@
 // Stubelius Ultimate H3: the Setup window (step 1 of 4), on the Setup node.
 //
-// How the video is rendered: the six modes (each fills steps, size and turbo strength), the fine-tuning
+// How the video is rendered: the modes (each fills steps, size and turbo strength; only the ones that fit the
+// Director's input, First/Last Frame or Reference, are shown), the fine-tuning
 // under them, the models (the Models node: checkpoints, text encoder, VAEs, live preview), the turbo,
 // PDMD and global LoRAs, the speed and memory switches, the video memory, and the look every window
 // follows (the Theme node). The window edits those nodes' own widgets; nothing is stored twice.
@@ -10,7 +11,7 @@ import {
   THEME_SWATCHES, windowOrCompact,
 } from "./stubelius_ui.js";
 import { tidy } from "./stubelius_stage.js";
-import { SPEEDUP_RE, OMNI, FLEX } from "./stubelius_director_shared.js";
+import { SPEEDUP_RE, OMNI, FLEX, TURBOH3, MODE_INPUT, modeFits, MODE_REFERENCE_PREFIX } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
@@ -22,6 +23,7 @@ const MODES = [
   ["Quality", "Finals. Polished on the way to 1080p, 2K or 4K."],
   [OMNI, "Reference only. Its own 8-step model: smooth motion."],
   [FLEX, "The clearest sound. 6 steps, about 1.5x PDMD's time."],
+  [TURBOH3, "First/Last Frame only. Its own 4-step model: clean, every word."],
 ];
 const SETUP_WIDGETS = ["mode", "seeds", "steps", "sampler", "scheduler", "megapixels", "speedup_lora_strength",
   "shift_video", "shift_audio"];
@@ -31,6 +33,7 @@ const MODEL_CARDS = [
   ["omni_model", "Video model · FastH3 Omni", "bolt", ["diffusion_models"]],   // its mode only
   ["flex_ref_lora", "Pika H3 Flex LoRA · reference", "wave", ["loras"]],        // its mode only
   ["flex_fl_lora", "Pika H3 Flex LoRA · first/last frame", "wave", ["loras"]],  // its mode only
+  ["turboh3_model", "Video model · TurboH3", "bolt", ["diffusion_models"]],   // its mode only
   ["text_encoder", "Text encoder", "scan", ["text_encoders", "clip_gguf"]],
   ["video_vae", "Video VAE", "aspect", ["vae"]],
   ["audio_vae", "Audio VAE", "wave", ["vae"]],
@@ -48,7 +51,8 @@ const GLOBALS = [1, 2, 3, 4];          // the Models node's global LoRAs (3 and 
 const TURBO_RE = SPEEDUP_RE;            // a few-step LoRA by its name (stubelius_director_shared.js)
 const OMNI_LOCK = "FastH3 Omni mode uses no turbo LoRA: the checkpoint is distilled to 8 steps already";
 const FLEX_LOCK = "Pika H3 Flex mode sets it: its LoRAs run at full strength on their own 6 steps, with LCM and H3's 12 / 3";
-const MODE_ONLY = { omni_model: OMNI, flex_ref_lora: FLEX, flex_fl_lora: FLEX };   // model cards one mode uses
+const TURBOH3_LOCK = "TurboH3 mode uses no turbo LoRA: the checkpoint is distilled to 4 steps already";
+const MODE_ONLY = { omni_model: OMNI, flex_ref_lora: FLEX, flex_fl_lora: FLEX, turboh3_model: TURBOH3 };   // model cards one mode uses
 const LORA_MAX = 9;
 
 function precision(name) {
@@ -66,6 +70,7 @@ export function shiftWanted(mode, turbo, strength) {
   if (mode === "PDMD") return { v: 12, a: 3, why: "PDMD's 4 steps are set for H3's own 12 / 3" };
   if (mode === OMNI) return { v: 12, a: 3, why: "FastH3 Omni's template runs on H3's own 12 / 3" };
   if (mode === FLEX) return { v: 12, a: 3, why: "Pika H3 Flex's 6 steps are set for H3's own 12 / 3" };
+  if (mode === TURBOH3) return { v: 12, a: 3, why: "TurboH3's 4 steps are set for H3's own 12 / 3" };
   if (mode === "Quality" || !(Number(strength) > 0)) return null;
   const n = String(turbo || "").split(/[\\/]/).pop().toLowerCase();
   if (/turbo/.test(n) && /768p/.test(n)) return { v: 6, a: 3, why: "LightX2V's 768p turbo LoRAs were trained on 6 / 3" };
@@ -166,6 +171,16 @@ function art(mode) {
     }
     return svg(bars);
   }
+  if (mode === TURBOH3) {
+    // two keyframes and the path between them, drawn in four strokes: its 4 steps from the first to the last frame
+    let path = "";
+    for (let i = 0; i < 4; i++) {
+      const x0 = 46 + i * 47, x1 = x0 + 41;
+      path += `<path d="M${x0} ${92 - i * 11} L${x1} ${81 - i * 11}" style="stroke:rgb(var(--${i % 2 ? "ac2" : "ac"}))" stroke-width="5" stroke-linecap="round" opacity="${0.55 + i * 0.15}"/>`;
+    }
+    const frame = (x, y, k) => `<rect x="${x}" y="${y}" width="34" height="24" rx="4" style="fill:none;stroke:rgb(var(--${k}))" stroke-width="2.5"/>`;
+    return svg(`${frame(10, 86, "ac")}${frame(236, 40, "ac2")}${path}<circle cx="27" cy="98" r="4" style="fill:#fff"/><circle cx="253" cy="52" r="4" style="fill:#fff"/>`);
+  }
   if (mode === "Speed") {
     let lines = "";
     for (let i = 0; i < 6; i++) {
@@ -222,6 +237,13 @@ class SetupWindow {
 
   director() {
     return targetsOf(this.node, "setup").find((n) => n.comfyClass === "StubeliusH3DirectorV2") || nodesOfType("StubeliusH3DirectorV2")[0] || null;
+  }
+
+  // the Director's input: true = Reference, false = First/Last Frame, null = no Director to ask (every mode shown)
+  isReference() {
+    const d = this.director();
+    if (!d) return null;
+    return String(widgetValue(d, "mode", "") || "").startsWith(MODE_REFERENCE_PREFIX);
   }
 
   theme() {
@@ -318,22 +340,30 @@ class SetupWindow {
     const mode = widgetValue(this.node, "mode", "Hybrid");
     const presets = this.node.constructor?.nodeData?.input?.required?.mode?.[1]?.presets || {};
     const aspect = widgetValue(this.director(), "aspect_ratio", "16:9");
+    const ref = this.isReference();
+    const input = ref === null ? "" : ref ? "Reference" : "First / Last frame";
     const panel = h("div.sh3-panel.su-modes", h("div.su-ph", h("div.sh3-h2", "How do you want to render?"),
-      h("span.sh3-muted", "Each mode fills steps, size and turbo strength for you")));
+      h("span.sh3-muted", input ? `The modes for ${input}, the Director's input · each fills steps, size and turbo strength`
+        : "Each mode fills steps, size and turbo strength for you")));
     const cards = h("div.su-cards");
     const known = widget(this.node, "mode")?.options?.values || [];
     for (const [name, text] of MODES) {
       if (known.length && !known.includes(name)) continue;      // pulled but not restarted yet: the node can't take it
       const on = name === mode;
+      // only the modes that render the Director's input; the one in use stays (an older workflow), marked
+      const fits = ref === null || modeFits(name, ref);
+      if (!fits && !on) continue;
       const p = on ? { steps: widgetValue(this.node, "steps"), megapixels: widgetValue(this.node, "megapixels"),
         speedup_strength: widgetValue(this.node, "speedup_lora_strength") } : presets[name] || {};
-      cards.appendChild(h("button.su-card", { type: "button", class: on ? "on" : null, onclick: () => this.setS("mode", name) },
-        h("div.su-art", art(name), h("div.su-art-name", name), on ? h("span.su-check", icon("check", 15)) : null),
-        h("div.su-card-b", h("div.su-card-t", text),
+      const wrong = fits ? "" : `${name} renders ${MODE_INPUT[name] === "ref" ? "Reference" : "First/Last Frame"} only: pick a mode for ${input}`;
+      cards.appendChild(h("button.su-card", { type: "button", class: [on ? "on" : "", wrong ? "unfit" : ""].join(" ").trim() || null,
+        title: wrong || null, onclick: () => this.setS("mode", name) },
+        h("div.su-art", art(name), h("div.su-art-name", name), on ? h("span.su-check", icon(wrong ? "alert" : "check", 15)) : null),
+        h("div.su-card-b", h("div.su-card-t", wrong || text),
           h("div.su-kv", icon("stairs", 14), h("span", "Steps"), h("b", String(p.steps ?? "–"))),
           h("div.su-kv", icon("aspect", 14), h("span", "Size"), h("b", p.megapixels ? sizeFor(p.megapixels, aspect) : "–")),
-          h("div.su-kv", icon("sparkles", 14), h("span", name === "PDMD" ? "PDMD LoRA" : name === OMNI || name === FLEX ? "Speed-up" : "Turbo"),
-            h("b", name === "PDMD" ? "4-step" : name === OMNI ? "built in" : name === FLEX ? "6-step"
+          h("div.su-kv", icon("sparkles", 14), h("span", name === "PDMD" ? "PDMD LoRA" : name === OMNI || name === FLEX || name === TURBOH3 ? "Speed-up" : "Turbo"),
+            h("b", name === "PDMD" ? "4-step" : name === OMNI || name === TURBOH3 ? "built in" : name === FLEX ? "6-step"
               : p.speedup_strength ? Number(p.speedup_strength).toFixed(2) : "off")))));
     }
     cards.style.gridTemplateColumns = `repeat(${cards.childNodes.length}, 1fr)`;   // 6, or fewer on a node from before
@@ -354,6 +384,7 @@ class SetupWindow {
     // FastH3 Omni has no LoRA to set. Pika H3 Flex's steps, sampler, strength and shift go with its sigma list
     const pdmdMode = mode === "PDMD";
     const omniMode = mode === OMNI;
+    const turboMode = mode === TURBOH3;
     const flexLock = mode === FLEX ? FLEX_LOCK : "";
     const pick = (lab, options, name) => {
       const el = select(options, widgetValue(this.node, name), (v) => this.setS(name, v));
@@ -366,7 +397,7 @@ class SetupWindow {
       tune("Steps", "steps", 1, 40, 1, (v) => String(Math.round(v)), flexLock),
       tune("Size", "megapixels", 0.1, 2, 0.02, (v) => `${Number(v).toFixed(2)} MP`),
       tune(pdmdMode ? "PDMD LoRA strength" : "Turbo strength", "speedup_lora_strength", 0, 2, 0.05, (v) => Number(v).toFixed(2),
-        pdmdMode ? "PDMD mode sets it: its 4-step LoRA runs at full strength" : omniMode ? OMNI_LOCK : flexLock),
+        pdmdMode ? "PDMD mode sets it: its 4-step LoRA runs at full strength" : omniMode ? OMNI_LOCK : turboMode ? TURBOH3_LOCK : flexLock),
       pick("Sampler", samplers, "sampler"),
       pick("Scheduler", scheds, "scheduler"),
       h("div.su-tune.su-seeds", label("Seeds to compare"),
@@ -454,6 +485,7 @@ class SetupWindow {
       const pdmd = widgetValue(this.node, "mode") === "PDMD";
       const omni = widgetValue(this.node, "mode") === OMNI;
       const flex = widgetValue(this.node, "mode") === FLEX;
+      const turbo = widgetValue(this.node, "mode") === TURBOH3;
       const val = h("b.su-tstr-v", Number(sw.value ?? 1).toFixed(2));
       const s = slider({ min: Number.isFinite(o.min) ? o.min : 0, max: Number.isFinite(o.max) ? o.max : 2, step: 0.05, value: Number(sw.value ?? 1),
         title: "Turbo LoRA strength", onInput: (v) => { val.textContent = Number(v).toFixed(2); },
@@ -461,9 +493,11 @@ class SetupWindow {
       if (pdmd) { s.disabled = true; s.title = "PDMD mode sets it: its 4-step LoRA runs at full strength"; }
       if (omni) { s.disabled = true; s.title = OMNI_LOCK; }
       if (flex) { s.disabled = true; s.title = FLEX_LOCK; }
-      left.appendChild(h("div.su-tstr", { class: pdmd || omni || flex ? "off" : null },
+      if (turbo) { s.disabled = true; s.title = TURBOH3_LOCK; }
+      left.appendChild(h("div.su-tstr", { class: pdmd || omni || flex || turbo ? "off" : null },
         h("div.su-tstr-h", label("Strength"), h("span.sh3-muted", pdmd ? "PDMD mode uses its own LoRA here, at the strength the mode sets"
-          : omni ? "FastH3 Omni mode leaves the turbo LoRA out" : flex ? "Pika H3 Flex mode uses its own two LoRAs instead"
+          : omni ? "FastH3 Omni mode leaves the turbo LoRA out" : turbo ? "TurboH3 mode leaves the turbo LoRA out"
+          : flex ? "Pika H3 Flex mode uses its own two LoRAs instead"
           : "each mode sets it; slide to change"),
           h("div.sh3-spacer"), val), s));
     }
@@ -562,7 +596,10 @@ class SetupWindow {
     panel.appendChild(h("div.su-ph", h("div.sh3-h2", "Video memory"), dev ? badge(`${name} · ${(total / 1e9).toFixed(0)} GB`) : null));
     const m = this.models();
     const ref = this.director()?._sh3?.isReference;
-    const video = this.sizes[widgetValue(m, ref ? "ref2va_model" : "fl2va_model")] || 0;
+    // the checkpoint this mode and input load: FastH3 Omni and TurboH3 have their own
+    const mode = widgetValue(this.node, "mode");
+    const own = mode === OMNI ? "omni_model" : mode === TURBOH3 ? "turboh3_model" : ref ? "ref2va_model" : "fl2va_model";
+    const video = this.sizes[widgetValue(m, own)] || 0;
     const loras = ["speedup_lora", ...GLOBALS.map((i) => `extra_lora_${i}`)].reduce((a, n) => a + (this.sizes[widgetValue(m, n)] || 0), 0);
     const vaes = (this.sizes[widgetValue(m, "video_vae")] || 0) + (this.sizes[widgetValue(m, "audio_vae")] || 0);
     const free = dev?.vram_free || 0;
@@ -684,6 +721,9 @@ function injectSetupStyles() {
   color:var(--text)}
 .sh3-u .su-card:hover{border-color:var(--stroke2)}
 .sh3-u .su-card.on{border:2px solid rgb(var(--ac));box-shadow:0 0 0 5px rgba(var(--ac),.15),0 18px 50px rgba(var(--ac),.28)}
+.sh3-u .su-card.unfit{border-color:rgba(var(--bad),.8);box-shadow:0 0 0 5px rgba(var(--bad),.14)}
+.sh3-u .su-card.unfit .su-check{background:rgb(var(--bad))}
+.sh3-u .su-card.unfit .su-card-t{color:rgb(var(--bad))}
 .sh3-u .su-art{position:relative;height:150px;background:radial-gradient(120% 90% at 20% 0%,rgba(var(--ac),.20),transparent 60%),
   radial-gradient(90% 80% at 100% 100%,rgba(var(--ac2),.16),transparent 60%),var(--in-b);overflow:hidden}
 .sh3-u[data-theme="paper"] .su-art{background:radial-gradient(120% 90% at 20% 0%,rgba(var(--ac),.45),transparent 60%),

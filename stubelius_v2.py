@@ -36,10 +36,20 @@ _LORA_SD_CACHE = {}   # (path, mtime) -> state dict, so each file loads once per
 
 
 def _resolve_lora(name):
+    """A LoRA named in a workflow -> its file. A file moved to another folder under models/loras since the workflow was
+    saved (LoRAs sorted into subfolders) is found by its file name: the first one with that name, folders sorted."""
+    if not name or name == "none":
+        return None
     for candidate in (name, name.replace("\\", "/"), name.replace("/", "\\")):
         path = folder_paths.get_full_path("loras", candidate)
         if path:
             return path
+    file = os.path.basename(name.replace("\\", "/")).lower()
+    moved = sorted(n for n in folder_paths.get_filename_list("loras")
+                   if os.path.basename(n.replace("\\", "/")).lower() == file)
+    if moved:
+        log.info("[Stubelius] LoRA '%s' isn't there any more; using '%s' (the same file name)", name, moved[0])
+        return folder_paths.get_full_path("loras", moved[0])
     return None
 
 

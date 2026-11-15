@@ -24,6 +24,7 @@ import { characterTokens, fmtTokens } from "./stubelius_director_characters.js";
 import { openSettings, openFileMenu } from "./stubelius_director_settings.js";
 import {
   MAX_CHARACTER_SLOTS, REF_AV_SLOTS, MIN_CUT_SECONDS, MODE_REFERENCE_PREFIX, CARRY, CARRY_IDS, newSeed, OMNI, FLEX,
+  TURBOH3, MODE_INPUT, modeFits, fittingMode,
 } from "./stubelius_director_shared.js";
 
 const { app } = window.comfyAPI.app;
@@ -35,7 +36,7 @@ const OWN_WIDGETS = ["mode", "aspect_ratio", "duration_seconds", "chunk_duration
   "control_after_generate", "timeline_data"];
 const MODES = [   // display order; the Setup node's mode values (and a shorter name where it doesn't fit)
   ["PDMD", "fastest"], ["Speed", "drafts"], ["Hybrid", "fluid"], ["Quality", "finals"], [OMNI, "reference", "Omni"],
-  [FLEX, "sound", "Flex"],
+  [FLEX, "sound", "Flex"], [TURBOH3, "first/last", "TurboH3"],
 ];
 const SIZE_LABEL = { "native (no upscale)": "Native", "720p": "720p", "1080p": "1080p", "2K (1440p)": "2K", "4K (2160p)": "4K" };
 
@@ -257,7 +258,31 @@ export class DirectorWindow {
     this.w.mode.value = v;
     this.w.mode.callback?.(v);
     this.touchAll();                 // another model: every chunk's takes are from before
+    this.fitSetupMode(reference);
     this.refresh();
+  }
+
+  // The Setup mode follows the input: FastH3 Omni renders Reference only and TurboH3 First/Last Frame only. A mode that
+  // doesn't fit the new input is remembered for the old one (switching back brings it back) and becomes the one used on
+  // this input last time, else PDMD. The Setup window then shows only the modes for this input.
+  fitSetupMode(reference) {
+    const setup = this.setupNode();
+    const mw = setup && widget(setup, "mode");
+    if (mw) {
+      const mode = mw.value;
+      setup.properties = setup.properties || {};
+      const byInput = { ...(setup.properties.sh3_mode_by_input || {}) };
+      byInput[reference ? "fl" : "ref"] = mode;             // what the input we left used
+      setup.properties.sh3_mode_by_input = byInput;
+      if (!modeFits(mode, reference)) {
+        const next = fittingMode(setup, reference, mw.options?.values || []);
+        setWidget(setup, "mode", next);                     // its preset follows (stubelius_h3_setup.js)
+        window.dispatchEvent(new CustomEvent("stubelius-setup", { detail: { name: "mode" } }));   // the Output's sizes
+        toast(this.root, `${mode} renders ${MODE_INPUT[mode] === "ref" ? "Reference" : "First/Last Frame"} only: Setup `
+          + `switched to ${next}. Switch back and ${mode} comes back.`);
+      }
+    }
+    setup?._sh3?.render?.();
   }
 
   get durationSeconds() {
@@ -911,6 +936,7 @@ export class DirectorWindow {
       const cards = h("div.d-modes");
       for (const [name, tag, short] of MODES) {
         if (!presets[name] && name !== mode) continue;        // a pack from before this mode: not offered
+        if (!modeFits(name, this.isReference) && name !== mode) continue;    // renders the other input only
         const steps = name === mode ? widgetValue(setup, "steps") : presets[name]?.steps;
         cards.appendChild(h("button.d-mode", {
           type: "button", class: name === mode ? "on" : null, title: `${name} mode (Setup): click to switch`,
@@ -926,6 +952,13 @@ export class DirectorWindow {
     if (models) {
       chips.appendChild(h("button.sh3-chip", { type: "button", title: "Turbo LoRA (Setup)", onclick: () => goToStep(1) },
         h("div.sh3-ico.ac", icon("sparkles", 16)), h("div", label("Turbo"), h("div.d-chipval", this.turboLabel(setup, models)))));
+    }
+    // TurboH3 renders First/Last Frame only (an older workflow can hold it in Reference): say so before the render does
+    if (setup && widgetValue(setup, "mode") === TURBOH3 && this.isReference) {
+      chips.appendChild(h("button.sh3-chip.d-warnchip", { type: "button", onclick: () => this.setInputMode(false),
+        title: "TurboH3 mode renders in First/Last Frame mode only: it is the First/Last model, distilled. Click to switch "
+          + "the Director to First/Last Frame, or pick another mode in Setup for Reference." },
+      h("div.sh3-ico", icon("alert", 16)), h("div", label("TurboH3"), h("div.d-chipval", "First/Last only"))));
     }
     // FastH3 Omni renders Reference only: say so before the render does
     if (setup && widgetValue(setup, "mode") === OMNI && !this.isReference) {
@@ -960,6 +993,7 @@ export class DirectorWindow {
     if (mode === "PDMD") return "PDMD 4-step";
     if (mode === OMNI) return "built in";
     if (mode === FLEX) return "Pika 6-step";
+    if (mode === TURBOH3) return "built in";
     const strength = Number(widgetValue(setup, "speedup_lora_strength", 1));
     if (!strength) return "off";
     const name = String(widgetValue(models, "speedup_lora", "") || "");

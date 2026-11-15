@@ -8,8 +8,8 @@ Output  decides what comes OUT: final resolution (Speed up to 2K, the other mode
 Models  loads the H3 checkpoints, text encoder and VAEs, and applies the speedup LoRA, extra
         LoRAs and speed/memory patches. It returns a lazy bundle: a checkpoint is only loaded
         when the Director actually needs it (ref2va for Reference, fl2va for First/Last Frame
-        and for Extend; FastH3 Omni for every chunk in its own mode; in Pika H3 Flex mode a Reference
-        video stays on ref2va), so no model switch is needed in the graph.
+        and for Extend; FastH3 Omni for every chunk in its own mode; TurboH3 for every chunk in its own
+        mode; in Pika H3 Flex mode a Reference video stays on ref2va), so no model switch is needed in the graph.
 Finish  turns the Director's takes into the final video with the Output settings: picks the
         WINNER, runs the Quality polish, RIFE to the final FPS, and the upscale (RTX VSR,
         DLSS5 + Color Lock, Regenerate 2K, which renders the take again at 1440p in place of
@@ -41,7 +41,11 @@ log = logging.getLogger(__name__)
 
 OMNI = "FastH3 Omni"        # the mode, named after its checkpoint ("Reference (Omni)" is the Director's input mode)
 FLEX = "Pika H3 Flex"       # one LoRA per branch (ref2va, fl2va) on H3's own models
-MODES = ["Speed", "Hybrid", "Quality", "PDMD", OMNI, FLEX]
+TURBOH3 = "TurboH3"         # the First/Last model distilled to 4 steps, a checkpoint of its own
+MODES = ["Speed", "Hybrid", "Quality", "PDMD", OMNI, FLEX, TURBOH3]
+# The Director input a mode renders (the rest render both): FastH3 Omni is the Reference model, TurboH3 the First/Last
+# one. The Setup window shows only the modes that fit the Director's input (js/stubelius_director_shared.js MODE_INPUT).
+MODE_INPUT = {OMNI: "ref", TURBOH3: "fl"}
 # H3's own flow shift (ComfyUI's MiniMax H3 default): every mode starts on it, and picking a mode puts it back.
 # Some speed-up LoRAs are trained on another one: LightX2V's 768p turbo LoRAs on 6 / 3 (their model card).
 SHIFT_VIDEO, SHIFT_AUDIO = 12.0, 3.0
@@ -59,6 +63,10 @@ PRESETS = {
     # Pika H3 Flex (Pika, MiniMax-H3 community licence): H3 tuned and distilled to 6 steps, as a LoRA per branch. Its
     # templates' settings: LCM on the 6 steps of FLEX_SIGMAS (the scheduler isn't used), H3's 12 / 3, strength 1
     FLEX:      dict(steps=6,  sampler="lcm",           scheduler="simple", megapixels=0.98, speedup_strength=1.0, **_SHIFT),
+    # TurboH3 (thu-ml's TurboDiffusion, Kijai's int8 file): the whole First/Last model distilled to 4 steps
+    # (DMD, trained on first-frame 768p clips), no LoRA. Its maker's settings: simple 4 on H3's 12 / 3, cfg 1. Our A/B
+    # (11-15): the same ~81 s per step as the LoRAs at 15 s, clean, every word kept, both keyframes hit in First/Last
+    TURBOH3:   dict(steps=4,  sampler="euler",         scheduler="simple", megapixels=0.98, speedup_strength=0.0, **_SHIFT),
 }
 # Comfy's Flex templates (ManualSigmas): Pika's knots 1000/750/500/250/100/40/0 on shift 12. Every chunk samples on these
 FLEX_SIGMAS = [1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0]
@@ -73,6 +81,12 @@ OMNI_REF_ONLY = ("FastH3 Omni mode renders in Reference mode only: FastH3 Omni h
 FLEX_HELP = ("Pika H3 Flex mode needs its two LoRAs, one per branch: download pika_h3_flex_ref2va_v1_bf16.safetensors "
              "and pika_h3_flex_fl2va_v1_bf16.safetensors (1.96 GB each) from huggingface.co/Comfy-Org/MiniMax-H3 (the loras "
              "folder) into models/loras and pick them as flex_ref_lora and flex_fl_lora on the Models node.")
+TURBOH3_HELP = ("TurboH3 mode needs its checkpoint: download minimax_h3_fl2va_turboh3_i2va_pruned_int8_convrot.safetensors "
+                "(21 GB) from huggingface.co/Kijai/MiniMax-H3_comfy (the diffusion_models folder) into "
+                "models/diffusion_models and pick it as turboh3_model on the Models node.")
+TURBOH3_FL_ONLY = ("TurboH3 mode renders in First/Last Frame mode only: TurboH3 is the First/Last model distilled to 4 "
+                   "steps and has no Reference model. Switch the Director to First/Last Frame, or pick another mode for "
+                   "Reference.")
 FLEX_SWAPPED = ("Pika H3 Flex mode: flex_ref_lora and flex_fl_lora are swapped. The two files have the same keys and "
                 "different weights, so each has to go on its own branch: ref2va on flex_ref_lora, fl2va on flex_fl_lora.")
 # The template's "required settings": the checkpoint is trained with VSA (video sparse attention, 10 % of the video
@@ -104,11 +118,12 @@ SIZES_BY_MODE = {
     "PDMD":    ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the Quality size, no polish
     OMNI:      ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
     FLEX:      ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
+    TURBOH3:   ["native (no upscale)", "1080p", "2K (1440p)", "4K (2160p)"],       # the same
 }
 # a size the mode doesn't offer -> the one it gets instead (switching mode, or an older workflow)
 SIZE_FALLBACK = {"Speed": {"4K (2160p)": "2K (1440p)"}, "Quality": {"720p": "native (no upscale)"},
                  "PDMD": {"720p": "native (no upscale)"}, OMNI: {"720p": "native (no upscale)"},
-                 FLEX: {"720p": "native (no upscale)"}}
+                 FLEX: {"720p": "native (no upscale)"}, TURBOH3: {"720p": "native (no upscale)"}}
 
 
 def _cls(name):
@@ -168,7 +183,8 @@ class StubeliusH3Setup:
                     "(omni_model on the Models node) with its sparse attention, Reference mode only, every "
                     "chunk on it, no polish. Pika H3 Flex: the Quality size in 6 steps with its two LoRAs "
                     "(flex_ref_lora and flex_fl_lora on the Models node), no polish; its steps, sampler, "
-                    "strength and shift are fixed."}),
+                    "strength and shift are fixed. TurboH3: the Quality size in 4 steps on TurboH3 (turboh3_model on "
+                    "the Models node), First/Last Frame mode only, every chunk on it, no polish."}),
                 "seeds": ("INT", {"default": 1, "min": 1, "max": 4, "tooltip":
                     "How many full videos (with sound) to render. Pick one with WINNER on the Finish node "
                     "(WINNER 0 = hold after the seeds)."}),
@@ -234,7 +250,7 @@ class StubeliusH3Output:
                     "default": "1080p", "per_mode": SIZES_BY_MODE, "fallback": SIZE_FALLBACK, "tooltip":
                     "The sizes follow the Setup mode. Speed: native (≈480p) up to 2K, upscaled. Hybrid: native "
                     "(≈540p) up to 4K, upscaled. Quality: native (≈768p), or 1080p/2K/4K after its polish "
-                    "(and the upscaler for what the polish doesn't reach). PDMD, FastH3 Omni and Pika H3 Flex: native "
+                    "(and the upscaler for what the polish doesn't reach). PDMD, FastH3 Omni, Pika H3 Flex and TurboH3: native "
                     "(≈768p) up to 4K, upscaled. "
                     "The short side lands exactly on the number (portrait too). 4K holds about 100 MB of RAM "
                     "per frame, so keep 4K clips short, especially at high frame rates."}),
@@ -385,10 +401,12 @@ class H3Models:
 
     def model(self, kind):
         c = self.cfg
-        omni = c.get("omni_model")
+        omni, turbo = c.get("omni_model"), c.get("turboh3_model")
         if omni and kind != "ref":
             raise ValueError("[StubeliusH3Models] " + OMNI_REF_ONLY)
-        name = omni or (c["ref2va_model"] if kind == "ref" else c["fl2va_model"])
+        if turbo and kind == "ref":
+            raise ValueError("[StubeliusH3Models] " + TURBOH3_FL_ONLY)
+        name = omni or turbo or (c["ref2va_model"] if kind == "ref" else c["fl2va_model"])
         key = (kind, self.key)
         if key in _PATCHED:
             return _PATCHED[key]
@@ -479,8 +497,9 @@ class H3Models:
 
 def _prune(cfg):
     """Drop cached models this config no longer references, so RAM follows the current setup."""
-    # FastH3 Omni mode renders every chunk on its own checkpoint: the two others (~21 GB each) can go
-    names = {cfg["omni_model"]} if cfg.get("omni_model") else {cfg["ref2va_model"], cfg["fl2va_model"]}
+    # FastH3 Omni and TurboH3 modes render every chunk on their own checkpoint: the two others (~21 GB each) can go
+    own = cfg.get("omni_model") or cfg.get("turboh3_model")
+    names = {own} if own else {cfg["ref2va_model"], cfg["fl2va_model"]}
     for k in [k for k in _BASE if k not in names]:
         _BASE.pop(k)
     key = tuple(sorted(cfg.items()))
@@ -556,6 +575,11 @@ class StubeliusH3Models:
                 "extra_lora_3_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05}),
                 "extra_lora_4": (loras, {"default": "none", "tooltip": "Applies to every chunk, as global LoRAs 1 and 2."}),
                 "extra_lora_4_strength": ("FLOAT", {"default": 1.0, "min": -9.0, "max": 9.0, "step": 0.05}),
+                # TurboH3 (0.17.0): last again, for the same reason
+                "turboh3_model": (["none"] + unets, {"default": _first_match(["none"] + unets, "turboh3"),
+                    "tooltip": "Used for every chunk when the Setup mode is TurboH3: the First/Last model distilled to "
+                               "4 steps (huggingface.co/Kijai/MiniMax-H3_comfy, diffusion_models/"
+                               "minimax_h3_fl2va_turboh3_i2va_pruned_int8_convrot.safetensors). Only loaded in that mode."}),
             },
         }
 
@@ -564,7 +588,22 @@ class StubeliusH3Models:
     FUNCTION = "run"
     CATEGORY = "Stubelius"
 
-    def run(self, setup, pdmd_lora="none", omni_model="none", flex_ref_lora="none", flex_fl_lora="none", **cfg):
+    @classmethod
+    def VALIDATE_INPUTS(cls, speedup_lora="none", extra_lora_1="none", extra_lora_2="none", pdmd_lora="none",
+                        flex_ref_lora="none", flex_fl_lora="none", extra_lora_3="none", extra_lora_4="none"):
+        """The LoRA slots check their file here instead of against the dropdown: a LoRA moved to another folder under
+        models/loras since the workflow was saved is found by its file name (stubelius_v2._resolve_lora), so sorting
+        LoRAs into subfolders doesn't stop a saved workflow with "value not in list"."""
+        from .stubelius_v2 import _resolve_lora
+        for slot, name in (("speedup_lora", speedup_lora), ("extra_lora_1", extra_lora_1), ("extra_lora_2", extra_lora_2),
+                           ("pdmd_lora", pdmd_lora), ("flex_ref_lora", flex_ref_lora), ("flex_fl_lora", flex_fl_lora),
+                           ("extra_lora_3", extra_lora_3), ("extra_lora_4", extra_lora_4)):
+            if isinstance(name, str) and name and name != "none" and _resolve_lora(name) is None:
+                return f"{slot}: LoRA '{name}' isn't in models/loras (nor a file of that name in any folder there)"
+        return True
+
+    def run(self, setup, pdmd_lora="none", omni_model="none", flex_ref_lora="none", flex_fl_lora="none",
+            turboh3_model="none", **cfg):
         cfg["speedup_strength"] = float(setup["speedup_strength"])
         for i in EXTRA_ONLY_IN_USE:
             name, strength = cfg.pop(f"extra_lora_{i}", "none"), cfg.pop(f"extra_lora_{i}_strength", 1.0)
@@ -587,6 +626,11 @@ class StubeliusH3Models:
                 raise ValueError("[StubeliusH3Models] " + FLEX_SWAPPED)
             # they replace the turbo LoRA. Only this mode puts the keys in, as with Omni's
             cfg.update(flex_ref_lora=flex_ref_lora, flex_fl_lora=flex_fl_lora, speedup_lora="none")
+        elif setup.get("mode") == TURBOH3:
+            if not turboh3_model or turboh3_model == "none":
+                raise ValueError("[StubeliusH3Models] " + TURBOH3_HELP)
+            # distilled as a whole, like Omni: no speedup LoRA on top. Only this mode puts the key in
+            cfg["turboh3_model"], cfg["speedup_lora"] = turboh3_model, "none"
         _prune(cfg)
         return (H3Models(cfg),)
 

@@ -7,6 +7,25 @@ export const MODE_REFERENCE_PREFIX = "Reference (Omni)";
 export const OMNI = "FastH3 Omni";
 // The Setup mode on Pika's two LoRAs (stubelius_h3_pipeline.FLEX)
 export const FLEX = "Pika H3 Flex";
+// The Setup mode on TurboH3's checkpoint, the First/Last model distilled to 4 steps (stubelius_h3_pipeline.TURBOH3)
+export const TURBOH3 = "TurboH3";
+// The Director input a Setup mode renders (stubelius_h3_pipeline.MODE_INPUT): FastH3 Omni is the Reference model,
+// TurboH3 the First/Last one; every other mode renders both. The Setup window and the Director's mode buttons show only
+// the modes that fit the Director's input, and switching the input moves an unfitting mode to one that fits.
+export const MODE_INPUT = { [OMNI]: "ref", [TURBOH3]: "fl" };
+export function modeFits(mode, reference) {
+  const only = MODE_INPUT[mode];
+  return !only || only === (reference ? "ref" : "fl");
+}
+// What a mode that doesn't fit the new input becomes: the one used on that input last time (remembered on the Setup
+// node), else PDMD (the fastest that renders both), else the first that fits.
+export function fittingMode(setup, reference, values) {
+  const known = (m) => m && (!values?.length || values.includes(m)) && modeFits(m, reference);
+  const last = setup?.properties?.sh3_mode_by_input?.[reference ? "ref" : "fl"];
+  if (known(last)) return last;
+  if (known("PDMD")) return "PDMD";
+  return (values || []).find((m) => modeFits(m, reference)) || "Hybrid";
+}
 
 // How a chunk follows the one before it (muse_minimax_director.py CARRY_MODES): [id, name, icon, what it does]
 export const CARRY = [
