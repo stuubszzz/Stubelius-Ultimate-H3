@@ -19,7 +19,7 @@ Four windows, left to right: **1 Setup → 2 Director → 3 Seeds → 4 Output**
 - **Video / Audio shift** — where the sampler spends its steps (H3's own: 12 / 3, what every mode starts on). Use what your speed-up LoRA was trained on: LightX2V's 768p turbo LoRAs want **6 / 3**, and the window offers it when one is picked.
 - **Seeds to compare** — how many full videos, with sound, to render: 1–4. With every chunk picked (after **Pick by chunk** or a hunt) the first seed is your picks and the others try new seeds for the last chunk.
 - **Models** — the First/Last Frame and Reference checkpoints (safetensors or GGUF), FastH3 Omni's checkpoint and Pika H3 Flex's two LoRAs (their modes only), text encoder, video and audio VAE, live preview. Each card shows the precision, the size and whether the file is on disk.
-- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Two **global LoRAs** for every chunk (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
+- **Speed-ups and LoRAs** — the turbo LoRA for Speed and Hybrid: the known kinds first, **Choose another speed-up LoRA…** for any file, its **Strength** right under them. The **PDMD 4-step LoRA**. Up to four **global LoRAs** for every chunk, each with a filter box to find the file (slider LoRAs up to ±9). LoRAs for one chunk go in the Director.
 - **Video memory**, **Performance** (attention, low-VRAM switches, Spectrum and step cache) and **Look** (six themes, **Tidy the canvas**).
 - Changing anything here **re-renders**.
 
@@ -40,7 +40,7 @@ All the seeds side by side, in sync, with the Output's de-stutter, as the finish
 - The winner against the finished video: drag the divider, **Loupe** for the detail; the finish step by step.
 - **Final size** — Speed up to 2K, the other modes up to 4K. The short side lands exactly on the number, portrait too. 4K holds ≈100 MB of RAM per frame: keep 4K clips short.
 - **Frame rate** — a slider from 24 (untouched) up to 120; above 24 RIFE draws the frames in between, length and sync kept.
-- **Upscaler** — RTX VSR, DLSS5 + Color Lock, or Regenerate 2K (the take rendered again at 1440p in 3 steps by NVlabs' refiner LoRA, in place of the Quality polish). **De-stutter** — auto, on or off. **Quality polish** — Quality mode at 1080p and up.
+- **Upscaler** — RTX VSR, DLSS5 + Color Lock, Regenerate 2K (the take rendered again at 1440p in 3 steps by NVlabs' refiner LoRA, in place of the Quality polish), or RelayVSR 2x / 4x (the take upscaled as it is in seconds, faces kept, also in place of the polish; Detail under the card). **De-stutter** — auto, on or off. **Quality polish** — Quality mode at 1080p and up.
 - **Export** — the file (in output/UltimateH3: type another name to change it), its size and loudness, **Open folder**.
 - **Last frame** — the frame the finished video ends on: click it to see it big, **Save** it to start the next video from it.
 - Changing anything here **never re-renders** the seeds: only the finish runs again. **Render** in the Director always stops after the seeds: pick in Seeds, then **Finish the winner**.

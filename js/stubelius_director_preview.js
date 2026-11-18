@@ -81,18 +81,21 @@ export function buildPreview(d) {
   const st = {
     videos: null,         // the Seed Previews' last videos (else the ones saved on that node)
     hover: null,          // {base, seed, k}: a take shown instead of the video
+    saved: null,          // {url, t, playing}: the video as it was when a take was pointed at, to go back to
+    pendingT: null,       // the moment the video goes back to, until it has loaded enough to seek
     liveUrl: null,
   };
 
+  const mutedPref = () => !!d.node.properties?.sh3_muted;
   const drawMute = () => {
     clear(muteBtn);
-    muteBtn.appendChild(icon(video.muted ? "volumeOff" : "volume", 16));
+    muteBtn.appendChild(icon(mutedPref() ? "volumeOff" : "volume", 16));
   };
   muteBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    video.muted = !video.muted;
     d.node.properties = d.node.properties || {};
-    d.node.properties.sh3_muted = video.muted;
+    d.node.properties.sh3_muted = !mutedPref();
+    video.muted = mutedPref();
     drawMute();
   });
   fullBtn.addEventListener("click", (e) => {
@@ -258,7 +261,7 @@ export function buildPreview(d) {
   function render() {
     // while a render is queued or running, the old video doesn't play: the live frames, or a note, until the new one
     const busy = d.run.state === "queued" || d.run.state === "running";
-    if (busy) st.hover = null;
+    if (busy) { st.hover = null; st.saved = null; st.pendingT = null; }
     const src = busy ? null : source();
     const p = poster();
     d.ambient.style.backgroundImage = p ? `url("${p}")` : "none";
@@ -290,16 +293,43 @@ export function buildPreview(d) {
     if (src) {
       if (video.dataset.src !== src.url) {
         const wasPlaying = !video.paused;
+        // back from a take pointed at: the video as it was then (its moment, playing or paused), used once
+        const back = src.kind !== "take" ? st.saved : null;
+        if (src.kind !== "take") st.saved = null;
         video.dataset.src = src.url;
         video.src = src.url;
         video.poster = p || "";
-        if (wasPlaying || src.kind === "take") video.play().catch(() => {});
+        if (src.kind === "take") {
+          // a take pointed at in the inspector plays, heard only when the video was playing already: moving the
+          // mouse over the takes never starts a sound by itself
+          video.muted = mutedPref() || !st.saved?.playing;
+          video.play().catch(() => {});
+        } else {
+          video.muted = mutedPref();
+          if (back) {
+            if (back.url === src.url && back.t > 0) {
+              st.pendingT = back.t;          // the next take pointed at before this lands keeps it too
+              video.addEventListener("loadedmetadata", () => {
+                if (st.pendingT == null) return;
+                try { video.currentTime = Math.min(st.pendingT, Math.max(0, (video.duration || st.pendingT) - 0.05)); } catch (e) { /* not seekable */ }
+                st.pendingT = null;
+              }, { once: true });
+            }
+            if (back.playing) video.play().catch(() => {});
+          } else if (wasPlaying) {
+            video.play().catch(() => {});
+          }
+        }
       }
       video.style.display = "block";
       empty.style.display = "none";
       controls.style.display = "flex";
     } else {
-      video.removeAttribute("src");
+      st.saved = null;
+      st.pendingT = null;
+      // nothing to show: the video stops too (taking the src away alone leaves it playing, hidden, its controls gone)
+      if (!video.paused) video.pause();
+      if (video.dataset.src) { video.removeAttribute("src"); video.load(); }
       video.dataset.src = "";
       video.style.display = "none";
       controls.style.display = "none";
@@ -354,6 +384,11 @@ export function buildPreview(d) {
       render();
     },
     showTake(k, base, seed) {
+      // the first take pointed at keeps the video's moment and whether it played, for the way back
+      if (base && !st.hover && !st.saved) {
+        st.saved = { url: video.dataset.src || "", t: st.pendingT ?? (video.currentTime || 0), playing: !video.paused };
+        st.pendingT = null;
+      }
       st.hover = base ? { k, base, seed } : null;
       render();
     },

@@ -7,7 +7,7 @@
 import {
   h, icon, clear, button, iconButton, label, badge, menu, toast, windowFrame, markSteps, goToStep, glideTo, injectStyles,
   widget, widgetValue, setWidget, sourceOf, targetsOf, nodesOfType, fmtClock, fmtBytes, refreshThemes, windowOrCompact,
-  queueRun,
+  queueRun, stopMedia,
 } from "./stubelius_ui.js";
 import { viewUrl } from "./stubelius_director_media.js";
 import { splitViewer } from "./stubelius_viewer.js";
@@ -300,12 +300,15 @@ class SeedsWindow {
     }
     scrub.appendChild(knob);
     const all = () => (this.viewer ? [this.viewer.b] : (this.tiles || []).map((t) => t.video));
-    const drawPlay = () => { clear(play); play.appendChild(icon(this.master && !this.master.paused ? "pause" : "play", 22)); };
+    // what plays, the A/B split's A included: the button pauses when anything does (a seed that couldn't load, or
+    // one that kept playing while the first didn't, must never leave a sound the button can't stop)
+    const every = () => (this.viewer ? [this.viewer.a, this.viewer.b] : all());
+    const anyPlaying = () => every().some((x) => !x.paused);
+    const drawPlay = () => { clear(play); play.appendChild(icon(anyPlaying() ? "pause" : "play", 22)); };
     play.addEventListener("click", () => {
-      const m = this.master;
-      if (!m) return;
-      if (m.paused) all().forEach((x) => x.play().catch(() => {}));
-      else all().forEach((x) => x.pause());
+      if (!this.master) return;
+      if (anyPlaying()) every().forEach((x) => x.pause());
+      else all().forEach((x) => x.play().catch(() => {}));
       setTimeout(drawPlay, 30);
     });
     scrub.addEventListener("pointerdown", (e) => {
@@ -325,8 +328,10 @@ class SeedsWindow {
           if (m.currentTime >= e || m.currentTime < s - 0.05) all().forEach((x) => { x.currentTime = s; });
         }
       });
-      m.addEventListener("play", drawPlay);
-      m.addEventListener("pause", drawPlay);
+    }
+    for (const x of every()) {
+      x.addEventListener("play", drawPlay);
+      x.addEventListener("pause", drawPlay);
     }
     drawPlay();
     clear(time);
@@ -494,6 +499,7 @@ class SeedsWindow {
 
   dispose() {
     for (const off of this._off || []) off();
+    stopMedia(this.root);          // the seeds loop: they stop with the window
   }
 }
 
