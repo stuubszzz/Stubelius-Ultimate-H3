@@ -30,6 +30,10 @@ Once the pack is installed it also appears in ComfyUI under **Workflow → Brows
   scanlines. Pick it under Look in the Setup window.
 - **A LoRA moved to another folder is still found.** Sorting `models/loras` into subfolders no longer stops a saved
   workflow with "value not in list": the Models node's LoRA slots and the LoRAs per chunk find the file by its name.
+- **The Output window says why there is no comparison.** The divider needs two videos: the finished one and the
+  winning seed's preview. With one of them missing (not finished yet, no seed preview in the workflow, a file moved,
+  a format the browser can't play such as ProRes) a line on the video says which, and a finished video on its own
+  keeps its own label (it read "Render").
 
 ## What's new in 0.16.2
 
