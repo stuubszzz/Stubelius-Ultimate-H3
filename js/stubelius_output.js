@@ -43,6 +43,7 @@ class OutputWindow {
     this.loupe = false;
     this.recent = [];
     this.frames = {};                                     // prompt id -> its last frame (a Preview Image output)
+    this.unseen = {};                                     // a video's URL -> why it can't be shown ("gone" | "format")
     injectStyles();
     injectOutputStyles();
     const f = windowFrame({ title: "Ultimate H3 · Output", subtitle: "Upscale, smooth and export", step: 4, onStep: goToStep });
@@ -50,8 +51,14 @@ class OutputWindow {
     this.root.classList.add("sh3-o");
     this.status = h("div.sh3-status", h("span.sh3-dot"), h("span", "Ready"));
     this.head.append(h("div.sh3-spacer"), this.status,
-      iconButton("refresh", "Read the latest results again", () => this.loadRecent()));
+      iconButton("refresh", "Read the latest results again", () => this.readAgain()));
     this.viewer = splitViewer({ labelA: "Finished", labelB: "Render" });
+    // a video the browser can't show (the file is gone, or in a format it can't play: ProRes has sound and no picture)
+    // is noted, and the other one shows alone with a line that says why
+    for (const el of [this.viewer.a, this.viewer.b]) {
+      el.addEventListener("error", () => this.cantShow(el.dataset.src));
+      el.addEventListener("loadedmetadata", () => { if (!el.videoWidth) this.cantShow(el.dataset.src, "format"); });
+    }
     this.left = h("div.o-left");
     this.right = h("div.o-right");
     this.body.appendChild(h("div.o-main", this.left, this.right));
@@ -219,6 +226,41 @@ class OutputWindow {
     s.lastChild.textContent = text;
   }
 
+  // A video that failed to load: its file is gone (moved, deleted), or the browser can't play its format
+  async cantShow(url, why) {
+    if (!url || this.unseen[url]) return;
+    if (!why) {
+      let there = false;
+      try { there = (await fetch(url, { method: "HEAD" })).ok; } catch (e) { /* not there */ }
+      why = there ? "format" : "gone";
+    }
+    this.unseen[url] = why;
+    this.renderLeft();
+  }
+
+  // The refresh button: the latest results, and the two videos loaded again (a file may be back)
+  readAgain() {
+    this.unseen = {};
+    for (const el of [this.viewer.a, this.viewer.b]) delete el.dataset.src;
+    this.renderLeft();
+    this.loadRecent();
+  }
+
+  // Why there is one video and no comparison: [text, a warning?], or null with both videos (or none yet)
+  compareNote(fin, win, finUrl, winUrl) {
+    const finBad = fin && this.unseen[finUrl], winBad = win && this.unseen[winUrl];
+    if (finBad) {
+      const what = finBad === "gone" ? "The finished video isn't in the output folder any more (moved or deleted)"
+        : `This browser can't play the finished video (${String(fin.format || fin.filename || "").split(/[\/.]/).pop()}); the file itself is saved`;
+      return [win && !winBad ? `${what}, so the render shows alone.` : `${what}.`, true];
+    }
+    if (fin && winBad) return ["The finished video alone: the winning seed's preview file is gone. Render in the Director again to compare.", true];
+    if (fin && !win) return ["The finished video alone: this workflow has no preview of the winning seed to compare it with. Render in the Director and pick the winner again.", true];
+    if (win && winBad) return ["The winning seed's preview file is gone. Render in the Director again.", true];
+    if (win && !fin && !this.busy()) return ["The render. Finish it to see it against the finished video.", false];
+    return null;
+  }
+
   renderLeft() {
     const box = clear(this.left);
     const v = this.viewer;
@@ -226,20 +268,27 @@ class OutputWindow {
     const win = this.winnerVideo();
     const out = this.output();
     const st = this.stage?.stage === "done" ? this.stage : this.node.properties?.sh3_done;
-    v.setSources(fin ? viewUrl(fin) : null, win ? viewUrl(win) : (fin ? viewUrl(fin) : null));
+    const finUrl = fin ? viewUrl(fin) : null, winUrl = win ? viewUrl(win) : null;
+    const finOk = !!fin && !this.unseen[finUrl], winOk = !!win && !this.unseen[winUrl];
+    const both = finOk && winOk;       // the comparison needs the two of them
+    v.setSources(finOk ? finUrl : null, winOk ? winUrl : (finOk ? finUrl : null));
     const upName = String(widgetValue(out, "upscaler", "RTX VSR"));
     const upLabel = upscalerLabel(upName);
-    v.setLabels(st ? `${SIZES.find((x) => SHORT[x[0]] && SHORT[x[0]] === Math.min(st.width, st.height))?.[1] || `${st.width}×${st.height}`} · ${st.upscaler ? upLabel : "native"}` : "Finished",
-      win ? `Render · ${win.width}×${win.height}` : "Render");
-    v.setMode(fin && win ? this.mode : "single");
+    const finLabel = st ? `${SIZES.find((x) => SHORT[x[0]] && SHORT[x[0]] === Math.min(st.width, st.height))?.[1] || `${st.width}×${st.height}`} · ${st.upscaler ? upLabel : "native"}` : "Finished";
+    // the finished video on its own keeps its own label
+    v.setLabels(finLabel, winOk ? `Render · ${win.width}×${win.height}` : finOk ? finLabel : "Render");
+    v.setMode(both ? this.mode : "single");
     v.setLoupe(this.loupe);
     // the sound: the finished video's (A beside the render, else B on its own), the render's before a finish
     const muted = !!this.node.properties?.sh3_muted;
-    v.setSound(muted ? null : fin && win ? "a" : "b");
+    v.setSound(muted ? null : both ? "a" : "b");
     const stage = h("div.o-stage.sh3-panel", v.el);
-    if (!fin && !win) {
-      stage.appendChild(h("div.o-empty", h("div.o-empty-ic", icon("sparkles", 34)), h("div.sh3-h3", "The finished video shows up here"),
-        h("div.sh3-muted", "Pick a winner in Seeds, then Finish: the render and the finished picture side by side, a loupe for the detail.")));
+    const note = this.compareNote(fin, win, finUrl, winUrl);
+    if (!finOk && !winOk) {
+      stage.appendChild(h("div.o-empty", h("div.o-empty-ic", icon(note ? "alert" : "sparkles", 34)), h("div.sh3-h3", note ? "Nothing to show here" : "The finished video shows up here"),
+        h("div.sh3-muted", note ? note[0] : "Pick a winner in Seeds, then Finish: the render and the finished picture side by side, a loupe for the detail.")));
+    } else if (note) {
+      stage.appendChild(h("div.o-note.sh3-gchip", { class: note[1] ? "warn" : null }, icon(note[1] ? "alert" : "info", 16), h("span", note[0])));
     }
     const play = h("button.o-play", { type: "button", title: "Play / pause" });
     const time = h("div.d-time.o-time");
@@ -263,9 +312,10 @@ class OutputWindow {
     clear(time);
     time.append(fmtClock(0), h("span", " / 00:00.00"));
     const modeBtn = (name, ic, m) => {
-      const b = button(name, ic, "small o-mbtn", () => { this.mode = m; v.setMode(fin && win ? m : "single"); this.renderLeft(); });
+      const b = button(name, ic, "small o-mbtn", () => { this.mode = m; v.setMode(both ? m : "single"); this.renderLeft(); },
+        both ? "" : note?.[0] || "Needs the render and the finished video");
       if (this.mode === m) b.classList.add("on");
-      if (!fin || !win) b.classList.add("disabled");
+      if (!both) b.classList.add("disabled");
       return b;
     };
     const loupeBtn = button("Loupe", "zoom", "small o-mbtn", () => { this.loupe = !this.loupe; v.setLoupe(this.loupe); this.renderLeft(); },
@@ -742,6 +792,10 @@ function injectOutputStyles() {
 .sh3-o .o-empty{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;
   padding:40px;background:radial-gradient(600px 300px at 50% 40%,rgba(var(--ac),.10),transparent 70%)}
 .sh3-o .o-empty .sh3-muted{max-width:460px}
+.sh3-o .o-note{position:absolute;left:16px;top:16px;z-index:3;max-width:min(620px,calc(100% - 260px));align-items:flex-start;white-space:normal;line-height:1.35}
+.sh3-o .o-note svg{flex:none;margin-top:1px}
+.sh3-o .o-note.warn{border-color:rgba(var(--cut),.7)}
+.sh3-o .o-note.warn svg{color:rgb(var(--cut))}
 .sh3-o .o-empty-ic{width:76px;height:76px;border-radius:22px;display:grid;place-items:center;background:var(--glass3);color:var(--text2)}
 .sh3-o .o-controls{position:absolute;left:22px;right:22px;bottom:20px;display:flex;align-items:center;gap:14px;z-index:6;color:#f3f1f8}
 .sh3-o .o-play{width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.92);color:#120a12;display:grid;place-items:center;border:0;flex:none;
