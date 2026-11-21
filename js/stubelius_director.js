@@ -263,23 +263,36 @@ export class DirectorWindow {
   }
 
   // The Setup mode follows the input: FastH3 Omni renders Reference only and TurboH3 First/Last Frame only. A mode that
-  // doesn't fit the new input is remembered for the old one (switching back brings it back) and becomes the one used on
-  // this input last time, else PDMD. The Setup window then shows only the modes for this input.
+  // doesn't fit the new input is remembered for the old one and becomes the one used on this input last time, else
+  // PDMD. Switching back brings it back: also when the mode put in for it (PDMD) renders both inputs, as long as it
+  // wasn't changed in between. The Setup window then shows only the modes for this input.
   fitSetupMode(reference) {
     const setup = this.setupNode();
     const mw = setup && widget(setup, "mode");
     if (mw) {
       const mode = mw.value;
+      const to = reference ? "ref" : "fl", from = reference ? "fl" : "ref";
       setup.properties = setup.properties || {};
       const byInput = { ...(setup.properties.sh3_mode_by_input || {}) };
-      byInput[reference ? "fl" : "ref"] = mode;             // what the input we left used
+      const own = byInput[to];                              // what this input used last time
+      const auto = setup.properties.sh3_auto_mode;          // the mode put in when the input last changed, and where
+      byInput[from] = mode;                                 // what the input we left used
       setup.properties.sh3_mode_by_input = byInput;
-      if (!modeFits(mode, reference)) {
-        const next = fittingMode(setup, reference, mw.options?.values || []);
+      delete setup.properties.sh3_auto_mode;
+      const values = mw.options?.values || [];
+      const set = (next) => {
         setWidget(setup, "mode", next);                     // its preset follows (stubelius_h3_setup.js)
         window.dispatchEvent(new CustomEvent("stubelius-setup", { detail: { name: "mode" } }));   // the Output's sizes
+      };
+      if (!modeFits(mode, reference)) {
+        const next = fittingMode(setup, reference, values);
+        set(next);
+        setup.properties.sh3_auto_mode = { mode: next, on: to };
         toast(this.root, `${mode} renders ${MODE_INPUT[mode] === "ref" ? "Reference" : "First/Last Frame"} only: Setup `
           + `switched to ${next}. Switch back and ${mode} comes back.`);
+      } else if (auto && auto.on === from && auto.mode === mode && own && own !== mode && values.includes(own)
+                 && modeFits(own, reference)) {
+        set(own);                                           // the one put in for the other input, untouched: undo it
       }
     }
     setup?._sh3?.render?.();
