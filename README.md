@@ -141,7 +141,8 @@ Video walkthrough: [Ultimate H3 0.13 on YouTube](https://youtu.be/Xeyb0Y9bvho)
   pick back ([Takes](#takes-render-one-chunk-again)).
 - **How a chunk joins the one before it**: picture and sound, the picture with fresh sound, the last frame only, or a
   **new shot** ([Videos past one chunk](#videos-past-one-chunk)).
-- **Characters from many pictures** (RefMods): make one from 8 to 16 pictures and put it on every chunk
+- **Characters from many pictures** (RefMods): make one from 8 to 16 pictures and put it on every chunk —
+  and save outfits the same way, to swap the look without re-making the character
   ([Characters](#characters-from-many-pictures)).
 - **Output**: any frame rate from 24 to 120, the finished video against the winner in a split view with a loupe, and
   a Last frame card.
@@ -411,8 +412,8 @@ A character can be made from many pictures of it, saved once and given to every 
   `models/refmods` next to your `loras` folder), with a contact sheet of its pictures. **+ → Add a saved
   character** picks one from that folder; the library shows where it is.
 - Click a character for its **strength** (below 100% its pictures are blurred, not hidden: a looser
-  likeness), to switch it off, or to remove it. **Add it to chunk N's first shot** types its
-  description into that shot: H3's text side never sees the pictures, so say who it is in words too.
+  likeness), for **It is** (character, outfit, location or item — see below), to switch it off, or to
+  remove it. **Add it to chunk N's first shot** types its description into that shot.
 - **What it does.** The pictures ride H3's own reference path, the one a Reference (Omni) picture
   takes, in every chunk and in both modes. In First/Last Frame mode, where H3 otherwise has only the
   first and last frame and the words, a character holds the face that words alone don't. In Reference
@@ -462,12 +463,34 @@ design picture in the cast scored 0.74 and 0.74 (140 s), the character 0.76 and 
 0.74 (180 s): the second chunk continues from the first one's frames, and those carried the cast
 picture's face as well.
 
+### One character, outfits swapped
+
+A saved reference now keeps the pictures it was made from, next to the latent, and says what it is for:
+a **character**, an **outfit**, a **location** or an **item** (the chip's **It is** row, or the Make
+dialog's). That makes the swap worth having: save the character once, save each outfit once, and change
+the look by swapping one chip.
+
+- In Reference (Omni) mode the saved pictures take H3's own `<Picture N>` slots, so the shots can name
+  them. The Director writes the definitions itself: the character becomes one `<Subject N>` citing every
+  picture it was saved with, and with one person and one outfit in the lane it writes "wearing the outfit
+  in `<Picture N>`" into that subject's own definition. An outfit, location or item never becomes a second
+  person. With two people in the lane, say in the shot who wears what.
+- **It costs no second encode.** The latent saved with each picture is used as it is whenever the render
+  uses that picture at the size it was saved at — on every chunk, and on the next render too. A picture
+  H3 would resize (a reference larger in area than the video, or **max** reference sizing) is encoded once
+  and kept for the rest of the session.
+- In First/Last Frame mode, and on a Hybrid chunk, there are no picture slots: a saved reference holds the
+  likeness there exactly as before, and its role does nothing.
+- Files saved by an earlier version, and ones made by the other packs, have no pictures of their own: they keep
+  working on the latent path in both modes. Make one again to use it as an outfit.
+
 The files are [ComfyUI-MiniMaxH3Mod](https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod)'s RefMods:
-ones made with that pack load here, and the other way round. Tuned RefMods (made with shootthesound's
+ones made with that pack load here, and the other way round (the pictures and the role are extra keys it
+ignores). Tuned RefMods (made with shootthesound's
 Fizgig) are tuned for one checkpoint; use them in the mode they were made for. For scripts, in `timeline_data`:
 `refmods` (`[{"file": "<name in models/refmods, or a path>", "strength": 1.0}]`, `"enabled": false`
-leaves one out); the node **Stubelius H3 Make a Character (RefMod)** makes one from pictures in the
-input folder.
+leaves one out, `"role": "outfit"` overrides what the file was saved as); the node
+**Stubelius H3 Make a Character (RefMod)** makes one from pictures in the input folder, with a `role`.
 
 ## Voices: a recorded line, a voice sample, Lip Sync
 
