@@ -92,6 +92,7 @@ from . import stubelius_clip as _clip
 from . import stubelius_cues as _cues
 from . import stubelius_takes as _takes
 from . import stubelius_refmods as _refmods
+from . import stubelius_refs as _refs
 
 log = logging.getLogger(__name__)
 
@@ -629,7 +630,7 @@ def _load_ref_audio_clip(entry: dict, target_sr: int = 44100):
         return None
 
 
-def _build_character_subjects(tdata: dict, target_w: int, target_h: int, resize_method: str):
+def _build_character_subjects(tdata: dict, target_w: int, target_h: int, resize_method: str, saved=None):
     """Character reference images become both H3's ref_images (dense fill-order
     Picture tags, same rule as before — MiniMaxH3ReferenceToVideo assigns <Picture N>
     purely by iteration order over ref_images.values(), confirmed from its own
@@ -641,7 +642,13 @@ def _build_character_subjects(tdata: dict, target_w: int, target_h: int, resize_
     (its slot gets replaced by a continuity-anchor Picture on continuation chunks),
     so it isn't part of this function.
 
-    Returns (ref_images, subject_lines, retention_meta, subject_number_by_char_index).
+    Saved references (stubelius_refs.py) are appended after the typed characters: a saved character becomes one
+    <Subject N> citing every picture it was saved with, and a saved outfit, location or item becomes <Picture N>
+    entries the definitions name without turning them into another person — which is what lets one saved character
+    be given a different saved outfit without re-making anything. Their pictures go in at the size they were
+    encoded at (no _fit_image_to_target), so the latent saved with them still fits the slot and costs no encode.
+
+    Returns (ref_images, subject_lines, retention_meta, subject_number_by_char_index, saved_slots, saved_lines).
     subject_number_by_char_index maps a raw characters[] index -> its assigned
     <Subject N> number, used to resolve which subject a CUT's speakerCharIdx refers
     to for (Sx) speaker tagging. retention_meta is (subject_n, picture_n, retention)
@@ -679,7 +686,65 @@ def _build_character_subjects(tdata: dict, target_w: int, target_h: int, resize_
         retention = ch.get("retention") or "fully_preserved"
         retention_meta.append((subject_n, picture_n, retention))
 
-    return ref_images, subject_lines, retention_meta, subject_number_by_char_index
+    # Saved references with their pictures: <Picture N> slots after the typed characters, in the order
+    # stubelius_refs.Saved put them in (characters, then outfits, then locations and items).
+    saved_slots = []
+    saved_lines = {"definitions": [], "retention": []}
+    wearers = list(subject_number_by_char_index.values())
+    outfit_tags, saved_notes, dropped = [], [], list(getattr(saved, "dropped", []) or [])
+    for pack in (saved.named if saved is not None else []):
+        numbers = []
+        for index, picture in enumerate(pack["pictures"]):
+            if len(ref_images) >= MAX_CHARACTER_SLOTS:
+                dropped.append(f"{pack['name']} (no slot left)")
+                break
+            slot = f"ref_image_{len(ref_images)}"
+            ref_images[slot] = picture
+            saved_slots.append((slot, pack, index))
+            numbers.append(len(ref_images))
+        if not numbers:
+            continue
+        tags = " and ".join(f"`<Picture {n}>`" for n in numbers)
+        desc = pack["description"]
+        if pack["role"] == "character":
+            subject_n = len(subject_lines) + 1
+            who = desc or "the person shown there"
+            subject_lines.append(f"<Subject {subject_n}> is {who} (from {tags}).")
+            if len(numbers) > 1:
+                # said after the outfit clause below, so the sentence stays about the person
+                saved_notes.append((subject_n, f"{tags} are the same person."))
+            retention_meta.append((subject_n, numbers[0], "fully_preserved"))
+            wearers.append(subject_n)
+        elif pack["role"] == "outfit":
+            outfit_tags.append(tags)
+            saved_lines["definitions"].append(
+                f"{tags} shows an outfit{f' ({desc})' if desc else ''} — clothing only, not another person.")
+            saved_lines["retention"].append(
+                f"{tags} (outfit): fully_preserved - the garments, their cut, colour and details.")
+        elif pack["role"] == "location":
+            saved_lines["definitions"].append(
+                f"{tags} shows the location{f' ({desc})' if desc else ''} this shot takes place in — "
+                "its setting and architecture, not another person.")
+            saved_lines["retention"].append(f"{tags} (location): fully_preserved - the setting shown there.")
+        else:
+            saved_lines["definitions"].append(
+                f"{tags} shows an object{f' ({desc})' if desc else ''} — keep its shape, materials and details.")
+            saved_lines["retention"].append(f"{tags} (item): fully_preserved - the object shown there.")
+    # One person and one outfit is the case worth resolving ourselves: say who wears it, in that subject's own
+    # definition. With nobody or several to choose from, the outfit stays a reference the shots can name.
+    if outfit_tags and len(wearers) == 1 and subject_lines:
+        worn = " and ".join(outfit_tags)
+        line = subject_lines[wearers[0] - 1].rstrip()
+        subject_lines[wearers[0] - 1] = f"{line[:-1] if line.endswith('.') else line}, wearing the outfit in {worn}."
+    elif outfit_tags and len(wearers) != 1:
+        log.info("[StubeliusRefs] %d outfit reference(s) and %d possible wearer(s): the shots have to say who "
+                 "wears what", len(outfit_tags), len(wearers))
+    for subject_n, note in saved_notes:
+        subject_lines[subject_n - 1] = subject_lines[subject_n - 1].rstrip() + " " + note
+    if dropped:
+        log.warning("[StubeliusRefs] H3 takes %d reference pictures; left out: %s",
+                    MAX_CHARACTER_SLOTS, ", ".join(dropped))
+    return ref_images, subject_lines, retention_meta, subject_number_by_char_index, saved_slots, saved_lines
 
 
 def _build_keyframe_alignment_line(has_first: bool, has_last: bool, last_shot_num: int, chunk_duration: float,
@@ -1229,8 +1294,13 @@ class MuseMinimaxDirector:
         if source_clip is not None:
             width, height = _clip.render_size(source_clip, _coerce_locale_float(megapixels, 0.98), multiple)
             log.info("[StubeliusClip] rendering at the clip's shape: %dx%d", width, height)
-        char_ref_images, subject_lines, subject_retention_meta, subject_number_by_char_index = _build_character_subjects(
-            tdata, width, height, resize_method)
+        # Stubelius: the saved references on the timeline (stubelius_refmods.py). The ones saved with their own
+        # pictures take <Picture N> slots below, so the shots can name them — a saved outfit only works that way;
+        # the ones without pictures keep riding the latent path on every chunk, exactly as before.
+        saved_refs = _refs.Saved(tdata.get("refmods") if isinstance(tdata.get("refmods"), list) else [],
+                                 named=(mode == MODE_REFERENCE))
+        (char_ref_images, subject_lines, subject_retention_meta, subject_number_by_char_index,
+         saved_slots, saved_lines) = _build_character_subjects(tdata, width, height, resize_method, saved_refs)
         subject_count = len(subject_lines)
         dialogue_language = (tdata.get("dialogue_language") or "English").strip() or "English"
         background = tdata.get("background")
@@ -1292,7 +1362,12 @@ class MuseMinimaxDirector:
         # Passing them through lets MuseMinimaxRefine anchor identity during its polish
         # pass in FL mode too (without this, FL-mode refines ran text-only and likeness
         # drifted freely). Purely a passthrough: FL conditioning itself is unchanged.
-        ref_images_used_list.extend(char_ref_images.values())
+        # This output is one IMAGE batch, so it needs one shape: a saved reference keeps its own size in the
+        # conditioning (that is what its saved latent fits) and is fitted only for showing here.
+        ref_images_used_list.extend(
+            picture if (int(picture.shape[1]), int(picture.shape[2])) == (height, width)
+            else _fit_image_to_target(picture, width, height, resize_method)
+            for picture in char_ref_images.values())
         if mode == MODE_REFERENCE:
             if background and (background.get("file") or background.get("image_b64")):
                 bg_tensor = _load_character_image(background)
@@ -1307,10 +1382,12 @@ class MuseMinimaxDirector:
         # chunk hunted, and the takes kept (on disk with a takes_id, in memory for what the candidates share)
         candidate_count = 1 + sum([bool(candidate_2), bool(candidate_3), bool(candidate_4)])
         plan = _takes.Plan(tdata, num_chunks)
-        # Stubelius: saved H3 references (RefMods) on every chunk (stubelius_refmods.py)
-        refmod_entries = tdata.get("refmods") if isinstance(tdata.get("refmods"), list) else []
-        refmod_blocks = _refmods.blocks(refmod_entries)
-        refmod_stamp = _refmods.stamp(refmod_entries) if refmod_blocks else None
+        # Stubelius: saved H3 references (RefMods) on every chunk (stubelius_refmods.py). The ones that took a
+        # <Picture N> slot above are already in the conditioning's own references, so only the rest go here.
+        refmod_blocks = _refmods.blocks(saved_refs.latent_only)
+        refmod_stamp = ((_refmods.stamp(saved_refs.latent_only) if refmod_blocks else [])
+                        + saved_refs.stamp()) or None
+        named_latent_blocks = None      # made once, the first time a hybrid chunk needs them
         store = _takes.Store(plan, getattr(self, "_takes_models", None), candidate_count)
         self._takes_plan, self._takes_seeds = plan, [None] * 4
         self._takes_times = [None] * 4      # seconds each candidate took (the Seeds window shows them)
@@ -1709,7 +1786,9 @@ class MuseMinimaxDirector:
                     # MiniMax's own six-section reference-mode prompt format — hybrid
                     # chunks and First/Last Frame mode route through MiniMaxH3ImageToVideo,
                     # which has no reference-tag system for the format to apply to.
-                    chunk_subject_lines = list(subject_lines)
+                    # Stubelius: a saved outfit, location or item is named by its own definition line rather than
+                    # becoming a person of its own (stubelius_refs.py)
+                    chunk_subject_lines = list(subject_lines) + list(saved_lines["definitions"])
                     chunk_subject_tags = [f"<Subject {i + 1}>" for i in range(subject_count)]
 
                     # Which shot each <Subject N> tag actually appears in, for this chunk —
@@ -1722,7 +1801,7 @@ class MuseMinimaxDirector:
                         f"<Subject {subject_n}> {_presence_phrase(subject_n, subject_shot_appearances, total_shots)}: "
                         f"{retention} - matches `<Picture {picture_n}>`."
                         for subject_n, picture_n, retention in subject_retention_meta
-                    ]
+                    ] + list(saved_lines["retention"])
                     # Audio entries are tracked in their own lists and appended after every
                     # visual Subject/Picture/Video line at assembly time — per MiniMax's own
                     # worked example, subject_definitions and retention_analysis always list
@@ -2156,6 +2235,20 @@ class MuseMinimaxDirector:
                             first_frame=chunk_first, last_frame=chunk_last,
                         )
                         chunk_shifted_model = shifted_model_fl2va
+                    elif mode == MODE_REFERENCE and saved_refs.any_named():
+                        # Stubelius: the same references, with the saved pictures' own latents used where they fit
+                        # instead of encoding them again on every chunk (stubelius_refs.py)
+                        out = _refs.conditioning(
+                            _execute_comfy_node, _unpack_node_result,
+                            clip=clip, vae=vae, audio_vae=audio_vae, prompt=chunk_prompt,
+                            width=width, height=height, length=chunk_length, ref_image_size=ref_image_size,
+                            ref_images=chunk_ref_images if chunk_ref_images else None,
+                            ref_videos=chunk_ref_videos if chunk_ref_videos else None,
+                            ref_video_audios=chunk_ref_video_audios if chunk_ref_video_audios else None,
+                            ref_audios=chunk_ref_audios if chunk_ref_audios else None,
+                            ref_latents=saved_refs.slot_latents(saved_slots),
+                        )
+                        chunk_shifted_model = shifted_model
                     elif mode == MODE_REFERENCE:
                         out = _execute_comfy_node(
                             MiniMaxH3ReferenceToVideo,
@@ -2192,6 +2285,12 @@ class MuseMinimaxDirector:
                     positive, latent = _unpack_node_result(out)[:2]
                     if refmod_blocks:
                         positive = _refmods.attach(positive, refmod_blocks)
+                    if use_hybrid_chunk and saved_refs.any_named():
+                        # a hybrid chunk has no reference tags for the picture slots, so the saved references ride
+                        # the latent path on it, as they do in First/Last Frame mode (stubelius_refs.py)
+                        if named_latent_blocks is None:
+                            named_latent_blocks = saved_refs.latent_blocks()
+                        positive = _refmods.attach(positive, named_latent_blocks)
                     if chunk_clips or chunk_sounds:
                         # Stubelius: the sounds and clips on the timeline, pinned at their frames (stubelius_cues.py)
                         positive = _cues.pin(_execute_comfy_node, _unpack_node_result, positive, latent, vae, audio_vae,

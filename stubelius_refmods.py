@@ -14,6 +14,14 @@ pack's maths), so a weaker reference stays a plausible one. Each picture costs a
 and 500 at 0.5 MP, in every sampling step.
 
 timeline_data["refmods"] = [{"file": "<name in a refmods folder, or a path>", "strength": 1.0}, ...]
+
+Saved with its pictures: a character made here also keeps the pictures it was encoded from, as
+`pixels` [T, H, W, 3] uint8 next to the latent. The pictures let a saved character take a real `<Picture N>` slot, so
+H3's text encoder sees it like a picture dropped into the Director — the shots can then name it, which is what a
+saved outfit needs ("wearing the outfit in `<Picture 3>`"), and the identity path our A/B measured best (a still and
+a saved character together) needs no second copy of the picture. `role` says what the pictures are for: a character
+(one `<Subject N>`), an outfit, a location or an item. Files from the other packs have no pictures and no role: they
+keep working exactly as before, on the latent path alone.
 """
 import json
 import logging
@@ -32,6 +40,10 @@ log = logging.getLogger(__name__)
 FOLDER = "refmods"
 META_KEY = "refmod_meta"
 MAX_PICTURES = 24
+# What a saved reference's pictures are for. A character is one person (one <Subject N> citing its pictures); an
+# outfit, a location and an item are cited by the shots instead of becoming a person of their own.
+ROLES = ("character", "outfit", "location", "item")
+DEFAULT_ROLE = "character"
 
 
 def _register():
@@ -129,6 +141,32 @@ def read(path):
     return out
 
 
+def role_of(meta):
+    """A saved reference's role, for files that have one; anything else is a character."""
+    if not isinstance(meta, dict):
+        return DEFAULT_ROLE
+    role = str((meta.get("stubelius") or {}).get("role") or meta.get("role") or "").strip().lower()
+    return role if role in ROLES else DEFAULT_ROLE
+
+
+def pictures(path):
+    """The pictures a file was encoded from, as [1, H, W, 3] floats 0..1 — empty for a file saved without them
+    (every file from the other packs, and ours from before this)."""
+    from safetensors import safe_open
+    try:
+        with safe_open(path, framework="pt", device="cpu") as f:
+            if "pixels" not in set(f.keys()):
+                return []
+            pix = f.get_tensor("pixels")
+    except Exception as err:
+        log.warning("[StubeliusRefMods] '%s' pictures couldn't be read (%s)", path, err)
+        return []
+    if pix.dim() != 4 or pix.shape[-1] != 3 or pix.shape[0] < 1:
+        return []
+    pix = pix.float().div_(255.0).clamp_(0, 1)
+    return [pix[i:i + 1] for i in range(pix.shape[0])]
+
+
 def _tokens(meta):
     t, h, w = int(meta.get("latent_t") or 1), int(meta.get("latent_h") or 0), int(meta.get("latent_w") or 0)
     return t * (h // 2) * (w // 2)
@@ -167,6 +205,9 @@ def listing():
                     "concept": str(first.get("concept_type") or ""), "mode": str(first.get("mode") or ""),
                     "tuned": "tuned" in json.dumps(meta).lower() or int(first.get("optimize_steps") or 0) > 0,
                     "maker": str(meta.get("stubelius") and "Stubelius" or ""),
+                    "role": role_of(meta),
+                    # with its pictures: it can take a <Picture N> slot the shots can name (stubelius_refs.py)
+                    "has_pictures": bool((meta.get("stubelius") or {}).get("pictures_stored")),
                     "thumb": os.path.isfile(path[:-len(".safetensors")] + ".jpg"),
                     "bytes": os.path.getsize(path), "mtime": int(os.path.getmtime(path)),
                 })
@@ -277,19 +318,25 @@ def _safe_name(name):
     return "/".join(parts) or "character"
 
 
-def make(vae, images, name, megapixels=0.5, description="", concept="identity", root=None):
+def make(vae, images, name, megapixels=0.5, description="", concept="identity", root=None, role=DEFAULT_ROLE):
     """Encode the pictures (a list of [1,H,W,C] 0..1) as one RefMod; write it (+ a contact sheet <name>.jpg) into
-    the refmods folder. Returns (path, info)."""
+    the refmods folder. The pictures themselves are saved next to the latent, so the shots can name them
+    (stubelius_refs.py). Returns (path, info)."""
     images = [im for im in images if im is not None][:MAX_PICTURES]
     if not images:
         raise ValueError("Make a character: no pictures")
+    role = role if role in ROLES else DEFAULT_ROLE
     w, h = canvas(images[0].shape[2], images[0].shape[1], megapixels)
-    latents = []
+    latents, covered = [], []
     for im in images:
+        fitted = _cover(im[:1, :, :, :3], w, h)
         with torch.no_grad():
-            z = vae.encode(_cover(im[:1, :, :, :3], w, h))
+            z = vae.encode(fitted)
         latents.append(z.float().cpu())
+        covered.append(fitted.float().cpu())
     latent = torch.cat(latents, dim=2).to(torch.float16).contiguous()        # [1, 24, T, h/16, w/16]
+    # the same pictures the latent was made from, 8 bits: what H3's text encoder is given later
+    pixels = torch.cat(covered, dim=0).mul(255.0).round().clamp(0, 255).to(torch.uint8).contiguous()
     t, lh, lw = latent.shape[2], latent.shape[3], latent.shape[4]
     name = _safe_name(name)
     path = os.path.join(root or save_root(), *name.split("/")) + ".safetensors"
@@ -298,20 +345,21 @@ def make(vae, images, name, megapixels=0.5, description="", concept="identity", 
             "latent_t": t, "mode": "encode", "source": "image", "source_shape": f"{t}x{lh}x{lw}", "pool": "",
             "optimize_steps": 0, "tags": [], "description": str(description or ""), "concept_type": concept or "identity",
             "_format_version": 4, "sample_rate": 32000,
-            "stubelius": {"made": int(time.time()), "megapixels": float(megapixels), "pictures": t, "size": [w, h]}}
+            "stubelius": {"made": int(time.time()), "megapixels": float(megapixels), "pictures": t, "size": [w, h],
+                          "role": role, "pictures_stored": True}}
     from safetensors.torch import save_file
     fd, tmp = tempfile.mkstemp(prefix=".refmod-", suffix=".tmp", dir=os.path.dirname(path))
     os.close(fd)
     try:
-        save_file({"latent": latent}, tmp, metadata={META_KEY: json.dumps(meta)})
+        save_file({"latent": latent, "pixels": pixels}, tmp, metadata={META_KEY: json.dumps(meta)})
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
     _contact_sheet(images, path[:-len(".safetensors")] + ".jpg")
     info = {"name": name, "pictures": t, "tokens": t * (lh // 2) * (lw // 2), "width": w, "height": h,
-            "bytes": os.path.getsize(path)}
-    log.info("[StubeliusRefMods] made %s: %d pictures at %dx%d, %d tokens", path, t, w, h, info["tokens"])
+            "role": role, "bytes": os.path.getsize(path)}
+    log.info("[StubeliusRefMods] made %s (%s): %d pictures at %dx%d, %d tokens", path, role, t, w, h, info["tokens"])
     return path, info
 
 
@@ -340,7 +388,11 @@ class StubeliusH3RefModMaker:
             "megapixels": ("FLOAT", {"default": 0.5, "min": 0.25, "max": 2.0, "step": 0.05, "tooltip":
                                      "Size each picture is encoded at. 0.5 MP: ~500 tokens a picture; 1 MP: ~1,000."}),
             "description": ("STRING", {"default": "", "multiline": True}),
-        }, "optional": {"images": ("IMAGE",)}}
+        }, "optional": {"images": ("IMAGE",),
+                        "role": (list(ROLES), {"default": DEFAULT_ROLE, "tooltip":
+                                 "What the pictures are. A character is one person the shots can act; an outfit, a "
+                                 "location or an item is something the shots name instead — save a character once "
+                                 "and an outfit for each look, then switch outfits in the Characters lane."})}}
 
     RETURN_TYPES = ()
     FUNCTION = "run"
@@ -351,7 +403,7 @@ class StubeliusH3RefModMaker:
     def IS_CHANGED(cls, **kwargs):
         return float("nan")         # always make it (the file may have been moved, deleted or replaced since)
 
-    def run(self, video_vae, pictures, name, megapixels, description, images=None):
+    def run(self, video_vae, pictures, name, megapixels, description, images=None, role=DEFAULT_ROLE):
         import comfy.sd
         import comfy.utils
         from PIL import Image, ImageOps
@@ -373,7 +425,7 @@ class StubeliusH3RefModMaker:
         sd, metadata = comfy.utils.load_torch_file(folder_paths.get_full_path_or_raise("vae", video_vae), return_metadata=True)
         vae = comfy.sd.VAE(sd=sd, metadata=metadata)
         vae.throw_exception_if_invalid()
-        path, info = make(vae, pics, name, megapixels, description)
+        path, info = make(vae, pics, name, megapixels, description, role=role)
         return {"ui": {"stubelius_refmod": [info]}}
 
 

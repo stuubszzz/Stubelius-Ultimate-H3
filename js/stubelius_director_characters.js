@@ -79,6 +79,16 @@ export function characterHead(d) {
   return h("div.t-headin", h("div.t-trk", h("span.sh3-ico.ac", icon("users", 16)), "Characters"), add);
 }
 
+// What a saved reference is for. Only files saved with their own pictures can be an outfit, a location or an item:
+// H3 has to see the picture for the shots to name it, and an older file reaches it as a latent alone.
+const ROLES = [["character", "Character"], ["outfit", "Outfit"], ["location", "Location"], ["item", "Item"]];
+const ROLE_NAME = Object.fromEntries(ROLES);
+
+export function roleOf(entry, item) {
+  const role = String(entry?.role || item?.role || "character").toLowerCase();
+  return ROLE_NAME[role] ? role : "character";
+}
+
 export function buildCharacterLane(d, lane) {
   injectStyles();
   lane.classList.add("t-chars");
@@ -86,7 +96,7 @@ export function buildCharacterLane(d, lane) {
   if (list.length && !d.refmodLib && !d.refmodFetch) fetchLibrary(d).then(() => d.refresh(["tl", "foot"]));
   if (!list.length) {
     lane.appendChild(h("div.t-hint", d.isReference
-      ? "A character made from many pictures adds to the cast below, in every chunk: + to add one or make one"
+      ? "A character made from many pictures adds to the cast below, in every chunk — and an outfit saved the same way can be swapped for another: + to add one or make one"
       : "A character made from many pictures holds the face across every chunk: + to add one or make one"));
     return;
   }
@@ -101,6 +111,7 @@ export function buildCharacterLane(d, lane) {
     h("div.t-char-t", h("b", shortName(entry.file)),
       h("small", item ? `${item.pictures} picture${item.pictures === 1 ? "" : "s"} · ${fmtTokens(item.tokens)}`
         : d.refmodLib ? "not in the refmods folder" : "…")),
+    roleOf(entry, item) !== "character" ? h("span.t-char-r", ROLE_NAME[roleOf(entry, item)]) : null,
     Number(entry.strength ?? 1) < 1 ? h("span.t-char-s", `${Math.round(Number(entry.strength) * 100)}%`) : null);
     lane.appendChild(chip);
   });
@@ -119,6 +130,21 @@ function characterPopover(d, i, anchor) {
     h("div.t-charpop-row", label("Strength"), slider({ min: 0, max: 1, step: 0.05, value: Number(entry.strength ?? 1),
       onInput: (v) => { val.textContent = `${Math.round(v * 100)}%`; }, onChange: (v) => d.setRefmod(i, { strength: v }) }), val),
     h("div.sh3-muted.t-charpop-note", "Below 100% the pictures are softened (blurred), not hidden: a looser likeness."));
+  // What it is for: only a file saved with its own pictures can be anything but a character, because the shots
+  // can only name a picture H3 was given (an outfit has to be nameable to be worn).
+  if (item) {
+    box.append(item.has_pictures
+      ? h("div.t-charpop-row", label("It is"), seg(ROLES, roleOf(entry, item), (v) => {
+        d.setRefmod(i, { role: v });
+        d.refresh(["tl", "foot"]);
+      }))
+      : h("div.sh3-muted.t-charpop-note", "Saved by an earlier version, without its pictures: it holds the likeness on "
+        + "every chunk, but the shots can't name it, so it can't be an outfit. Make it again to use it as one."));
+    if (item.has_pictures && !d.isReference) {
+      box.append(h("div.sh3-muted.t-charpop-note",
+        "First/Last Frame mode has no picture slots: here it holds the likeness, and the role counts in Reference mode."));
+    }
+  }
   const desc = item?.description || "";
   if (desc) {
     const k = d.sel;
@@ -163,7 +189,8 @@ export async function openLibrary(d, anchor) {
       list.appendChild(h("button.t-lib-item", { type: "button", class: used ? "used" : null, disabled: used || null,
         onclick: () => { closeMenus(); d.addRefmod(x.name); } },
       x.thumb ? h("img", { src: thumbUrl(x.name, x), draggable: false }) : h("span.t-char-ic", icon("user", 20)),
-      h("div.t-lib-t", h("b", x.name), h("small", `${x.pictures} pictures · ${fmtTokens(x.tokens)}${x.tuned ? " · tuned" : ""}${used ? " · in this video" : ""}`),
+      h("div.t-lib-t", h("b", x.name), h("small", `${roleOf(null, x) !== "character" ? ROLE_NAME[roleOf(null, x)] + " · " : ""}`
+        + `${x.pictures} pictures · ${fmtTokens(x.tokens)}${x.tuned ? " · tuned" : ""}${used ? " · in this video" : ""}`),
         x.description ? h("small.t-lib-d", x.description) : null)));
     }
   };
@@ -174,7 +201,7 @@ export async function openLibrary(d, anchor) {
     closeMenus();
     openLibrary(d, anchor);
   })), list, h("div.t-lib-foot", h("span.sh3-muted", lib.folder ? `Folder: ${lib.folder}` : ""),
-    h("div.sh3-spacer"), button("Make a character…", "sparkles", "small", () => { closeMenus(); openMaker(d); }))), 460);
+    h("div.sh3-spacer"), button("Make a reference…", "sparkles", "small", () => { closeMenus(); openMaker(d); }))), 460);
   setTimeout(() => search.focus(), 30);
 }
 
@@ -186,8 +213,9 @@ export function openMaker(d) {
   d.root.querySelector(".t-maker-wrap")?.remove();
   const files = [];
   let mp = 0.5;
+  let role = "character";
   const name = h("input.sh3-input", { type: "text", placeholder: "e.g. mara, or heroes/mara" });
-  const desc = h("textarea.sh3-text.t-maker-desc", { rows: 2, placeholder: "How the character looks, in words (H3's text side can't see the pictures)" });
+  const desc = h("textarea.sh3-text.t-maker-desc", { rows: 2, placeholder: "How it looks, in words (the shots are what H3 reads)" });
   const thumbs = h("div.t-maker-thumbs");
   const est = h("div.sh3-muted.t-maker-est");
   const status = h("div.t-maker-status");
@@ -196,7 +224,10 @@ export function openMaker(d) {
     const per = Math.round(mp * 1e6 / 1024);
     est.textContent = files.length
       ? `${files.length} picture${files.length === 1 ? "" : "s"} × ~${per} = ~${fmtTokens(files.length * per)} in every sampling step`
-      : "8 to 16 pictures of one character: face and shoulders, different angles and light, nothing else in focus.";
+      : role === "character" ? "8 to 16 pictures of one character: face and shoulders, different angles and light, nothing else in focus."
+        : role === "outfit" ? "One to three pictures of the clothing: the whole garment, plainly lit, worn or flat."
+          : role === "location" ? "One to three pictures of the place: wide enough to show the space, no people in focus."
+            : "One to three pictures of the object, plainly lit against a simple background.";
     const taken = !!libItem(d, safeName(name.value));
     status.className = taken ? "t-maker-status warn" : "t-maker-status";
     status.textContent = taken ? `A character called ${safeName(name.value)} is saved already: this replaces it` : "";
@@ -223,9 +254,11 @@ export function openMaker(d) {
   name.addEventListener("input", updateEst);
   const close = () => wrap.remove();
   const panel = h("div.t-maker",
-    h("div.t-maker-h", h("div.sh3-h2", "Make a character"), h("div.sh3-spacer"), iconButton("x", "Close", close)),
+    h("div.t-maker-h", h("div.sh3-h2", "Make a reference"), h("div.sh3-spacer"), iconButton("x", "Close", close)),
     drop, thumbs, est,
     h("div.t-maker-row", label("Name"), name),
+    h("div.t-maker-row", label("It is"), seg(ROLES, role, (v) => { role = v; updateEst(); }),
+      h("span.sh3-muted.t-maker-hint", "a character acts; an outfit, a place or a thing is named by the shots")),
     h("div.t-maker-row", label("Size"), seg([[0.5, "0.5 MP · lighter"], [1.0, "1 MP · more detail"]], mp, (v) => { mp = v; updateEst(); })),
     h("div.t-maker-row", label("In words"), desc),
     h("div.t-maker-foot", status, h("div.sh3-spacer"), button("Cancel", null, "ghost", close), make));
@@ -245,7 +278,8 @@ export function openMaker(d) {
       const vae = widgetValue(d.modelsNode(), "video_vae");
       if (!vae) throw new Error("no Models node with a video VAE");
       const prompt = { [MAKER]: { class_type: "StubeliusH3RefModMaker", inputs: {
-        video_vae: vae, pictures: JSON.stringify(uploaded), name: name.value.trim(), megapixels: mp, description: desc.value.trim() } } };
+        video_vae: vae, pictures: JSON.stringify(uploaded), name: name.value.trim(), megapixels: mp,
+        description: desc.value.trim(), role } } };
       const q = await (await api.fetchApi("/queue")).json().catch(() => ({}));
       const busy = (q.queue_running || []).length + (q.queue_pending || []).length;
       status.textContent = busy ? "Making… (after the render in progress)" : "Making…";
@@ -307,6 +341,9 @@ function injectStyles() {
 .sh3-d .t-char-t b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sh3-d .t-char-t small{font-size:11px;color:var(--text3);white-space:nowrap}
 .sh3-d .t-char-s{font-family:var(--fh);font-size:12px;color:rgb(var(--ac))}
+.sh3-d .t-char-r{font-family:var(--fh);font-size:11px;letter-spacing:.02em;padding:2px 7px;border-radius:999px;
+  background:rgba(var(--ac),.16);color:rgb(var(--ac));flex:none}
+.sh3 .t-maker-hint{font-size:11px;flex:1;min-width:0}
 .sh3-d .t-char.off{opacity:.45}
 .sh3-d .t-char.missing{border-color:rgba(var(--bad),.6)}
 .sh3 .t-charpop{display:flex;flex-direction:column;gap:10px;padding:6px}
