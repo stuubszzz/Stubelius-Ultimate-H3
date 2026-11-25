@@ -141,8 +141,22 @@ function characterPopover(d, i, anchor) {
       : h("div.sh3-muted.t-charpop-note", "Saved by an earlier version, without its pictures: it holds the likeness on "
         + "every chunk, but the shots can't name it, so it can't be an outfit. Make it again to use it as one."));
     if (item.has_pictures && !d.isReference) {
-      box.append(h("div.sh3-muted.t-charpop-note",
-        "First/Last Frame mode has no picture slots: here it holds the likeness, and the role counts in Reference mode."));
+      // timeline_data.fl_named_refs (stubelius_refs.fl_named): one switch for the whole video, missing = off
+      const named = !!d.timeline.fl_named_refs;
+      box.append(h("div.t-charpop-row",
+        h("label.i-inline", toggle(named, (v) => {
+          if (v) d.timeline.fl_named_refs = true;
+          else delete d.timeline.fl_named_refs;
+          d.touchAll();
+          d.refresh(["tl", "foot"]);
+          closeMenus();
+        }, "First/Last Frame mode: every saved reference with pictures shows them to H3 after the frames"),
+        "Show the saved pictures to H3")),
+        h("div.sh3-muted.t-charpop-note", named
+          ? "On for every saved reference in this video: their pictures follow the frames (up to 9 pictures in all, "
+            + "shared between them) and the prompt says what each one shows. The role counts here too."
+          : "Off: here it holds the likeness only, and the role counts in Reference mode. Switch it on so H3 also "
+            + "sees the pictures (a character from every side, a room from other angles)."));
     }
   }
   const desc = item?.description || "";

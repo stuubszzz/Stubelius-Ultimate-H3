@@ -16,6 +16,14 @@ the winner gets finished in **Output** (resolution, frame rate, upscaler).
 The workflow is in [`example_workflows/Stubelius_Ultimate_H3.json`](example_workflows/Stubelius_Ultimate_H3.json).
 Once the pack is installed it also appears in ComfyUI under **Workflow → Browse Templates → Stubelius-Ultimate-H3**.
 
+## What's new in 0.17.1
+
+- **One character, outfits swapped.** A saved reference now keeps its pictures and says what it is (character,
+  outfit, location, item): save the character once, an outfit for each look, and swap the chip
+  ([One character, outfits swapped](#one-character-outfits-swapped)).
+- **First/Last Frame mode can show the saved pictures to H3**: a switch in the chip's popover, off by default.
+  H3 then also sees the character from every side and the room from other angles, not only the frames.
+
 ## What's new in 0.17.0
 
 - **TurboH3 mode**: thu-ml's TurboH3, the First/Last Frame model distilled as a whole to 4 steps, a checkpoint of its
@@ -479,8 +487,13 @@ the look by swapping one chip.
   uses that picture at the size it was saved at — on every chunk, and on the next render too. A picture
   H3 would resize (a reference larger in area than the video, or **max** reference sizing) is encoded once
   and kept for the rest of the session.
-- In First/Last Frame mode, and on a Hybrid chunk, there are no picture slots: a saved reference holds the
-  likeness there exactly as before, and its role does nothing.
+- In First/Last Frame mode a saved reference holds the likeness on the latent path, as before. Switch on
+  **Show the saved pictures to H3** (click a chip; one switch for the whole video, off by default) and its pictures
+  also go to the text side, after the first/last/middle frames: up to 9 pictures in all, shared in turn between the
+  saved references (characters first, then outfits, locations, items; each one's pictures picked evenly from
+  front to back), and the prompt gets a line saying what each picture shows (a person, an outfit, the room from
+  other angles). FL2VA was not trained with reference pictures in its text, so it stays a switch. A Hybrid chunk
+  never gets them.
 - Files saved by an earlier version, and ones made by the other packs, have no pictures of their own: they keep
   working on the latent path in both modes. Make one again to use it as an outfit.
 
