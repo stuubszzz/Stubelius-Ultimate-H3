@@ -198,7 +198,7 @@ class Saved:
     saved reference back on the latent path, which works in both modes.
     """
 
-    def __init__(self, entries, named=True):
+    def __init__(self, entries, named=True, budget=True):
         self.named, self.latent_only, self.dropped = [], [], []
         for entry in entries or []:
             if not isinstance(entry, dict) or entry.get("enabled") is False or not entry.get("file"):
@@ -230,7 +230,8 @@ class Saved:
                 "pictures": pics, "latents": latents,
                 "key": (os.path.abspath(path), stat.st_size, int(stat.st_mtime)),
             })
-        self._budget()
+        if budget:
+            self._budget()       # Reference mode's 9 slots; fl_named shares its own room out instead
 
     def _budget(self):
         """H3 takes 9 reference pictures. Characters first, then outfits, then the rest; what doesn't fit is said
@@ -289,3 +290,61 @@ def _split(refs):
             z = latent[:, :, i:i + 1].contiguous()
             out.append((z, (int(z.shape[4]) * 16, int(z.shape[3]) * 16)))
     return out
+
+
+# --- First/Last Frame mode: saved references the shots can name (2026-11-25) ------------------------------------
+# First/Last Frame mode hands H3 its frames and no reference tags, so a saved reference only rides the latent path
+# there. With timeline_data["fl_named_refs"] the pictures saved with a reference also go to the text encoder, after
+# the frames (stubelius_keyframes.conditioning extra_pictures), and the description section says what they show —
+# the way core numbers Reference-mode pictures. Nothing anchors them to a frame; their latents keep riding
+# minimax_refs exactly as before. Off by default: FL2VA was not trained with reference pictures in its text.
+
+ROLE_WORDS = {
+    "character": "show {d}: the same person all through the video, how they look, not frames of the video",
+    "outfit": "show an outfit ({d}): clothing only, not another person",
+    "location": "show the place the video is set in ({d}), seen from other angles: what the room looks like, not "
+                "frames of the video",
+    "item": "show an item ({d})",
+}
+
+
+def _spread(n, k):
+    """k indices out of n, spread evenly (first and last included when k > 1)."""
+    if k >= n:
+        return list(range(n))
+    if k == 1:
+        return [0]
+    return sorted({round(i * (n - 1) / (k - 1)) for i in range(k)})
+
+
+def fl_named(entries, frames_in_text, max_pictures=MAX_PICTURE_SLOTS):
+    """(pictures [1,H,W,3] in order, the description line, what was left out) for First/Last Frame mode.
+    frames_in_text = how many frame pictures the text encoder already sees (they are <Picture 1>..<Picture N>).
+    The room left is shared round-robin between the saved references (characters first, then outfits, locations,
+    items), so a location still gets pictures next to two characters."""
+    saved = Saved(entries, named=True, budget=False)
+    order = {"character": 0, "outfit": 1, "location": 2, "item": 3}
+    packs = sorted(saved.named, key=lambda p: order.get(p["role"], 4))
+    room = max(0, int(max_pictures) - int(frames_in_text))
+    take = [0] * len(packs)
+    while room > 0 and any(take[i] < len(p["pictures"]) for i, p in enumerate(packs)):
+        for i, p in enumerate(packs):
+            if room > 0 and take[i] < len(p["pictures"]):
+                take[i] += 1
+                room -= 1
+    pictures, parts, dropped = [], [], list(saved.dropped)
+    number = int(frames_in_text)
+    for pack, k in zip(packs, take):
+        if not k:
+            dropped.append(pack["name"])
+            continue
+        chosen = [pack["pictures"][i] for i in _spread(len(pack["pictures"]), k)]
+        tags = [f"`<Picture {number + j + 1}>`" for j in range(len(chosen))]
+        number += len(chosen)
+        pictures += chosen
+        said = tags[0] if len(tags) == 1 else ", ".join(tags[:-1]) + " and " + tags[-1]
+        words = ROLE_WORDS.get(pack["role"], ROLE_WORDS["item"])
+        desc = pack["description"] or pack["name"]
+        parts.append(f"{said} {words.format(d=desc)}")
+    line = ("Reference pictures: " + "; ".join(parts) + ".") if parts else ""
+    return pictures, line, dropped

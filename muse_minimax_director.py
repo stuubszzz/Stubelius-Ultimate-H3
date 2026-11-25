@@ -1387,6 +1387,13 @@ class MuseMinimaxDirector:
         refmod_blocks = _refmods.blocks(saved_refs.latent_only)
         refmod_stamp = ((_refmods.stamp(saved_refs.latent_only) if refmod_blocks else [])
                         + saved_refs.stamp()) or None
+        # Stubelius: First/Last Frame mode can also show the saved references' own pictures to the text encoder, so
+        # the shots can name them (stubelius_refs.fl_named; off unless timeline_data["fl_named_refs"])
+        fl_named_on = (mode == MODE_FIRST_LAST and bool(tdata.get("fl_named_refs"))
+                       and isinstance(tdata.get("refmods"), list) and bool(tdata.get("refmods")))
+        fl_named_cache = {}             # frames the text encoder sees -> (pictures, line, left out)
+        if fl_named_on:
+            refmod_stamp = (refmod_stamp or []) + [["fl_named_refs", True]]
         named_latent_blocks = None      # made once, the first time a hybrid chunk needs them
         store = _takes.Store(plan, getattr(self, "_takes_models", None), candidate_count)
         self._takes_plan, self._takes_seeds = plan, [None] * 4
@@ -2114,6 +2121,7 @@ class MuseMinimaxDirector:
                         style_line, shot_lines, soundscape_text, music_text,
                     )
 
+                chunk_fl_pictures = ()      # Stubelius: saved-reference pictures named in First/Last Frame mode
                 if mode != MODE_REFERENCE or use_hybrid_chunk:
                     # Per MiniMax's own base-mode (T2VA/I2VA/FL2VA/L2VA) prompt guide —
                     # no <Subject N> layer here, just the two keyframe images (if any)
@@ -2138,6 +2146,18 @@ class MuseMinimaxDirector:
                                  for index, middle in chunk_middles] if middles_in_text else ())
                     if keyframe_line:
                         keyframe_line += base_continuity_extra
+                    chunk_fl_pictures = ()
+                    if fl_named_on and not use_hybrid_chunk:
+                        frames_in_text = ((chunk_first is not None) + (chunk_last is not None)
+                                          + (len(chunk_middles) if middles_in_text else 0))
+                        if frames_in_text not in fl_named_cache:
+                            fl_named_cache[frames_in_text] = _refs.fl_named(tdata.get("refmods"), frames_in_text)
+                            pics, line, left = fl_named_cache[frames_in_text]
+                            log.info("[StubeliusRefs] First/Last Frame: %d saved picture(s) named after %d frame(s)%s",
+                                     len(pics), frames_in_text, f"; left out: {', '.join(left)}" if left else "")
+                        chunk_fl_pictures, fl_line, _ = fl_named_cache[frames_in_text]
+                        if fl_line:
+                            keyframe_line = f"{keyframe_line} {fl_line}".strip()
                     # Pull the user's own Overall Soundscape / Non-Diegetic Music fields
                     # (now shown in the UI for this mode too, not just Reference) and
                     # append the auto-generated hybrid "no reference audio" note as a
@@ -2260,15 +2280,16 @@ class MuseMinimaxDirector:
                             ref_audios=chunk_ref_audios if chunk_ref_audios else None,
                         )
                         chunk_shifted_model = shifted_model
-                    elif chunk_middles:
-                        # Stubelius: first frame, middle frames, last frame (stubelius_keyframes.py)
+                    elif chunk_middles or chunk_fl_pictures:
+                        # Stubelius: first frame, middle frames, last frame (stubelius_keyframes.py), and the saved
+                        # references' pictures the shots name (stubelius_refs.fl_named)
                         out = _keyframes.conditioning(
                             _execute_comfy_node, _unpack_node_result,
                             clip=clip, vae=vae, prompt=chunk_prompt,
                             width=width, height=height, length=chunk_length,
                             first=chunk_first, last=chunk_last,
                             middles=[(index, middle["picture"]) for index, middle in chunk_middles],
-                            in_text=middles_in_text,
+                            in_text=middles_in_text, extra_pictures=chunk_fl_pictures,
                         )
                         chunk_shifted_model = shifted_model_fl2va if shifted_model_fl2va is not None else shifted_model
                     else:
