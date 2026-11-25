@@ -111,11 +111,13 @@ class KeyframesToVideo:
     The pictures go to the text encoder in time order (first frame, middle frames, last frame), so they
     are <Picture 1> .. <Picture N> in the prompt, and each one is anchored at its own frame, the way
     ComfyUI's node anchors the first and last frame (the first stretched to the canvas, the others
-    cover-cropped, as there)."""
+    cover-cropped, as there). extra_pictures come after them in the text, numbered on from the frames, and
+    nothing anchors them: saved references the shots name in First/Last Frame mode (stubelius_refs.fl_named),
+    sized the way core sizes a Reference-mode picture (stubelius_refs.target_size, 'match')."""
 
     @classmethod
     def execute(cls, clip, vae, prompt, width, height, length, first_frame=None, last_frame=None,
-                middle_frames=()):
+                middle_frames=(), extra_pictures=()):
         out = EmptyMiniMaxH3LatentAV.execute(width=width, height=height, length=length)
         latent = getattr(out, "result", out)[0]
         frame_count = align_frame_count(max(5, int(length)))
@@ -126,7 +128,13 @@ class KeyframesToVideo:
             anchors.append((int(index), _fit(picture, width, height, "center")))
         if last_frame is not None:
             anchors.append((frame_count - 1, _fit(last_frame, width, height, "center")))
-        tokens = clip.tokenize(prompt, images=[picture for _, picture in anchors])
+        pictures = [picture for _, picture in anchors]
+        if extra_pictures:
+            from .stubelius_refs import target_size
+            for picture in extra_pictures:
+                w, h = target_size(int(picture.shape[2]), int(picture.shape[1]), width, height, "match")
+                pictures.append(_fit(picture, w, h, "disabled"))
+        tokens = clip.tokenize(prompt, images=pictures)
         positive = clip.encode_from_tokens_scheduled(tokens)
         if anchors:
             keyframes = [{"resolved_frame_index": index, "latent": vae.encode(picture)} for index, picture in anchors]
@@ -141,8 +149,15 @@ def conditioning(execute, unpack, clip, vae, prompt, width, height, length, firs
     extra_pictures = pictures the text encoder sees after the keyframes and nothing anchors (saved references
     named in First/Last Frame mode, stubelius_refs.fl_named): they are numbered after the frames."""
     if extra_pictures:
-        return _with_extras(execute, unpack, clip, vae, prompt, width, height, length, first, last,
-                            middles, in_text, extra_pictures)
+        positive, latent = tuple(unpack(execute(KeyframesToVideo, clip=clip, vae=vae, prompt=prompt, width=width,
+                                                height=height, length=length, first_frame=first, last_frame=last,
+                                                middle_frames=list(middles) if in_text else [],
+                                                extra_pictures=list(extra_pictures)))[:2])
+        if not in_text:
+            for index, picture in middles:
+                positive = unpack(execute(MiniMaxH3AddGuide, positive=positive, latent=latent,
+                                          frame_idx=int(index), vae=vae, image=picture[:1]))[0]
+        return positive, latent
     if not middles:
         return tuple(unpack(execute(MiniMaxH3ImageToVideo, clip=clip, vae=vae, prompt=prompt, width=width,
                                     height=height, length=length, first_frame=first, last_frame=last))[:2])
@@ -158,42 +173,3 @@ def conditioning(execute, unpack, clip, vae, prompt, width, height, length, firs
                                   vae=vae, image=picture[:1]))[0]
     return positive, latent
 
-
-def text_size(picture, width, height):
-    """A reference picture's size for the text encoder: its own shape, scaled down (never up) to the render's area,
-    sides to 32 — the way core sizes Reference-mode pictures ('match')."""
-    import math
-    h, w = int(picture.shape[1]), int(picture.shape[2])
-    scale = min(1.0, math.sqrt((width * height) / float(w * h)))
-    return max(32, round(w * scale / 32) * 32), max(32, round(h * scale / 32) * 32)
-
-
-def _with_extras(execute, unpack, clip, vae, prompt, width, height, length, first, last, middles, in_text, extras):
-    """KeyframesToVideo's text encoding with saved-reference pictures after the frames: the frames are anchored as
-    always (first, middle frames in text when asked, last), the extra pictures only reach the text encoder, so the
-    prompt can name them. Their latents ride the conditioning's minimax_refs (stubelius_refmods.attach)."""
-    out = EmptyMiniMaxH3LatentAV.execute(width=width, height=height, length=length)
-    latent = getattr(out, "result", out)[0]
-    frame_count = align_frame_count(max(5, int(length)))
-    anchors = []
-    if first is not None:
-        anchors.append((0, _fit(first, width, height, "disabled")))
-    if in_text:
-        for index, picture in sorted(middles, key=lambda m: m[0]):
-            anchors.append((int(index), _fit(picture, width, height, "center")))
-    if last is not None:
-        anchors.append((frame_count - 1, _fit(last, width, height, "center")))
-    pictures = [p for _, p in anchors]
-    for picture in extras:
-        w, h = text_size(picture, width, height)
-        pictures.append(_fit(picture, w, h, "disabled"))
-    tokens = clip.tokenize(prompt, images=pictures)
-    positive = clip.encode_from_tokens_scheduled(tokens)
-    if anchors:
-        keyframes = [{"resolved_frame_index": index, "latent": vae.encode(picture)} for index, picture in anchors]
-        positive = node_helpers.conditioning_set_values(positive, {"minimax_keyframes": keyframes})
-    if not in_text:
-        for index, picture in middles:
-            positive = unpack(execute(MiniMaxH3AddGuide, positive=positive, latent=latent, frame_idx=int(index),
-                                      vae=vae, image=picture[:1]))[0]
-    return positive, latent

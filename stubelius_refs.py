@@ -332,7 +332,7 @@ def fl_named(entries, frames_in_text, max_pictures=MAX_PICTURE_SLOTS):
             if room > 0 and take[i] < len(p["pictures"]):
                 take[i] += 1
                 room -= 1
-    pictures, parts, dropped = [], [], list(saved.dropped)
+    pictures, parts, dropped = [], [], []
     number = int(frames_in_text)
     for pack, k in zip(packs, take):
         if not k:
